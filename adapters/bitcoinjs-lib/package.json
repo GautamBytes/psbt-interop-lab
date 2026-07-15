@@ -1,0 +1,17 @@
+{
+  "name": "@psbt-lab/bitcoinjs-lib-adapter",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "24.18.0"
+  },
+  "scripts": {
+    "test": "node --test",
+    "typecheck": "node --check adapter.mjs && node --check test/adapter.test.mjs"
+  },
+  "dependencies": {
+    "bitcoinjs-lib": "7.0.1",
+    "tiny-secp256k1": "2.2.4"
+  }
+}
