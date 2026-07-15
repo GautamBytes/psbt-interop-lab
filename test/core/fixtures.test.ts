@@ -35,4 +35,18 @@ describe("prepareFixtures", () => {
 
     await expect(prepareFixtures(rpc)).rejects.toThrow(/regtest/i);
   });
+
+  test("refuses an unexpected Bitcoin Core version", async () => {
+    const rpc: RpcCaller = {
+      async call<T>(method: string): Promise<T> {
+        if (method === "getblockchaininfo") return { chain: "regtest", blocks: 103 } as T;
+        if (method === "getnetworkinfo") {
+          return { version: 310000, subversion: "/Satoshi:31.0.0/", connections: 0 } as T;
+        }
+        throw new Error(`Unexpected RPC ${method}`);
+      },
+    };
+
+    await expect(prepareFixtures(rpc)).rejects.toThrow(/Core 31\.1/i);
+  });
 });

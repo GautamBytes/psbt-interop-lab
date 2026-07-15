@@ -98,6 +98,24 @@ describe("CoreRpc", () => {
     await expect(rpc.call("getblockcount", {})).rejects.toBeInstanceOf(CoreRpcTransportError);
   });
 
+  test.each([null, "psbt-lab-999", 1])("rejects a response with mismatched id %j", async (id) => {
+    const server = await serve((_request, response) => {
+      response.end(JSON.stringify({ result: 42, error: null, id }));
+    });
+    const rpc = new CoreRpc({ url: server.url, username: "u", password: "p" });
+
+    await expect(rpc.call("getblockcount", {})).rejects.toThrow(/response id/i);
+  });
+
+  test("rejects a response without an id", async () => {
+    const server = await serve((_request, response) => {
+      response.end(JSON.stringify({ result: 42, error: null }));
+    });
+    const rpc = new CoreRpc({ url: server.url, username: "u", password: "p" });
+
+    await expect(rpc.call("getblockcount", {})).rejects.toThrow(/invalid envelope/i);
+  });
+
   test("enforces its response size limit", async () => {
     const server = await serve((_request, response) =>
       response.end(JSON.stringify({ result: "x".repeat(512), error: null })),

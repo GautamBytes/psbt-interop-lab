@@ -36,6 +36,7 @@ interface RpcErrorValue {
 }
 
 interface RpcEnvelope {
+  id: unknown;
   result: unknown;
   error: RpcErrorValue | null;
 }
@@ -52,7 +53,7 @@ function isRpcEnvelope(value: unknown): value is RpcEnvelope {
     return false;
   }
   const envelope = value as Record<string, unknown>;
-  if (!("result" in envelope) || !("error" in envelope)) {
+  if (!("id" in envelope) || !("result" in envelope) || !("error" in envelope)) {
     return false;
   }
   if (envelope["error"] === null) {
@@ -136,6 +137,9 @@ export class CoreRpc {
     }
     if (!isRpcEnvelope(decoded)) {
       throw new CoreRpcTransportError(`Bitcoin Core RPC ${method} returned an invalid envelope`);
+    }
+    if (decoded.id !== id) {
+      throw new CoreRpcTransportError(`Bitcoin Core RPC ${method} returned a mismatched response id`);
     }
     if (decoded.error) {
       throw new CoreRpcError(method, decoded.error.code, decoded.error.message);

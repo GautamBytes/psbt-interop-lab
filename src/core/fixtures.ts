@@ -4,6 +4,7 @@ const LAB_PUBLIC_KEY = "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f281
 const LAB_DESCRIPTOR = `wsh(pk(${LAB_PUBLIC_KEY}))`;
 const COINBASE_MATURITY_BLOCKS = 100;
 const REQUIRED_FIXTURE_UTXOS = 3;
+export const BITCOIN_CORE_VERSION = 310100;
 
 export interface RpcCaller {
   call<T>(
@@ -269,6 +270,11 @@ export async function prepareFixtures(rpc: RpcCaller): Promise<PreparedFixtures>
     throw new Error("PSBT Interop Lab refuses to run outside Bitcoin Core regtest");
   }
   const network = parseNetworkInfo(await rpc.call("getnetworkinfo"));
+  if (network.version !== BITCOIN_CORE_VERSION) {
+    throw new Error(
+      `PSBT Interop Lab requires Bitcoin Core 31.1 (${BITCOIN_CORE_VERSION}); received ${network.version}`,
+    );
+  }
   if (network.connections !== 0) {
     throw new Error("PSBT Interop Lab requires Bitcoin Core to have zero peer connections");
   }
