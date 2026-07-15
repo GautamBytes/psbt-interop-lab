@@ -212,6 +212,25 @@ fn finalize_inputs_finalizes_every_requested_input() {
     );
 }
 
+#[test]
+fn finalize_inputs_rejects_non_regression_fixture() {
+    let response = handle_value(
+        request(
+            "finalize-inputs",
+            json!({
+                "psbt": signed_two_input_fixture(),
+                "network": "regtest",
+                "fixtureId": "happy-path",
+                "inputIndexes": [0]
+            }),
+        ),
+        "sha256:deadbeef",
+    );
+
+    assert_eq!(response["status"], "rejected");
+    assert_eq!(response["error"]["class"], "policy.fixture_not_allowed");
+}
+
 fn signed_two_input_fixture() -> String {
     let key = PrivateKey::from_wif("cMahea7zqjxrtgAbB7LSGbcQUr1uX1ojuat9jZodMN87JcbXMTcA")
         .expect("fixture key");
