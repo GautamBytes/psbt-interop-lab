@@ -3,8 +3,30 @@ import { CompactSizeError, readCompactSize } from "./compact-size.js";
 
 const PSBT_MAGIC = Buffer.from("70736274ff", "hex");
 
+export type PsbtDocumentErrorCode =
+  | "INVALID_PSBT"
+  | "INVALID_FIELD"
+  | "MISSING_REQUIRED_FIELD"
+  | "FORBIDDEN_FIELD";
+
+interface PsbtDocumentErrorOptions {
+  code?: PsbtDocumentErrorCode;
+  location?: PsbtMapLocation;
+  keyType?: number;
+}
+
 export class PsbtDocumentError extends Error {
   override readonly name = "PsbtDocumentError";
+  readonly code: PsbtDocumentErrorCode;
+  readonly location: PsbtMapLocation | undefined;
+  readonly keyType: number | undefined;
+
+  constructor(message: string, options: PsbtDocumentErrorOptions = {}) {
+    super(message);
+    this.code = options.code ?? "INVALID_PSBT";
+    this.location = options.location;
+    this.keyType = options.keyType;
+  }
 }
 
 export interface PsbtDocumentLimits {
@@ -60,6 +82,236 @@ interface InternalMap {
 interface ParsedMap {
   entries: InternalEntry[];
   nextOffset: number;
+}
+
+function fieldError(
+  code: PsbtDocumentErrorCode,
+  location: PsbtMapLocation,
+  keyType: number,
+  message: string,
+): never {
+  throw new PsbtDocumentError(message, { code, location: cloneLocation(location), keyType });
+}
+
+function invalidField(
+  location: PsbtMapLocation,
+  entry: InternalEntry,
+  label: string,
+  reason: string,
+): never {
+  return fieldError("INVALID_FIELD", location, entry.keyType, `${label} ${reason}`);
+}
+
+function forbiddenField(
+  location: PsbtMapLocation,
+  entry: InternalEntry,
+  label: string,
+  version: number,
+): never {
+  return fieldError(
+    "FORBIDDEN_FIELD",
+    location,
+    entry.keyType,
+    `${label} is forbidden in PSBTv${version}`,
+  );
+}
+
+function requireField(
+  entries: InternalEntry[],
+  location: PsbtMapLocation,
+  keyType: number,
+  label: string,
+): void {
+  if (!entries.some((entry) => entry.keyType === keyType)) {
+    fieldError("MISSING_REQUIRED_FIELD", location, keyType, `${label} is required`);
+  }
+}
+
+function assertNoKeyData(entry: InternalEntry, location: PsbtMapLocation, label: string): void {
+  if (entry.keyData.byteLength !== 0) {
+    invalidField(location, entry, label, "must not contain key data");
+  }
+}
+
+function assertKeyDataLength(
+  entry: InternalEntry,
+  location: PsbtMapLocation,
+  label: string,
+  length: number,
+): void {
+  if (entry.keyData.byteLength !== length) {
+    invalidField(location, entry, label, `key data must contain ${length} bytes`);
+  }
+}
+
+function assertValueLength(
+  entry: InternalEntry,
+  location: PsbtMapLocation,
+  label: string,
+  length: number,
+): void {
+  if (entry.value.byteLength !== length) {
+    invalidField(location, entry, label, `value must contain ${length} bytes`);
+  }
+}
+
+function assertValueLengths(
+  entry: InternalEntry,
+  location: PsbtMapLocation,
+  label: string,
+  lengths: readonly number[],
+): void {
+  if (!lengths.includes(entry.value.byteLength)) {
+    invalidField(location, entry, label, `value has an invalid byte length`);
+  }
+}
+
+function assertNonEmptyValue(entry: InternalEntry, location: PsbtMapLocation, label: string): void {
+  if (entry.value.byteLength === 0) {
+    invalidField(location, entry, label, "value must not be empty");
+  }
+}
+
+function assertSerializedPubkey(
+  entry: InternalEntry,
+  location: PsbtMapLocation,
+  label: string,
+): void {
+  const prefix = entry.keyData[0];
+  const compressed = entry.keyData.byteLength === 33 && (prefix === 0x02 || prefix === 0x03);
+  const uncompressed = entry.keyData.byteLength === 65 && prefix === 0x04;
+  if (!compressed && !uncompressed) {
+    invalidField(location, entry, label, "key data must contain a serialized public key");
+  }
+}
+
+function assertDerivationValue(
+  entry: InternalEntry,
+  location: PsbtMapLocation,
+  label: string,
+): void {
+  if (entry.value.byteLength < 4 || (entry.value.byteLength - 4) % 4 !== 0) {
+    invalidField(location, entry, label, "value must contain a fingerprint and derivation path");
+  }
+}
+
+function readFieldCompactSize(
+  entry: InternalEntry,
+  location: PsbtMapLocation,
+  label: string,
+  offset: number,
+) {
+  try {
+    return readCompactSize(entry.value, offset);
+  } catch (error) {
+    if (error instanceof CompactSizeError) {
+      invalidField(location, entry, label, "contains an invalid CompactSize value");
+    }
+    throw error;
+  }
+}
+
+function assertCompactSizeValue(
+  entry: InternalEntry,
+  location: PsbtMapLocation,
+  label: string,
+): void {
+  const decoded = readFieldCompactSize(entry, location, label, 0);
+  if (decoded.nextOffset !== entry.value.byteLength) {
+    invalidField(location, entry, label, "value contains trailing data");
+  }
+}
+
+function assertTxOut(entry: InternalEntry, location: PsbtMapLocation, label: string): void {
+  if (entry.value.byteLength < 9) {
+    invalidField(location, entry, label, "value is not a serialized transaction output");
+  }
+  const scriptLength = readFieldCompactSize(entry, location, label, 8);
+  if (scriptLength.nextOffset + scriptLength.value !== entry.value.byteLength) {
+    invalidField(location, entry, label, "value is not a serialized transaction output");
+  }
+}
+
+function assertScriptWitness(entry: InternalEntry, location: PsbtMapLocation, label: string): void {
+  const itemCount = readFieldCompactSize(entry, location, label, 0);
+  let offset = itemCount.nextOffset;
+  for (let index = 0; index < itemCount.value; index += 1) {
+    const itemLength = readFieldCompactSize(entry, location, label, offset);
+    offset = itemLength.nextOffset + itemLength.value;
+    if (offset > entry.value.byteLength) {
+      invalidField(location, entry, label, "value is not a serialized script witness");
+    }
+  }
+  if (offset !== entry.value.byteLength) {
+    invalidField(location, entry, label, "value is not a serialized script witness");
+  }
+}
+
+function assertProprietaryKey(
+  entry: InternalEntry,
+  location: PsbtMapLocation,
+  label: string,
+): void {
+  try {
+    const identifier = readCompactSize(entry.keyData, 0);
+    const subtypeOffset = identifier.nextOffset + identifier.value;
+    if (subtypeOffset > entry.keyData.byteLength) {
+      invalidField(location, entry, label, "key data has a truncated identifier");
+    }
+    readCompactSize(entry.keyData, subtypeOffset);
+  } catch (error) {
+    if (error instanceof CompactSizeError) {
+      invalidField(location, entry, label, "key data is not a proprietary key");
+    }
+    throw error;
+  }
+}
+
+function assertTaprootDerivation(
+  entry: InternalEntry,
+  location: PsbtMapLocation,
+  label: string,
+): void {
+  assertKeyDataLength(entry, location, label, 32);
+  const hashCount = readFieldCompactSize(entry, location, label, 0);
+  const hashesEnd = hashCount.nextOffset + hashCount.value * 32;
+  if (
+    !Number.isSafeInteger(hashesEnd) ||
+    hashesEnd + 4 > entry.value.byteLength ||
+    (entry.value.byteLength - hashesEnd - 4) % 4 !== 0
+  ) {
+    invalidField(location, entry, label, "value has an invalid taproot derivation path");
+  }
+}
+
+function assertTaprootControlBlock(
+  entry: InternalEntry,
+  location: PsbtMapLocation,
+  label: string,
+): void {
+  const length = entry.keyData.byteLength;
+  if (length < 33 || length > 33 + 32 * 128 || (length - 33) % 32 !== 0) {
+    invalidField(location, entry, label, "key data is not a taproot control block");
+  }
+  assertNonEmptyValue(entry, location, label);
+}
+
+function assertTaprootTree(entry: InternalEntry, location: PsbtMapLocation, label: string): void {
+  assertNoKeyData(entry, location, label);
+  if (entry.value.byteLength === 0) {
+    invalidField(location, entry, label, "value must contain at least one leaf");
+  }
+  let offset = 0;
+  while (offset < entry.value.byteLength) {
+    if (offset + 2 > entry.value.byteLength) {
+      invalidField(location, entry, label, "value has a truncated taproot leaf");
+    }
+    const scriptLength = readFieldCompactSize(entry, location, label, offset + 2);
+    offset = scriptLength.nextOffset + scriptLength.value;
+    if (offset > entry.value.byteLength) {
+      invalidField(location, entry, label, "value has a truncated taproot leaf");
+    }
+  }
 }
 
 function sha256(value: Buffer): string {
@@ -181,6 +433,270 @@ function globalValue(entries: InternalEntry[], keyType: number): Buffer | undefi
   )?.value;
 }
 
+function validateVersionEntry(entries: InternalEntry[]): void {
+  const location: PsbtMapLocation = { kind: "global" };
+  for (const entry of entries.filter((candidate) => candidate.keyType === 0xfb)) {
+    assertNoKeyData(entry, location, "PSBT_GLOBAL_VERSION");
+    assertValueLength(entry, location, "PSBT_GLOBAL_VERSION", 4);
+  }
+}
+
+function validateGlobalMap(entries: InternalEntry[], version: number): void {
+  const location: PsbtMapLocation = { kind: "global" };
+  for (const entry of entries) {
+    if (version === 0 && entry.keyType >= 0x02 && entry.keyType <= 0x06) {
+      forbiddenField(location, entry, "BIP370 global field", version);
+    }
+    if (version === 2 && entry.keyType === 0x00) {
+      forbiddenField(location, entry, "PSBT_GLOBAL_UNSIGNED_TX", version);
+    }
+
+    switch (entry.keyType) {
+      case 0x00:
+        assertNoKeyData(entry, location, "PSBT_GLOBAL_UNSIGNED_TX");
+        break;
+      case 0x01: {
+        assertKeyDataLength(entry, location, "PSBT_GLOBAL_XPUB", 78);
+        assertDerivationValue(entry, location, "PSBT_GLOBAL_XPUB");
+        const depth = entry.keyData[4] as number;
+        if ((entry.value.byteLength - 4) / 4 !== depth) {
+          invalidField(location, entry, "PSBT_GLOBAL_XPUB", "derivation depth does not match");
+        }
+        break;
+      }
+      case 0x02:
+        assertNoKeyData(entry, location, "PSBT_GLOBAL_TX_VERSION");
+        assertValueLength(entry, location, "PSBT_GLOBAL_TX_VERSION", 4);
+        break;
+      case 0x03:
+        assertNoKeyData(entry, location, "PSBT_GLOBAL_FALLBACK_LOCKTIME");
+        assertValueLength(entry, location, "PSBT_GLOBAL_FALLBACK_LOCKTIME", 4);
+        break;
+      case 0x04:
+        assertNoKeyData(entry, location, "PSBT_GLOBAL_INPUT_COUNT");
+        assertCompactSizeValue(entry, location, "PSBT_GLOBAL_INPUT_COUNT");
+        break;
+      case 0x05:
+        assertNoKeyData(entry, location, "PSBT_GLOBAL_OUTPUT_COUNT");
+        assertCompactSizeValue(entry, location, "PSBT_GLOBAL_OUTPUT_COUNT");
+        break;
+      case 0x06:
+        assertNoKeyData(entry, location, "PSBT_GLOBAL_TX_MODIFIABLE");
+        assertValueLength(entry, location, "PSBT_GLOBAL_TX_MODIFIABLE", 1);
+        break;
+      case 0xfb:
+        assertNoKeyData(entry, location, "PSBT_GLOBAL_VERSION");
+        assertValueLength(entry, location, "PSBT_GLOBAL_VERSION", 4);
+        break;
+      case 0xfc:
+        assertProprietaryKey(entry, location, "PSBT_GLOBAL_PROPRIETARY");
+        break;
+    }
+  }
+
+  if (version === 0) {
+    requireField(entries, location, 0x00, "PSBT_GLOBAL_UNSIGNED_TX");
+  } else {
+    requireField(entries, location, 0xfb, "PSBT_GLOBAL_VERSION");
+    requireField(entries, location, 0x02, "PSBT_GLOBAL_TX_VERSION");
+    requireField(entries, location, 0x04, "PSBT_GLOBAL_INPUT_COUNT");
+    requireField(entries, location, 0x05, "PSBT_GLOBAL_OUTPUT_COUNT");
+  }
+}
+
+function validateInputMap(map: InternalMap, version: number): void {
+  const { location, entries } = map;
+  for (const entry of entries) {
+    if (version === 0 && entry.keyType >= 0x0e && entry.keyType <= 0x12) {
+      forbiddenField(location, entry, "BIP370 input field", version);
+    }
+
+    switch (entry.keyType) {
+      case 0x00:
+        assertNoKeyData(entry, location, "PSBT_IN_NON_WITNESS_UTXO");
+        assertNonEmptyValue(entry, location, "PSBT_IN_NON_WITNESS_UTXO");
+        break;
+      case 0x01:
+        assertNoKeyData(entry, location, "PSBT_IN_WITNESS_UTXO");
+        assertTxOut(entry, location, "PSBT_IN_WITNESS_UTXO");
+        break;
+      case 0x02:
+        assertSerializedPubkey(entry, location, "PSBT_IN_PARTIAL_SIG");
+        assertNonEmptyValue(entry, location, "PSBT_IN_PARTIAL_SIG");
+        break;
+      case 0x03:
+        assertNoKeyData(entry, location, "PSBT_IN_SIGHASH_TYPE");
+        assertValueLength(entry, location, "PSBT_IN_SIGHASH_TYPE", 4);
+        break;
+      case 0x04:
+        assertNoKeyData(entry, location, "PSBT_IN_REDEEM_SCRIPT");
+        break;
+      case 0x05:
+        assertNoKeyData(entry, location, "PSBT_IN_WITNESS_SCRIPT");
+        break;
+      case 0x06:
+        assertSerializedPubkey(entry, location, "PSBT_IN_BIP32_DERIVATION");
+        assertDerivationValue(entry, location, "PSBT_IN_BIP32_DERIVATION");
+        break;
+      case 0x07:
+        assertNoKeyData(entry, location, "PSBT_IN_FINAL_SCRIPTSIG");
+        break;
+      case 0x08:
+        assertNoKeyData(entry, location, "PSBT_IN_FINAL_SCRIPTWITNESS");
+        assertScriptWitness(entry, location, "PSBT_IN_FINAL_SCRIPTWITNESS");
+        break;
+      case 0x0a:
+        assertKeyDataLength(entry, location, "PSBT_IN_RIPEMD160", 20);
+        break;
+      case 0x0b:
+        assertKeyDataLength(entry, location, "PSBT_IN_SHA256", 32);
+        break;
+      case 0x0c:
+        assertKeyDataLength(entry, location, "PSBT_IN_HASH160", 20);
+        break;
+      case 0x0d:
+        assertKeyDataLength(entry, location, "PSBT_IN_HASH256", 32);
+        break;
+      case 0x0e:
+        assertNoKeyData(entry, location, "PSBT_IN_PREVIOUS_TXID");
+        assertValueLength(entry, location, "PSBT_IN_PREVIOUS_TXID", 32);
+        break;
+      case 0x0f:
+        assertNoKeyData(entry, location, "PSBT_IN_OUTPUT_INDEX");
+        assertValueLength(entry, location, "PSBT_IN_OUTPUT_INDEX", 4);
+        break;
+      case 0x10:
+        assertNoKeyData(entry, location, "PSBT_IN_SEQUENCE");
+        assertValueLength(entry, location, "PSBT_IN_SEQUENCE", 4);
+        break;
+      case 0x11:
+        assertNoKeyData(entry, location, "PSBT_IN_REQUIRED_TIME_LOCKTIME");
+        assertValueLength(entry, location, "PSBT_IN_REQUIRED_TIME_LOCKTIME", 4);
+        if (entry.value.readUInt32LE(0) < 500_000_000) {
+          invalidField(
+            location,
+            entry,
+            "PSBT_IN_REQUIRED_TIME_LOCKTIME",
+            "value is below the timestamp threshold",
+          );
+        }
+        break;
+      case 0x12: {
+        assertNoKeyData(entry, location, "PSBT_IN_REQUIRED_HEIGHT_LOCKTIME");
+        assertValueLength(entry, location, "PSBT_IN_REQUIRED_HEIGHT_LOCKTIME", 4);
+        const locktime = entry.value.readUInt32LE(0);
+        if (locktime === 0 || locktime >= 500_000_000) {
+          invalidField(
+            location,
+            entry,
+            "PSBT_IN_REQUIRED_HEIGHT_LOCKTIME",
+            "value is outside the block-height range",
+          );
+        }
+        break;
+      }
+      case 0x13:
+        assertNoKeyData(entry, location, "PSBT_IN_TAP_KEY_SIG");
+        assertValueLengths(entry, location, "PSBT_IN_TAP_KEY_SIG", [64, 65]);
+        break;
+      case 0x14:
+        assertKeyDataLength(entry, location, "PSBT_IN_TAP_SCRIPT_SIG", 64);
+        assertValueLengths(entry, location, "PSBT_IN_TAP_SCRIPT_SIG", [64, 65]);
+        break;
+      case 0x15:
+        assertTaprootControlBlock(entry, location, "PSBT_IN_TAP_LEAF_SCRIPT");
+        if (
+          ((entry.keyData[0] as number) & 0xfe) !==
+          (entry.value[entry.value.byteLength - 1] as number)
+        ) {
+          invalidField(
+            location,
+            entry,
+            "PSBT_IN_TAP_LEAF_SCRIPT",
+            "leaf version does not match the control block",
+          );
+        }
+        break;
+      case 0x16:
+        assertTaprootDerivation(entry, location, "PSBT_IN_TAP_BIP32_DERIVATION");
+        break;
+      case 0x17:
+        assertNoKeyData(entry, location, "PSBT_IN_TAP_INTERNAL_KEY");
+        assertValueLength(entry, location, "PSBT_IN_TAP_INTERNAL_KEY", 32);
+        break;
+      case 0x18:
+        assertNoKeyData(entry, location, "PSBT_IN_TAP_MERKLE_ROOT");
+        assertValueLength(entry, location, "PSBT_IN_TAP_MERKLE_ROOT", 32);
+        break;
+      case 0xfc:
+        assertProprietaryKey(entry, location, "PSBT_IN_PROPRIETARY");
+        break;
+    }
+  }
+
+  if (version === 2) {
+    requireField(entries, location, 0x0e, "PSBT_IN_PREVIOUS_TXID");
+    requireField(entries, location, 0x0f, "PSBT_IN_OUTPUT_INDEX");
+  }
+}
+
+function validateOutputMap(map: InternalMap, version: number): void {
+  const { location, entries } = map;
+  for (const entry of entries) {
+    if (version === 0 && (entry.keyType === 0x03 || entry.keyType === 0x04)) {
+      forbiddenField(location, entry, "BIP370 output field", version);
+    }
+
+    switch (entry.keyType) {
+      case 0x00:
+        assertNoKeyData(entry, location, "PSBT_OUT_REDEEM_SCRIPT");
+        break;
+      case 0x01:
+        assertNoKeyData(entry, location, "PSBT_OUT_WITNESS_SCRIPT");
+        break;
+      case 0x02:
+        assertSerializedPubkey(entry, location, "PSBT_OUT_BIP32_DERIVATION");
+        assertDerivationValue(entry, location, "PSBT_OUT_BIP32_DERIVATION");
+        break;
+      case 0x03:
+        assertNoKeyData(entry, location, "PSBT_OUT_AMOUNT");
+        assertValueLength(entry, location, "PSBT_OUT_AMOUNT", 8);
+        break;
+      case 0x04:
+        assertNoKeyData(entry, location, "PSBT_OUT_SCRIPT");
+        break;
+      case 0x05:
+        assertNoKeyData(entry, location, "PSBT_OUT_TAP_INTERNAL_KEY");
+        assertValueLength(entry, location, "PSBT_OUT_TAP_INTERNAL_KEY", 32);
+        break;
+      case 0x06:
+        assertTaprootTree(entry, location, "PSBT_OUT_TAP_TREE");
+        break;
+      case 0x07:
+        assertTaprootDerivation(entry, location, "PSBT_OUT_TAP_BIP32_DERIVATION");
+        break;
+      case 0xfc:
+        assertProprietaryKey(entry, location, "PSBT_OUT_PROPRIETARY");
+        break;
+    }
+  }
+
+  if (version === 2) {
+    requireField(entries, location, 0x03, "PSBT_OUT_AMOUNT");
+    requireField(entries, location, 0x04, "PSBT_OUT_SCRIPT");
+  }
+}
+
+function validateMaps(maps: InternalMap[], version: number): void {
+  for (const map of maps) {
+    if (map.location.kind === "input") {
+      validateInputMap(map, version);
+    } else if (map.location.kind === "output") {
+      validateOutputMap(map, version);
+    }
+  }
+}
+
 function parseUnsignedTransactionCounts(transaction: Buffer): {
   inputCount: number;
   outputCount: number;
@@ -243,10 +759,16 @@ function determineVersion(entries: InternalEntry[]): number {
   if (!version) {
     return 0;
   }
-  if (version.byteLength !== 4) {
-    throw new PsbtDocumentError("PSBT global version must contain four bytes");
+  const value = version.readUInt32LE(0);
+  if (value !== 0 && value !== 2) {
+    fieldError(
+      "INVALID_FIELD",
+      { kind: "global" },
+      0xfb,
+      `PSBT_GLOBAL_VERSION specifies an unsupported version`,
+    );
   }
-  return version.readUInt32LE(0);
+  return value;
 }
 
 function determineCounts(entries: InternalEntry[], version: number) {
@@ -313,7 +835,9 @@ export class PsbtDocument {
     let offset = PSBT_MAGIC.byteLength;
     const globalMap = parseMap(buffer, offset, resolved);
     offset = globalMap.nextOffset;
+    validateVersionEntry(globalMap.entries);
     const psbtVersion = determineVersion(globalMap.entries);
+    validateGlobalMap(globalMap.entries, psbtVersion);
     const { inputCount, outputCount } = determineCounts(globalMap.entries, psbtVersion);
     const expectedMapCount = 1 + inputCount + outputCount;
     if (!Number.isSafeInteger(expectedMapCount) || expectedMapCount > resolved.maxMaps) {
@@ -334,6 +858,7 @@ export class PsbtDocument {
     if (offset !== buffer.length) {
       throw new PsbtDocumentError("PSBT contains trailing bytes after its expected maps");
     }
+    validateMaps(maps, psbtVersion);
 
     return new PsbtDocument(Buffer.from(buffer), maps, psbtVersion, inputCount, outputCount);
   }

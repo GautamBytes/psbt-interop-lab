@@ -4,7 +4,7 @@ import { assertPsbtTransition } from "../../src/psbt/invariants.js";
 
 const magic = Buffer.from("70736274ff", "hex");
 
-function entry(keyType: number, value: Buffer, keyData = Buffer.alloc(0)): Buffer {
+function entry(keyType: number, value: Buffer, keyData: Buffer = Buffer.alloc(0)): Buffer {
   const key = Buffer.concat([Buffer.from([keyType]), keyData]);
   return Buffer.concat([
     Buffer.from([key.byteLength]),
@@ -17,6 +17,12 @@ function entry(keyType: number, value: Buffer, keyData = Buffer.alloc(0)): Buffe
 function map(...entries: Buffer[]): Buffer {
   return Buffer.concat([...entries, Buffer.from([0])]);
 }
+
+function compressedPubkey(fill = 0x02): Buffer {
+  return Buffer.concat([Buffer.from([0x02]), Buffer.alloc(32, fill)]);
+}
+
+const proprietaryKeyData = Buffer.from("036c616201", "hex");
 
 function unsignedTransaction(outputScript = Buffer.from("51", "hex")): Buffer {
   return Buffer.concat([
@@ -83,7 +89,7 @@ function document(psbt: Buffer) {
 
 describe("roundtrip policy", () => {
   test("accepts reordered entries without exact-byte equality", () => {
-    const proprietary = entry(0xfc, Buffer.from("metadata"), Buffer.from("046c616201", "hex"));
+    const proprietary = entry(0xfc, Buffer.from("metadata"), proprietaryKeyData);
     const before = document(psbtV0({ global: [proprietary] }));
     const after = document(psbtV0({ global: [proprietary], transactionFirst: false }));
 
@@ -96,11 +102,7 @@ describe("roundtrip policy", () => {
   });
 
   test("rejects dropped proprietary metadata with a stable sanitized failure", () => {
-    const proprietary = entry(
-      0xfc,
-      Buffer.from("secret metadata"),
-      Buffer.from("046c616201", "hex"),
-    );
+    const proprietary = entry(0xfc, Buffer.from("secret metadata"), proprietaryKeyData);
     const result = assertPsbtTransition(
       "roundtrip",
       document(psbtV0({ global: [proprietary] })),
@@ -120,11 +122,11 @@ describe("roundtrip policy", () => {
   });
 
   test("rejects changed output metadata", () => {
-    const keyData = Buffer.from("pubkey");
+    const keyData = compressedPubkey();
     const result = assertPsbtTransition(
       "roundtrip",
-      document(psbtV0({ output: [entry(0x02, Buffer.from("old path"), keyData)] })),
-      document(psbtV0({ output: [entry(0x02, Buffer.from("new path"), keyData)] })),
+      document(psbtV0({ output: [entry(0x02, Buffer.alloc(4, 0x01), keyData)] })),
+      document(psbtV0({ output: [entry(0x02, Buffer.alloc(4, 0x02), keyData)] })),
     );
 
     expect(result.failures).toContainEqual(
@@ -139,18 +141,24 @@ describe("roundtrip policy", () => {
 
 describe("sign policy", () => {
   test.each([0x02, 0x13, 0x14])("allows input signature type 0x%s to be added", (keyType) => {
-    const keyData = keyType === 0x13 ? Buffer.alloc(0) : Buffer.from("signing key");
+    const keyData =
+      keyType === 0x02
+        ? compressedPubkey()
+        : keyType === 0x14
+          ? Buffer.alloc(64, 0x03)
+          : Buffer.alloc(0);
+    const signature = keyType === 0x02 ? Buffer.from("signature") : Buffer.alloc(64, 0x04);
     const result = assertPsbtTransition(
       "sign",
       document(psbtV0()),
-      document(psbtV0({ input: [entry(keyType, Buffer.from("signature"), keyData)] })),
+      document(psbtV0({ input: [entry(keyType, signature, keyData)] })),
     );
 
     expect(result).toMatchObject({ ok: true, exactBytesEqual: false, failures: [] });
   });
 
   test("rejects removal of an existing signature", () => {
-    const signature = entry(0x02, Buffer.from("signature"), Buffer.from("pubkey"));
+    const signature = entry(0x02, Buffer.from("signature"), compressedPubkey());
     const result = assertPsbtTransition(
       "sign",
       document(psbtV0({ input: [signature] })),
@@ -170,7 +178,7 @@ describe("sign policy", () => {
     const result = assertPsbtTransition(
       "sign",
       document(psbtV0()),
-      document(psbtV0({ input: [entry(0x06, Buffer.from("derivation"), Buffer.from("pubkey"))] })),
+      document(psbtV0({ input: [entry(0x06, Buffer.alloc(4), compressedPubkey())] })),
     );
 
     expect(result.failures).toContainEqual(
@@ -227,7 +235,7 @@ describe("sign policy", () => {
 
 describe("combine policy", () => {
   test("allows additions but rejects removal or mutation of existing entries", () => {
-    const existing = entry(0xfc, Buffer.from("original"), Buffer.from("046c616201", "hex"));
+    const existing = entry(0xfc, Buffer.from("original"), proprietaryKeyData);
     const added = entry(0x50, Buffer.from("new metadata"), Buffer.from("key"));
 
     expect(
@@ -250,7 +258,7 @@ describe("combine policy", () => {
         document(psbtV0({ input: [existing] })),
         document(
           psbtV0({
-            input: [entry(0xfc, Buffer.from("mutated"), Buffer.from("046c616201", "hex"))],
+            input: [entry(0xfc, Buffer.from("mutated"), proprietaryKeyData)],
           }),
         ),
       ).failures,
@@ -276,15 +284,19 @@ describe("combine policy", () => {
 
 describe("finalize policy", () => {
   test("allows final fields to replace temporary BIP174 and BIP371 signing fields", () => {
-    const proprietary = entry(0xfc, Buffer.from("retain"), Buffer.from("046c616201", "hex"));
+    const proprietary = entry(0xfc, Buffer.from("retain"), proprietaryKeyData);
     const before = document(
       psbtV0({
         input: [
           proprietary,
-          entry(0x02, Buffer.from("partial"), Buffer.from("pubkey")),
+          entry(0x02, Buffer.from("partial"), compressedPubkey()),
           entry(0x04, Buffer.from("redeem script")),
-          entry(0x13, Buffer.from("tap signature")),
-          entry(0x15, Buffer.from("tap leaf"), Buffer.from("control block")),
+          entry(0x13, Buffer.alloc(64, 0x05)),
+          entry(
+            0x15,
+            Buffer.from([0x51, 0xc0]),
+            Buffer.concat([Buffer.from([0xc0]), Buffer.alloc(32, 0x06)]),
+          ),
         ],
       }),
     );
@@ -308,13 +320,13 @@ describe("finalize policy", () => {
     );
     const changedGlobal = assertPsbtTransition(
       "finalize",
-      document(psbtV0({ global: [entry(0xfc, Buffer.from("old"), Buffer.from("key"))] })),
-      document(psbtV0({ global: [entry(0xfc, Buffer.from("new"), Buffer.from("key"))] })),
+      document(psbtV0({ global: [entry(0xfc, Buffer.from("old"), proprietaryKeyData)] })),
+      document(psbtV0({ global: [entry(0xfc, Buffer.from("new"), proprietaryKeyData)] })),
     );
     const changedOutput = assertPsbtTransition(
       "finalize",
-      document(psbtV0({ output: [entry(0x02, Buffer.from("old"), Buffer.from("pubkey"))] })),
-      document(psbtV0({ output: [entry(0x02, Buffer.from("new"), Buffer.from("pubkey"))] })),
+      document(psbtV0({ output: [entry(0x02, Buffer.alloc(4, 0x01), compressedPubkey())] })),
+      document(psbtV0({ output: [entry(0x02, Buffer.alloc(4, 0x02), compressedPubkey())] })),
     );
 
     expect(removed.failures).toContainEqual(

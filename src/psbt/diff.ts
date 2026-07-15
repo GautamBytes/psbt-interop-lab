@@ -1,5 +1,10 @@
 import { createHash } from "node:crypto";
-import type { PsbtDocument, PsbtDocumentEntry, PsbtMapLocation } from "./document.js";
+import type {
+  PsbtDocument,
+  PsbtDocumentEntry,
+  PsbtDocumentMap,
+  PsbtMapLocation,
+} from "./document.js";
 
 export interface PsbtEntrySummary {
   readonly location: PsbtMapLocation;
@@ -138,26 +143,31 @@ export function diffPsbtDocuments(before: PsbtDocument, after: PsbtDocument): Ps
   };
 }
 
-function findEntry(
-  document: PsbtDocument,
-  location: PsbtMapLocation,
-  keyType: number,
-): PsbtDocumentEntry | undefined {
-  const map = document.maps.find(
-    (candidate) => locationId(candidate.location) === locationId(location),
-  );
-  return map?.entries.find(
-    (entry) => entry.keyType === keyType && entry.completeKey.byteLength === 1,
-  );
+function singletonEntryId(location: PsbtMapLocation, keyType: number): string {
+  return `${locationId(location)}:${keyType}`;
+}
+
+function indexSingletonEntries(
+  maps: readonly PsbtDocumentMap[],
+): ReadonlyMap<string, PsbtDocumentEntry> {
+  const entries = new Map<string, PsbtDocumentEntry>();
+  for (const map of maps) {
+    for (const entry of map.entries) {
+      if (entry.completeKey.byteLength === 1) {
+        entries.set(singletonEntryId(map.location, entry.keyType), entry);
+      }
+    }
+  }
+  return entries;
 }
 
 function identityField(
-  document: PsbtDocument,
+  entries: ReadonlyMap<string, PsbtDocumentEntry>,
   name: string,
   location: PsbtMapLocation,
   keyType: number,
 ): TransactionIdentityField | undefined {
-  const entry = findEntry(document, location, keyType);
+  const entry = entries.get(singletonEntryId(location, keyType));
   if (!entry) {
     return undefined;
   }
@@ -182,9 +192,10 @@ function appendField(
 export function extractTransactionIdentity(document: PsbtDocument): TransactionIdentity {
   const fields: TransactionIdentityField[] = [];
   const globalLocation: PsbtMapLocation = { kind: "global" };
+  const entries = indexSingletonEntries(document.maps);
 
   if (document.psbtVersion === 0) {
-    appendField(fields, identityField(document, "unsignedTx", globalLocation, 0x00));
+    appendField(fields, identityField(entries, "unsignedTx", globalLocation, 0x00));
   } else {
     for (const [name, keyType] of [
       ["txVersion", 0x02],
@@ -192,7 +203,7 @@ export function extractTransactionIdentity(document: PsbtDocument): TransactionI
       ["inputCount", 0x04],
       ["outputCount", 0x05],
     ] as const) {
-      appendField(fields, identityField(document, name, globalLocation, keyType));
+      appendField(fields, identityField(entries, name, globalLocation, keyType));
     }
     for (let index = 0; index < document.inputCount; index += 1) {
       const location: PsbtMapLocation = { kind: "input", index };
@@ -203,13 +214,13 @@ export function extractTransactionIdentity(document: PsbtDocument): TransactionI
         ["requiredTimeLocktime", 0x11],
         ["requiredHeightLocktime", 0x12],
       ] as const) {
-        appendField(fields, identityField(document, `input[${index}].${name}`, location, keyType));
+        appendField(fields, identityField(entries, `input[${index}].${name}`, location, keyType));
       }
     }
     for (let index = 0; index < document.outputCount; index += 1) {
       const location: PsbtMapLocation = { kind: "output", index };
-      appendField(fields, identityField(document, `output[${index}].amount`, location, 0x03));
-      appendField(fields, identityField(document, `output[${index}].script`, location, 0x04));
+      appendField(fields, identityField(entries, `output[${index}].amount`, location, 0x03));
+      appendField(fields, identityField(entries, `output[${index}].script`, location, 0x04));
     }
   }
 

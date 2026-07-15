@@ -1,11 +1,11 @@
 import { createHash } from "node:crypto";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { diffPsbtDocuments, extractTransactionIdentity } from "../../src/psbt/diff.js";
 import { parsePsbtDocument } from "../../src/psbt/document.js";
 
 const magic = Buffer.from("70736274ff", "hex");
 
-function entry(keyType: number, value: Buffer, keyData = Buffer.alloc(0)): Buffer {
+function entry(keyType: number, value: Buffer, keyData: Buffer = Buffer.alloc(0)): Buffer {
   const key = Buffer.concat([Buffer.from([keyType]), keyData]);
   return Buffer.concat([
     Buffer.from([key.byteLength]),
@@ -17,6 +17,10 @@ function entry(keyType: number, value: Buffer, keyData = Buffer.alloc(0)): Buffe
 
 function map(...entries: Buffer[]): Buffer {
   return Buffer.concat([...entries, Buffer.from([0])]);
+}
+
+function compressedPubkey(fill = 0x02): Buffer {
+  return Buffer.concat([Buffer.from([0x02]), Buffer.alloc(32, fill)]);
 }
 
 function unsignedTransaction(outputScript = Buffer.from("51", "hex")): Buffer {
@@ -88,7 +92,7 @@ function document(psbt: Buffer) {
 describe("diffPsbtDocuments", () => {
   test("ignores entry order while retaining exact-byte diagnostics", () => {
     const transactionEntry = entry(0x00, unsignedTransaction());
-    const proprietaryEntry = entry(0xfc, Buffer.from("metadata"), Buffer.from("046c616201", "hex"));
+    const proprietaryEntry = entry(0xfc, Buffer.from("metadata"), Buffer.from("036c616201", "hex"));
     const before = document(psbtV0([transactionEntry, proprietaryEntry]));
     const after = document(psbtV0([proprietaryEntry, transactionEntry]));
 
@@ -102,9 +106,9 @@ describe("diffPsbtDocuments", () => {
 
   test("reports additions, removals, and value changes by location and complete key", () => {
     const transactionEntry = entry(0x00, unsignedTransaction());
-    const removedKeyData = Buffer.from("046c616201", "hex");
-    const changedKeyData = Buffer.from("pubkey");
-    const addedKeyData = Buffer.from("046c616202", "hex");
+    const removedKeyData = Buffer.from("036c616201", "hex");
+    const changedKeyData = compressedPubkey();
+    const addedKeyData = Buffer.from("036c616202", "hex");
     const before = document(
       psbtV0(
         [transactionEntry, entry(0xfc, Buffer.from("keep?"), removedKeyData)],
@@ -192,5 +196,14 @@ describe("extractTransactionIdentity", () => {
     ).not.toEqual(
       secondLocktime.fields.find((field) => field.name === "input[0].requiredTimeLocktime"),
     );
+  });
+
+  test("reads one immutable map snapshot while extracting identity", () => {
+    const parsed = document(psbtV2({ sequence: 0xffff_fffe, requiredTimeLocktime: 500_000_001 }));
+    const maps = vi.spyOn(parsed, "maps", "get");
+
+    extractTransactionIdentity(parsed);
+
+    expect(maps).toHaveBeenCalledTimes(1);
   });
 });
