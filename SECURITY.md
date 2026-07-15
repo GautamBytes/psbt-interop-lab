@@ -9,6 +9,12 @@ Use this MVP only with its generated regtest fixtures on a development machine. 
 mainnet PSBT, import a real seed, reuse the fixture key for funds, expose Core RPC to another host,
 or treat a passing result as a security audit of an implementation.
 
+The local runtime assumes one trusted developer, host account, and Docker daemon. GitHub-hosted CI
+is a separate boundary for build/test evidence: it has no workflow secrets, read-only repository
+permission, ephemeral runners, and runs the complete Docker proof only for main-branch or trusted
+manual executions. See [the threat model](psbt-interop-lab-threat-model.md) for the repository-grounded
+abuse paths and residual-risk calibration.
+
 ## Protected Assets
 
 - Host files outside the chosen artifact directory
@@ -38,12 +44,25 @@ none`, a read-only root filesystem, all Linux capabilities dropped, a 64-process
 memory limit, and `no-new-privileges`. Requests have timeouts, 4 MiB line limits, bounded stderr,
 strict JSON schemas, and matching request IDs.
 
+The runner compares canonical returned PSBT bytes independently of an adapter's `byteIdentical`
+claim. It also pins the adapter's self-reported name, implementation version, source revision,
+operations, and PSBTv0 support. Those fields, including the shaped self-reported artifact digest,
+are compatibility assertions; they do not attest which image or binary is running. Dockerfile base
+digests, downloaded checksums, lockfiles, and dependency hashes improve build reproducibility, not
+runtime attestation.
+
 ### Bitcoin Core isolation
 
 Core runs only on regtest with `networkactive=0`, `listen=0`, seed discovery disabled, and zero
 peers. Compose publishes RPC to `127.0.0.1` only. The bundled credentials are intentionally local
 regtest credentials, not secrets. Other containers deliberately attached to the project bridge
 could reach Core RPC, so do not attach untrusted containers while the suite is running.
+
+Every Core RPC response ID must exactly match its request, and fixture setup requires Bitcoin Core
+numeric version `310100`, regtest, zero peers, and expected suite-generated PSBTv0 structure. Core's
+container also has a read-only root, dropped capabilities, a 128-process limit, a 1 GiB memory limit,
+and `no-new-privileges`; only its named regtest data volume remains writable, with a bounded temporary
+`/tmp` mount.
 
 ### Parsing and artifacts
 
@@ -52,9 +71,26 @@ unique complete keys, bounded map and entry counts, exact framing, and no traili
 structure and hashes rather than interpreting signing intent.
 
 Artifact writes use contained paths, private permissions, temporary files, `fsync`, and atomic
-rename. Replay rejects absolute paths, directory escapes, symlinks, non-regular files, oversized
-files, malformed PSBTs, and hash mismatches. Reports redact raw PSBT-shaped strings and secret-like
-fields.
+rename. Replay rejects absolute paths, directory escapes, final-component symlinks, non-regular
+files, oversized files, malformed PSBTs, hash mismatches, and manifests above 1,000 checkpoints.
+Replay opens each final path with `O_NOFOLLOW`, then checks and reads through the same file descriptor;
+`O_NOFOLLOW` does not protect intermediate path components.
+
+Replay verifies internal consistency between mutable checkpoint files, facts, and manifest hashes
+without rerunning adapters or recomputing scenario outcomes. An actor able to replace the artifact
+directory can rewrite all of those values consistently, so replay is not artifact authentication.
+Private modes protect against other local accounts under ordinary host permissions; they do not
+protect artifacts from the trusted host account. Reports redact raw PSBT-shaped strings and
+secret-like fields, but local checkpoints may still contain sensitive transaction metadata.
+
+### GitHub CI
+
+The workflow grants `contents: read`, disables persisted checkout credentials, supplies no secrets,
+pins action revisions, uses ephemeral GitHub-hosted runners, sets per-job timeouts, and cancels
+superseded work for the same workflow/ref. Pull-request code runs language build/test jobs, but the
+complete Docker proof condition allows only main-branch or manual runs. Untrusted build code still has
+runner network and compute access until its timeout; GitHub-host isolation and dependency services
+remain external trust.
 
 ## Out Of Scope
 
@@ -62,6 +98,8 @@ fields.
 - Safe handling of arbitrary or adversarial production PSBTs by the native libraries themselves
 - Hardware-wallet firmware or USB/HID isolation
 - Mainnet signing, transaction broadcast, wallet policy approval, or fee validation for users
+- Public APIs, web UIs, uploads, authentication, rate limiting, multi-tenancy, or shared storage
+- Cryptographic adapter/image attestation or authentication of a mutable artifact directory
 - Consensus proof beyond what the pinned Core binary and `testmempoolaccept` report
 
 Before adding arbitrary input signing, replace the fixture-only adapter with a separately reviewed

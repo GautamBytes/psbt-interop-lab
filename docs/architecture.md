@@ -14,7 +14,7 @@ flowchart LR
   CLI -->|"bounded JSONL"| BDK["bdkpython 2.3.1 adapter"]
   CLI --> Facts["Lossless wire-facts parser"]
   CLI --> Artifacts["Private checkpoints and reports"]
-  Artifacts --> Replay["Offline hash replay"]
+  Artifacts --> Replay["Offline consistency replay"]
 ```
 
 ## Components
@@ -24,6 +24,11 @@ flowchart LR
 The CLI owns scenario order, Core RPC, adapter lifecycle, strict request and response validation,
 timeouts, result classification, artifact writing, and replay. TypeScript is used for developer
 experience and orchestration; no signature algorithm is implemented there.
+
+For every adapter round trip, `assertByteIdenticalRoundtrip` in `src/scenarios/contracts.ts` parses
+the source and returned canonical PSBT and compares decoded bytes independently of the adapter's
+`byteIdentical` claim. `CoreRpc.call` in `src/core/rpc.ts` requires matching JSON-RPC request/response
+IDs, and fixture preparation requires Bitcoin Core numeric version `310100`.
 
 ### Bitcoin Core fixture source and oracle
 
@@ -42,6 +47,11 @@ ID and includes implementation name, version, and artifact digest. The status is
 `unsupported`, `rejected`, `crashed`, or `timeout`; failures use stable error classes rather than
 language-specific stack traces.
 
+Startup pins each adapter's self-reported name, version, source revision, operations, and PSBTv0
+support as a compatibility check. The identity and artifact digest are not cryptographic attestation
+of the running image. Dockerfile base digests, downloaded checksums, and dependency hashes support
+reproducible build selection rather than runtime provenance.
+
 The Rust adapter signs and finalizes only known fixture inputs. The Python adapter freezes the
 affected `bdkpython` 2.3.1 wheel and exposes round-trip/finalize behavior. Neither adapter has
 network access at runtime.
@@ -53,8 +63,29 @@ hidden by a library's normalized object model. It records PSBT version, byte len
 counts, and key/value sizes. It does not include raw values in reports.
 
 Each handoff writes both the canonical base64 PSBT and its facts. The manifest binds these files to
-the run and implementation identities. Replay reparses each PSBT and compares hashes, so a shared
-artifact can be validated without trusting the original terminal output.
+the run's recorded implementation identities. Replay reparses each PSBT and compares the mutable
+checkpoint, facts, and manifest hashes without rerunning adapters or recomputing scenario outcomes.
+This verifies internal consistency at read time; it does not authenticate the artifact directory.
+Replay opens each final checkpoint path with `O_NOFOLLOW` and caps a manifest at 1,000 checkpoints,
+but `O_NOFOLLOW` protects only the final path component.
+
+## Runtime And CI Boundaries
+
+Locally, one trusted developer controls the host account and Docker daemon. Core and both adapters
+run with read-only roots, dropped capabilities, process/memory limits, and `no-new-privileges`; Core
+alone retains its named regtest data volume and a bounded temporary `/tmp` mount. Adapters use no
+network, while Core JSON-RPC is published only to host loopback. These settings reduce ordinary
+process and resource exposure but do not protect against a compromised trusted host, Docker daemon,
+kernel, or base image.
+
+GitHub-hosted CI is separate from that runtime. `.github/workflows/ci.yml` gives jobs read-only
+repository permission, no persisted checkout credential or workflow secrets, pinned action commits,
+ephemeral runners, timeouts, and concurrency cancellation. Pull requests run the TypeScript, Rust,
+and BDK checks; the complete Docker proof runs only on `refs/heads/main` or a trusted manual dispatch.
+The workflow provides build evidence and does not publish or attest a release image.
+
+The detailed assumptions, abuse paths, and residual risks are recorded in the
+[threat model](../psbt-interop-lab-threat-model.md).
 
 ## Proof Scenarios
 

@@ -27,7 +27,9 @@ Python requirement.
   [`utxoupdatepsbt`](https://bitcoincore.org/en/doc/31.0.0/rpc/rawtransactions/utxoupdatepsbt/),
   [`finalizepsbt`](https://bitcoincore.org/en/doc/31.0.0/rpc/rawtransactions/finalizepsbt/), and
   [`testmempoolaccept`](https://bitcoincore.org/en/doc/31.0.0/rpc/rawtransactions/testmempoolaccept/).
-  Core publishes RPC documentation by major release; the runtime patch binary is 31.1.
+  [`getnetworkinfo`](https://bitcoincore.org/en/doc/31.0.0/rpc/network/getnetworkinfo/) documents the
+  numeric server `version` used by the runtime contract. Core publishes RPC documentation by major
+  release; the runtime patch binary is 31.1.
 - `createpsbt`'s `version` parameter is documented as the transaction version, not the PSBT version.
   The suite confirms the resulting wire format is PSBTv0 before continuing.
 
@@ -55,6 +57,9 @@ Python requirement.
 ## Tooling
 
 - [Node.js documentation](https://nodejs.org/docs/latest-v22.x/api/) is the host runtime reference.
+  The [`fsPromises.open`](https://nodejs.org/docs/latest-v22.x/api/fs.html#fspromisesopenpath-flags-mode)
+  and [`FileHandle`](https://nodejs.org/docs/latest-v22.x/api/fs.html#class-filehandle) references
+  define the descriptor-based open, stat, read, and close operations used by bounded replay reads.
 - [TypeScript documentation](https://www.typescriptlang.org/docs/) is the compiler and language
   reference. The exact compiler and npm dependency graph are locked by `pnpm-lock.yaml`.
 - [Ajv documentation](https://ajv.js.org/) and
@@ -63,7 +68,12 @@ Python requirement.
 - [Vitest documentation](https://vitest.dev/guide/) defines the test-runner behavior used by the
   TypeScript suite.
 - [Docker Compose documentation](https://docs.docker.com/compose/) is the container orchestration
-  reference.
+  reference. Its service reference defines [`read_only`](https://docs.docker.com/reference/compose-file/services/#read_only),
+  [`tmpfs`](https://docs.docker.com/reference/compose-file/services/#tmpfs),
+  [`cap_drop`](https://docs.docker.com/reference/compose-file/services/#cap_drop),
+  [`pids_limit`](https://docs.docker.com/reference/compose-file/services/#pids_limit),
+  [`mem_limit`](https://docs.docker.com/reference/compose-file/services/#mem_limit), and
+  [`security_opt`](https://docs.docker.com/reference/compose-file/services/#security_opt).
 - Docker base images are pinned to the official manifest digests resolved on 2026-07-15: Debian
   bookworm-slim `7b140f374b289a7c2befc338f42ebe6441b7ea838a042bbd5acbfca6ec875818`,
   Rust 1.97.0 bookworm
@@ -74,6 +84,11 @@ Python requirement.
   [setup-python v6](https://github.com/actions/setup-python), plus
   [pnpm/action-setup v6](https://github.com/pnpm/action-setup), are used by CI. The workflow pins
   each action to the exact commit behind its reviewed v6 release rather than a mutable tag.
+- GitHub's workflow references define
+  [concurrency cancellation](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency)
+  and per-job
+  [`timeout-minutes`](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#jobsjob_idtimeout-minutes),
+  which bound superseded and long-running CI work.
 - [OSV](https://osv.dev/) and the official
   [RustSec `cargo-audit`](https://github.com/RustSec/rustsec/tree/main/cargo-audit) scanner are used
   for advisory checks. The npm production graph, frozen Python package, and committed Rust lockfile
