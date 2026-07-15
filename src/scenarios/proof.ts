@@ -1,37 +1,25 @@
 import { randomBytes } from "node:crypto";
 import { resolve } from "node:path";
-import { prepareFixtures } from "../core/fixtures.js";
+import { type PsbtFixture, prepareFixtures } from "../core/fixtures.js";
 import type { CoreRpc } from "../core/rpc.js";
 import { AdapterProcess } from "../protocol/adapter-process.js";
-import {
-  ADAPTER_PROTOCOL,
-  type AdapterOperation,
-  type AdapterRequest,
-  type AdapterResponse,
-  type JsonValue,
-} from "../protocol/types.js";
-import { ArtifactRun, type RunManifest, type ScenarioRecord } from "../runner/artifacts.js";
+import type { NegotiatedAdapter } from "../protocol/types.js";
+import { ArtifactRun, type RunManifest } from "../runner/artifacts.js";
 import { generateMarkdownReport, redactValue } from "../runner/report.js";
-import {
-  assertAdapterHello,
-  assertByteIdenticalRoundtrip,
-  BDK_ADAPTER_CONTRACT,
-  RUST_ADAPTER_CONTRACT,
-} from "./contracts.js";
+import { classifyRegression, createBdkRegressionScenario } from "./bdk-regression.js";
+import { type CorePolicyResult, ScenarioExecutionContext } from "./context.js";
+import { assertAdapterHello, BDK_ADAPTER_CONTRACT, RUST_ADAPTER_CONTRACT } from "./contracts.js";
+import { runScenarioCatalog } from "./engine.js";
+import { classifyHappyPath, createHappyPathScenario } from "./happy-path.js";
+
+export { classifyHappyPath, classifyRegression };
+export type PolicyResult = CorePolicyResult;
 
 const RUST_IMAGE = "psbt-interop-lab/rust-bitcoin:0.1.0";
 const BDK_IMAGE = "psbt-interop-lab/bdkpython:2.3.1";
-
-export interface PolicyResult {
-  allowed: boolean;
-  txid?: string;
-  rejectReason?: string;
-}
-
-interface FinalizeResult {
-  complete: boolean;
-  hex?: string;
-}
+const FIXTURE_COMMITMENTS_ENV = "PSBT_LAB_FIXTURE_COMMITMENTS";
+const MAX_COMMITMENT_ENV_BYTES = 4 * 1024;
+const SAFE_FIXTURE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 
 export interface ProofOptions {
   rpc: CoreRpc;
@@ -45,6 +33,16 @@ export interface ProofResult {
   manifest: RunManifest;
 }
 
+interface FixtureCommitment {
+  readonly id: string;
+  readonly unsignedTxSha256: `sha256:${string}`;
+}
+
+interface DockerAdapterOptions {
+  readonly platform?: string;
+  readonly env?: Readonly<Record<string, string>>;
+}
+
 function runIdentifier(date = new Date()): string {
   const timestamp = date
     .toISOString()
@@ -53,101 +51,41 @@ function runIdentifier(date = new Date()): string {
   return `${timestamp}-${randomBytes(4).toString("hex")}`;
 }
 
-function asObject(value: unknown, label: string): Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error(`${label} returned an invalid object`);
+export function serializeFixtureCommitments(fixtures: readonly FixtureCommitment[]): string {
+  const commitments: Record<string, string> = {};
+  for (const fixture of fixtures) {
+    if (!SAFE_FIXTURE_ID.test(fixture.id)) {
+      throw new TypeError(`Invalid fixture id ${fixture.id}`);
+    }
+    if (!/^sha256:[0-9a-f]{64}$/.test(fixture.unsignedTxSha256)) {
+      throw new TypeError(`Invalid unsigned transaction commitment for ${fixture.id}`);
+    }
+    if (commitments[fixture.id] !== undefined) {
+      throw new TypeError(`Duplicate fixture id ${fixture.id}`);
+    }
+    commitments[fixture.id] = fixture.unsignedTxSha256;
   }
-  return value as Record<string, unknown>;
-}
-
-function parseFinalizeResult(value: unknown): FinalizeResult {
-  const object = asObject(value, "finalizepsbt");
-  if (typeof object["complete"] !== "boolean") {
-    throw new Error("finalizepsbt omitted its completion status");
+  const encoded = JSON.stringify(commitments);
+  if (Buffer.byteLength(encoded, "utf8") > MAX_COMMITMENT_ENV_BYTES) {
+    throw new TypeError("Fixture commitment configuration exceeds its size limit");
   }
-  if (object["hex"] !== undefined && typeof object["hex"] !== "string") {
-    throw new Error("finalizepsbt returned invalid transaction hex");
-  }
-  const result: FinalizeResult = { complete: object["complete"] };
-  if (typeof object["hex"] === "string") {
-    result.hex = object["hex"];
-  }
-  return result;
-}
-
-function parsePolicyResult(value: unknown): PolicyResult {
-  if (!Array.isArray(value) || value.length !== 1) {
-    throw new Error("testmempoolaccept returned an unexpected result count");
-  }
-  const object = asObject(value[0], "testmempoolaccept");
-  if (typeof object["allowed"] !== "boolean") {
-    throw new Error("testmempoolaccept omitted its policy decision");
-  }
-  const result: PolicyResult = { allowed: object["allowed"] };
-  if (typeof object["txid"] === "string") {
-    result.txid = object["txid"];
-  }
-  if (typeof object["reject-reason"] === "string") {
-    result.rejectReason = object["reject-reason"];
-  }
-  return result;
-}
-
-export function classifyHappyPath(complete: boolean, policy: PolicyResult): ScenarioRecord {
-  const passed = complete && policy.allowed;
-  return {
-    id: "happy-path",
-    outcome: passed ? "passed" : "failed",
-    summary: passed
-      ? "rust-bitcoin signed the Core-created PSBT; Bitcoin Core finalized it and accepted the transaction under current regtest mempool policy."
-      : `The happy path did not produce a complete policy-accepted transaction${policy.rejectReason ? ` (${policy.rejectReason})` : ""}.`,
-    policyAccepted: policy.allowed,
-    ...(policy.txid ? { transactionId: policy.txid } : {}),
-  };
-}
-
-export function classifyRegression(
-  bdkResponse: AdapterResponse,
-  coreComplete: boolean,
-  policy: PolicyResult,
-): ScenarioRecord {
-  const reproduced =
-    bdkResponse.status === "rejected" &&
-    bdkResponse.implementation.name === "bdkpython" &&
-    bdkResponse.implementation.version === "2.3.1" &&
-    bdkResponse.error.class === "finalize.missing_witness_script";
-  const passed = reproduced && coreComplete && policy.allowed;
-  return {
-    id: "bdk-finalize-regression",
-    outcome: passed ? "passed" : "failed",
-    summary: passed
-      ? "BDK Python 2.3.1 reproduced issue #488 on an already-finalized first input, while Bitcoin Core finalized the same PSBT and accepted the extracted transaction under mempool policy."
-      : "The historical BDK failure, Core finalization, and policy acceptance did not all match the expected regression behavior.",
-    ...(reproduced
-      ? {
-          expectedFailure: {
-            implementation: `${bdkResponse.implementation.name}@${bdkResponse.implementation.version}`,
-            errorClass: bdkResponse.error.class,
-          },
-        }
-      : {}),
-    policyAccepted: policy.allowed,
-    ...(policy.txid ? { transactionId: policy.txid } : {}),
-  };
+  return encoded;
 }
 
 function createDockerAdapter(
   image: string,
   projectDirectory: string,
-  platform?: string,
+  options: DockerAdapterOptions = {},
 ): AdapterProcess {
+  const environment = options.env ?? {};
+  const environmentKeys = Object.keys(environment).sort();
   const args = [
     "run",
     "--rm",
     "-i",
     "--pull",
     "never",
-    ...(platform ? ["--platform", platform] : []),
+    ...(options.platform ? ["--platform", options.platform] : []),
     "--network",
     "none",
     "--read-only",
@@ -159,45 +97,21 @@ function createDockerAdapter(
     "256m",
     "--security-opt",
     "no-new-privileges:true",
+    ...environmentKeys.flatMap((key) => ["--env", key]),
     image,
   ];
   return new AdapterProcess({
     command: "docker",
     args,
     cwd: projectDirectory,
+    env: { ...environment },
     maxLineBytes: 4 * 1024 * 1024,
     maxStderrBytes: 64 * 1024,
   });
 }
 
-function requireSuccess(
-  response: AdapterResponse,
-  operation: string,
-): AdapterResponse & {
-  status: "ok";
-} {
-  if (response.status !== "ok") {
-    throw new Error(
-      `${response.implementation.name} ${operation} failed: ${response.error.class}: ${response.error.message}`,
-    );
-  }
-  return response;
-}
-
-function outputString(response: AdapterResponse, key: string): string {
-  const success = requireSuccess(response, key);
-  const value = success.output[key];
-  if (typeof value !== "string") {
-    throw new Error(`${success.implementation.name} omitted string output ${key}`);
-  }
-  return value;
-}
-
-async function policyCheck(rpc: CoreRpc, finalized: FinalizeResult): Promise<PolicyResult> {
-  if (!finalized.complete || !finalized.hex) {
-    return { allowed: false, rejectReason: "PSBT was not complete" };
-  }
-  return parsePolicyResult(await rpc.call("testmempoolaccept", { rawtxs: [finalized.hex] }));
+function negotiatedMap(adapters: readonly NegotiatedAdapter[]): Map<string, NegotiatedAdapter> {
+  return new Map(adapters.map((adapter) => [adapter.implementation.name, adapter]));
 }
 
 export async function runProof(options: ProofOptions): Promise<ProofResult> {
@@ -206,99 +120,40 @@ export async function runProof(options: ProofOptions): Promise<ProofResult> {
   const artifacts = await ArtifactRun.create(resolve(options.artifactRoot), runId);
   const fixtures = await prepareFixtures(options.rpc);
   const timeoutMs = options.adapterTimeoutMs ?? 60_000;
-  const rust = createDockerAdapter(RUST_IMAGE, resolve(options.projectDirectory));
-  const bdk = createDockerAdapter(BDK_IMAGE, resolve(options.projectDirectory), "linux/amd64");
-  const checkpoints = [];
-  let requestCounter = 0;
-  const request = async (
-    adapter: AdapterProcess,
-    operation: AdapterOperation,
-    payload: Record<string, JsonValue>,
-  ): Promise<AdapterResponse> => {
-    requestCounter += 1;
-    const message: AdapterRequest = {
-      protocol: ADAPTER_PROTOCOL,
-      id: `request-${requestCounter}`,
-      operation,
-      payload,
-    };
-    return adapter.request(message, timeoutMs);
-  };
+  const commitmentConfiguration = serializeFixtureCommitments([
+    fixtures.happy,
+    fixtures.regression,
+  ] satisfies readonly PsbtFixture[]);
+  const projectDirectory = resolve(options.projectDirectory);
+  const rust = createDockerAdapter(RUST_IMAGE, projectDirectory, {
+    env: { [FIXTURE_COMMITMENTS_ENV]: commitmentConfiguration },
+  });
+  const bdk = createDockerAdapter(BDK_IMAGE, projectDirectory, { platform: "linux/amd64" });
+  const context = new ScenarioExecutionContext({
+    rpc: options.rpc,
+    artifacts,
+    adapters: new Map([
+      ["rust-bitcoin", rust],
+      ["bdkpython", bdk],
+    ]),
+    adapterTimeoutMs: timeoutMs,
+  });
 
   try {
-    const rustHello = assertAdapterHello(await request(rust, "hello", {}), RUST_ADAPTER_CONTRACT);
-    const bdkHello = assertAdapterHello(await request(bdk, "hello", {}), BDK_ADAPTER_CONTRACT);
-
-    checkpoints.push(
-      await artifacts.checkpoint("happy-path", "core-created", fixtures.happy.initialPsbt),
+    const rustHello = assertAdapterHello(
+      await context.request("rust-bitcoin", "hello", {}),
+      RUST_ADAPTER_CONTRACT,
     );
-    const happyRoundtripPsbt = assertByteIdenticalRoundtrip(
-      await request(rust, "roundtrip", { psbt: fixtures.happy.initialPsbt }),
-      fixtures.happy.initialPsbt,
-      "rust-bitcoin",
+    const bdkHello = assertAdapterHello(
+      await context.request("bdkpython", "hello", {}),
+      BDK_ADAPTER_CONTRACT,
     );
-    const signedHappy = await request(rust, "sign", {
-      psbt: happyRoundtripPsbt,
-      network: "regtest",
-      fixtureId: "happy-path",
-    });
-    const happySignedPsbt = outputString(signedHappy, "psbt");
-    checkpoints.push(await artifacts.checkpoint("happy-path", "rust-signed", happySignedPsbt));
-    const happyFinalized = parseFinalizeResult(
-      await options.rpc.call("finalizepsbt", {
-        psbt: happySignedPsbt,
-        extract: true,
-      }),
+    const negotiated = [rustHello, bdkHello];
+    const scenarios = await runScenarioCatalog(
+      [createHappyPathScenario(fixtures.happy), createBdkRegressionScenario(fixtures.regression)],
+      context,
+      negotiatedMap(negotiated),
     );
-    const happyPolicy = await policyCheck(options.rpc, happyFinalized);
-    const happyScenario = classifyHappyPath(happyFinalized.complete, happyPolicy);
-
-    checkpoints.push(
-      await artifacts.checkpoint(
-        "bdk-finalize-regression",
-        "core-created",
-        fixtures.regression.initialPsbt,
-      ),
-    );
-    const bdkRoundtripPsbt = assertByteIdenticalRoundtrip(
-      await request(bdk, "roundtrip", { psbt: fixtures.regression.initialPsbt }),
-      fixtures.regression.initialPsbt,
-      "BDK Python",
-    );
-    const signedRegression = await request(rust, "sign", {
-      psbt: bdkRoundtripPsbt,
-      network: "regtest",
-      fixtureId: "bdk-finalize-regression",
-    });
-    const regressionSignedPsbt = outputString(signedRegression, "psbt");
-    checkpoints.push(
-      await artifacts.checkpoint("bdk-finalize-regression", "rust-signed", regressionSignedPsbt),
-    );
-    const mixedResponse = await request(rust, "fixture-finalize-input", {
-      psbt: regressionSignedPsbt,
-      network: "regtest",
-      fixtureId: "bdk-finalize-regression",
-    });
-    const mixedPsbt = outputString(mixedResponse, "psbt");
-    checkpoints.push(
-      await artifacts.checkpoint("bdk-finalize-regression", "input-0-finalized", mixedPsbt),
-    );
-    const bdkFinalize = await request(bdk, "finalize", {
-      psbt: mixedPsbt,
-      network: "regtest",
-      fixtureId: "bdk-finalize-regression",
-    });
-    const regressionFinalized = parseFinalizeResult(
-      await options.rpc.call("finalizepsbt", { psbt: mixedPsbt, extract: true }),
-    );
-    const regressionPolicy = await policyCheck(options.rpc, regressionFinalized);
-    const regressionScenario = classifyRegression(
-      bdkFinalize,
-      regressionFinalized.complete,
-      regressionPolicy,
-    );
-
-    const scenarios = [happyScenario, regressionScenario];
     const outcome = scenarios.every((scenario) => scenario.outcome === "passed")
       ? "passed"
       : "failed";
@@ -310,9 +165,9 @@ export async function runProof(options: ProofOptions): Promise<ProofResult> {
       completedAt: new Date().toISOString(),
       outcome,
       core: fixtures.core,
-      adapters: [rustHello.implementation, bdkHello.implementation],
+      adapters: negotiated.map((adapter) => adapter.implementation),
       scenarios,
-      checkpoints,
+      checkpoints: [...context.checkpoints],
     };
     await artifacts.writeManifest(manifest);
     await artifacts.writeReportJson(

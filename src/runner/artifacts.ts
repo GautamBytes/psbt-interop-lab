@@ -3,6 +3,7 @@ import { chmod, type FileHandle, mkdir, open, rename, unlink } from "node:fs/pro
 import { join, relative, resolve } from "node:path";
 import type { AdapterImplementation } from "../protocol/types.js";
 import { extractWireFacts, type PsbtWireFacts } from "../psbt/wire-facts.js";
+import type { ScenarioResult } from "../scenarios/definition.js";
 
 const SAFE_IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 
@@ -14,17 +15,7 @@ export interface CheckpointRecord {
   facts: PsbtWireFacts;
 }
 
-export interface ScenarioRecord {
-  id: string;
-  outcome: "passed" | "failed";
-  summary: string;
-  expectedFailure?: {
-    implementation: string;
-    errorClass: string;
-  };
-  policyAccepted?: boolean;
-  transactionId?: string;
-}
+export type ScenarioRecord = ScenarioResult;
 
 export interface RunManifest {
   schema: "psbt-lab.run/0.1";

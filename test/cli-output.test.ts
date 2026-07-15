@@ -27,8 +27,12 @@ describe("CLI output", () => {
         scenarios: [
           {
             id: "happy-path",
+            title: "Core to rust-bitcoin signing handoff",
+            category: "cross-library-signing",
             outcome: "passed",
             summary: "Policy accepted",
+            durationMs: 12,
+            assertions: [{ name: "core-policy-accepted", passed: true }],
           },
         ],
         checkpoints: [],
