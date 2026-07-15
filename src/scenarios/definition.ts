@@ -49,6 +49,7 @@ export interface ScenarioDefinition<Context> {
 
 export type MissingCapabilityKind =
   | "adapter"
+  | "identity"
   | "operation"
   | "role"
   | "psbtVersion"

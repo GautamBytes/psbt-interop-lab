@@ -23,6 +23,13 @@ const rustAdapter: NegotiatedAdapter = {
   },
 };
 
+const MINIMAL_PSBT =
+  "cHNidP8BADwCAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/////wD/////AQAAAAAAAAAAAAAAAAAAAAA=";
+
+function passingEvidence(name: string) {
+  return [{ name, passed: true }] as const;
+}
+
 function scenario(
   id: string,
   run: ScenarioDefinition<TestContext>["run"],
@@ -45,11 +52,11 @@ describe("scenario engine", () => {
     const catalog = [
       scenario("first", async (value) => {
         value.calls.push("first");
-        return { summary: "first passed", assertions: [] };
+        return { summary: "first passed", assertions: passingEvidence("first-completed") };
       }),
       scenario("second", async (value) => {
         value.calls.push("second");
-        return { summary: "second passed", assertions: [] };
+        return { summary: "second passed", assertions: passingEvidence("second-completed") };
       }),
     ];
 
@@ -114,33 +121,81 @@ describe("scenario engine", () => {
     });
   });
 
+  test("rejects capabilities whose map key does not match the negotiated identity", async () => {
+    const run = vi.fn();
+    const mismatchedAdapter: NegotiatedAdapter = {
+      ...rustAdapter,
+      implementation: { ...rustAdapter.implementation, name: "bitcoinjs-lib" },
+    };
+
+    const [result] = await runScenarioCatalog(
+      [
+        scenario("identity-mismatch", run, {
+          requirements: [{ adapter: "rust-bitcoin", operations: ["sign"] }],
+        }),
+      ],
+      { calls: [] },
+      new Map([["rust-bitcoin", mismatchedAdapter]]),
+    );
+
+    expect(run).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      outcome: "unsupported",
+      missingCapabilities: [{ adapter: "rust-bitcoin", kind: "identity", value: "bitcoinjs-lib" }],
+    });
+  });
+
+  test.each([
+    ["operation", { operations: ["combine"] }, "combine"],
+    ["role", { roles: ["combiner"] }, "combiner"],
+  ] as const)("reports an explicitly missing %s", async (kind, requirement, value) => {
+    const run = vi.fn();
+    const [result] = await runScenarioCatalog(
+      [
+        scenario(`missing-${kind}`, run, {
+          requirements: [{ adapter: "rust-bitcoin", ...requirement }],
+        }),
+      ],
+      { calls: [] },
+      new Map([["rust-bitcoin", rustAdapter]]),
+    );
+
+    expect(run).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      outcome: "unsupported",
+      missingCapabilities: [{ adapter: "rust-bitcoin", kind, value }],
+    });
+  });
+
   test("continues after an expected assertion failure and preserves sanitized evidence", async () => {
     const context: TestContext = { calls: [] };
     const catalog = [
       scenario("bad-roundtrip", async (value) => {
         value.calls.push("bad-roundtrip");
-        throw new ScenarioAssertionError("Metadata changed", [
-          {
-            name: "roundtrip-preserves-fields",
-            policy: "roundtrip",
-            passed: false,
-            exactBytesEqual: false,
-            failures: [
-              {
-                code: "ENTRY_REMOVED",
-                location: { kind: "global" },
-                keyType: 252,
-                completeKeySha256: "b".repeat(64),
-                keyBytes: 5,
-                before: { valueSha256: "c".repeat(64), valueBytes: 12 },
-              },
-            ],
-          },
-        ]);
+        const leakedAssertion = {
+          name: "roundtrip-preserves-fields",
+          policy: "roundtrip",
+          passed: false,
+          exactBytesEqual: false,
+          failures: [
+            {
+              code: "ENTRY_REMOVED",
+              location: { kind: "global" },
+              keyType: 252,
+              completeKeySha256: "b".repeat(64),
+              keyBytes: 5,
+              before: { valueSha256: "c".repeat(64), valueBytes: 12 },
+              rawPsbt: Buffer.from(MINIMAL_PSBT, "base64"),
+            },
+          ],
+          summary: `Metadata exposed ${MINIMAL_PSBT}`,
+          rawPsbt: Buffer.from(MINIMAL_PSBT, "base64"),
+        } as const;
+        throw new ScenarioAssertionError(`Metadata changed: ${MINIMAL_PSBT}`, [leakedAssertion]);
       }),
       scenario("still-runs", async (value) => {
         value.calls.push("still-runs");
-        return { summary: "continued", assertions: [] };
+        return { summary: "continued", assertions: passingEvidence("continued-after-failure") };
       }),
     ];
 
@@ -149,17 +204,103 @@ describe("scenario engine", () => {
     expect(context.calls).toEqual(["bad-roundtrip", "still-runs"]);
     expect(results[0]).toMatchObject({
       outcome: "failed",
-      summary: "Metadata changed",
+      summary: "Metadata changed: [redacted:psbt]",
       assertions: [
         {
+          name: "roundtrip-preserves-fields",
           policy: "roundtrip",
           passed: false,
-          failures: [{ code: "ENTRY_REMOVED", keyType: 252 }],
+          summary: "Metadata exposed [redacted:psbt]",
+          failures: [
+            {
+              code: "ENTRY_REMOVED",
+              location: { kind: "global" },
+              keyType: 252,
+              completeKeySha256: "b".repeat(64),
+              keyBytes: 5,
+              before: { valueSha256: "c".repeat(64), valueBytes: 12 },
+            },
+          ],
         },
       ],
     });
-    expect(JSON.stringify(results[0])).not.toContain("secret");
+    expect(JSON.stringify(results[0])).not.toContain(MINIMAL_PSBT);
+    expect(JSON.stringify(results[0])).not.toContain("rawPsbt");
+    expect(JSON.stringify(results[0])).not.toContain('"type":"Buffer"');
     expect(results[1]).toMatchObject({ outcome: "passed" });
+  });
+
+  test("redacts returned summaries and whitelist-copies passing assertion evidence", async () => {
+    const evidence = {
+      name: "roundtrip-completed",
+      passed: true,
+      summary: `Compared ${MINIMAL_PSBT}`,
+      rawPsbt: Buffer.from(MINIMAL_PSBT, "base64"),
+    } as const;
+    const [result] = await runScenarioCatalog(
+      [
+        scenario("sanitized-pass", async () => ({
+          summary: `Returned ${MINIMAL_PSBT}`,
+          assertions: [evidence],
+        })),
+      ],
+      { calls: [] },
+      new Map(),
+    );
+
+    expect(result).toMatchObject({
+      outcome: "passed",
+      summary: "Returned [redacted:psbt]",
+      assertions: [
+        {
+          name: "roundtrip-completed",
+          passed: true,
+          summary: "Compared [redacted:psbt]",
+        },
+      ],
+    });
+    expect(result?.assertions[0]).not.toHaveProperty("rawPsbt");
+  });
+
+  test("cannot report passed without assertion evidence", async () => {
+    const [result] = await runScenarioCatalog(
+      [scenario("empty-evidence", async () => ({ assertions: [] }))],
+      { calls: [] },
+      new Map(),
+    );
+
+    expect(result).toMatchObject({ outcome: "failed", assertions: [] });
+  });
+
+  test("cannot report passed when passing evidence contains failures", async () => {
+    const [result] = await runScenarioCatalog(
+      [
+        scenario("contradictory-evidence", async () => ({
+          assertions: [
+            {
+              name: "roundtrip-preserved",
+              passed: true,
+              failures: [
+                {
+                  code: "ENTRY_CHANGED",
+                  location: { kind: "input", index: 0 },
+                  keyType: 1,
+                  completeKeySha256: "d".repeat(64),
+                  keyBytes: 1,
+                },
+              ],
+            },
+          ],
+        })),
+      ],
+      { calls: [] },
+      new Map(),
+    );
+
+    expect(result).toMatchObject({
+      outcome: "failed",
+      assertions: [{ name: "roundtrip-preserved", passed: true }],
+    });
   });
 
   test("cannot report passed when returned assertion evidence contains a failure", async () => {
@@ -209,5 +350,33 @@ describe("scenario engine", () => {
       outcome: "skipped",
       skipReason: "not selected by this suite",
     });
+  });
+
+  test.each(["", "../escape", "contains spaces", "a".repeat(65)])(
+    "rejects unsafe catalog identifier %j before running anything",
+    async (id) => {
+      const run = vi.fn();
+      const catalog = [scenario("would-run-first", run), scenario(id, vi.fn())];
+
+      await expect(runScenarioCatalog(catalog, { calls: [] }, new Map())).rejects.toThrow(
+        /catalog index 1.*safe identifier/i,
+      );
+      expect(run).not.toHaveBeenCalled();
+    },
+  );
+
+  test("rejects duplicate catalog identifiers before running anything", async () => {
+    const first = vi.fn();
+    const second = vi.fn();
+
+    await expect(
+      runScenarioCatalog(
+        [scenario("duplicate", first), scenario("duplicate", second)],
+        { calls: [] },
+        new Map(),
+      ),
+    ).rejects.toThrow(/duplicate scenario identifier: duplicate/i);
+    expect(first).not.toHaveBeenCalled();
+    expect(second).not.toHaveBeenCalled();
   });
 });
