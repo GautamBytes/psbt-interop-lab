@@ -74,7 +74,11 @@ function resolveLimits(limits: PsbtWireLimits): ResolvedLimits {
   return resolved;
 }
 
-function decodeCanonicalBase64(encoded: string): Buffer {
+function decodeCanonicalBase64(encoded: string, maxDecodedBytes: number): Buffer {
+  const maxEncodedLength = 4 * Math.ceil(maxDecodedBytes / 3);
+  if (encoded.length > maxEncodedLength) {
+    throw new PsbtWireError("PSBT exceeds the configured size limit");
+  }
   if (
     encoded.length === 0 ||
     encoded.length % 4 !== 0 ||
@@ -258,7 +262,7 @@ function determineCounts(entries: ParsedEntry[], version: number) {
 
 export function extractWireFacts(encoded: string, limits: PsbtWireLimits = {}): PsbtWireFacts {
   const resolved = resolveLimits(limits);
-  const buffer = decodeCanonicalBase64(encoded);
+  const buffer = decodeCanonicalBase64(encoded, resolved.maxPsbtBytes);
   if (buffer.byteLength > resolved.maxPsbtBytes) {
     throw new PsbtWireError("PSBT exceeds the configured size limit");
   }

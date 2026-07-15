@@ -144,6 +144,16 @@ describe("extractWireFacts", () => {
     expect(() => extractWireFacts(encoded, { maxValueBytes: 8 })).toThrow(/value.*limit/i);
   });
 
+  test("rejects oversized canonical base64 before decoding", () => {
+    const oversized = Buffer.alloc(9).toString("base64");
+
+    expect(() => extractWireFacts(oversized, { maxPsbtBytes: 8 })).toThrow(/size limit/i);
+  });
+
+  test("rejects oversized encoded input before validating base64 syntax", () => {
+    expect(() => extractWireFacts("!".repeat(13), { maxPsbtBytes: 8 })).toThrow(/size limit/i);
+  });
+
   test("rejects malformed base64", () => {
     expect(() => extractWireFacts("not base64!!!")).toThrow(PsbtWireError);
   });

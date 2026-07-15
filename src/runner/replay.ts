@@ -1,9 +1,11 @@
-import { lstat, readFile, realpath, stat } from "node:fs/promises";
+import { constants } from "node:fs";
+import { type FileHandle, open, realpath, stat } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
 import { extractWireFacts, type PsbtWireFacts } from "../psbt/wire-facts.js";
 import type { CheckpointRecord, RunManifest } from "./artifacts.js";
 
 const MAX_MANIFEST_BYTES = 4 * 1024 * 1024;
+const MAX_REPLAY_CHECKPOINTS = 1_000;
 
 export interface ReplaySummary {
   runId: string;
@@ -42,14 +44,25 @@ function containedPath(directory: string, path: string): string {
 }
 
 async function readRegularFile(path: string, maxBytes: number): Promise<string> {
-  const metadata = await lstat(path);
-  if (!metadata.isFile() || metadata.isSymbolicLink()) {
-    throw new Error("Replay checkpoint must be a regular file");
+  let handle: FileHandle | undefined;
+  try {
+    handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+    const metadata = await handle.stat();
+    if (!metadata.isFile()) {
+      throw new Error("Replay checkpoint must be a regular file");
+    }
+    if (metadata.size > maxBytes) {
+      throw new Error("Replay checkpoint exceeds its size limit");
+    }
+    return await handle.readFile("utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ELOOP") {
+      throw new Error("Replay checkpoint must be a regular file");
+    }
+    throw error;
+  } finally {
+    await handle?.close();
   }
-  if (metadata.size > maxBytes) {
-    throw new Error("Replay checkpoint exceeds its size limit");
-  }
-  return readFile(path, "utf8");
 }
 
 async function verifyCheckpoint(directory: string, checkpoint: CheckpointRecord): Promise<void> {
@@ -115,6 +128,9 @@ export async function verifyReplay(directory: string): Promise<ReplaySummary> {
     throw new Error("Replay manifest is not valid JSON");
   }
   const manifest = parseManifest(decoded);
+  if (manifest.checkpoints.length > MAX_REPLAY_CHECKPOINTS) {
+    throw new Error(`Replay manifest exceeds the ${MAX_REPLAY_CHECKPOINTS} checkpoint limit`);
+  }
   for (const checkpoint of manifest.checkpoints) {
     await verifyCheckpoint(canonicalDirectory, checkpoint);
   }

@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, stat, symlink, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
@@ -93,6 +93,30 @@ describe("ArtifactRun", () => {
     });
 
     await expect(verifyReplay(run.directory)).rejects.toThrow(/hash|base64/i);
+  });
+
+  test("replay rejects more than 1000 checkpoints before opening files", async () => {
+    const root = await temporaryRoot();
+    const run = await ArtifactRun.create(root, "run-many");
+    const checkpoint = await run.checkpoint("happy-path", "core-created", MINIMAL_PSBT);
+    const value = manifest("run-many", checkpoint);
+    value.checkpoints = Array.from({ length: 1_001 }, () => checkpoint);
+    await run.writeManifest(value);
+
+    await expect(verifyReplay(run.directory)).rejects.toThrow(/checkpoint limit/i);
+  });
+
+  test("replay rejects a checkpoint symlink", async () => {
+    const root = await temporaryRoot();
+    const run = await ArtifactRun.create(root, "run-link");
+    const checkpoint = await run.checkpoint("happy-path", "core-created", MINIMAL_PSBT);
+    await run.writeManifest(manifest("run-link", checkpoint));
+    const target = join(run.directory, "target.psbt");
+    await writeFile(target, `${MINIMAL_PSBT}\n`);
+    await unlink(join(run.directory, checkpoint.psbtPath));
+    await symlink(target, join(run.directory, checkpoint.psbtPath));
+
+    await expect(verifyReplay(run.directory)).rejects.toThrow(/regular file/i);
   });
 });
 
