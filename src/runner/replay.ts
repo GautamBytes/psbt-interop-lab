@@ -7,6 +7,14 @@ import type { CheckpointRecord, RunManifest } from "./artifacts.js";
 const MAX_MANIFEST_BYTES = 4 * 1024 * 1024;
 const MAX_REPLAY_CHECKPOINTS = 1_000;
 
+function optionalOpenFlag(name: string): number {
+  const value: unknown = Reflect.get(constants, name);
+  return typeof value === "number" ? value : 0;
+}
+
+const REPLAY_OPEN_FLAGS =
+  constants.O_RDONLY | optionalOpenFlag("O_NOFOLLOW") | optionalOpenFlag("O_NONBLOCK");
+
 export interface ReplaySummary {
   runId: string;
   outcome: "passed" | "failed";
@@ -46,7 +54,7 @@ function containedPath(directory: string, path: string): string {
 async function readRegularFile(path: string, maxBytes: number): Promise<string> {
   let handle: FileHandle | undefined;
   try {
-    handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+    handle = await open(path, REPLAY_OPEN_FLAGS);
     const metadata = await handle.stat();
     if (!metadata.isFile()) {
       throw new Error("Replay checkpoint must be a regular file");
@@ -54,7 +62,19 @@ async function readRegularFile(path: string, maxBytes: number): Promise<string> 
     if (metadata.size > maxBytes) {
       throw new Error("Replay checkpoint exceeds its size limit");
     }
-    return await handle.readFile("utf8");
+    const contents = Buffer.allocUnsafe(maxBytes + 1);
+    let offset = 0;
+    while (offset < contents.length) {
+      const { bytesRead } = await handle.read(contents, offset, contents.length - offset, null);
+      if (bytesRead === 0) {
+        break;
+      }
+      offset += bytesRead;
+    }
+    if (offset > maxBytes) {
+      throw new Error("Replay checkpoint exceeds its size limit");
+    }
+    return contents.toString("utf8", 0, offset);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ELOOP") {
       throw new Error("Replay checkpoint must be a regular file");
