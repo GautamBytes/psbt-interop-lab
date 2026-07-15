@@ -18,6 +18,11 @@ import {
   createParallelCombineScenario,
   createRoundtripChainScenario,
 } from "../../src/scenarios/interop-matrix.js";
+import { createInvalidInputScenario } from "../../src/scenarios/invalid-inputs.js";
+import {
+  createMetadataPreservationScenario,
+  enrichPsbtWithProprietaryFields,
+} from "../../src/scenarios/metadata-preservation.js";
 
 const magic = Buffer.from("70736274ff", "hex");
 const fixturePublicKey = Buffer.from(
@@ -564,5 +569,154 @@ describe("active implementation matrix scenarios", () => {
       negotiated,
     );
     expect(failed).toMatchObject({ outcome: "failed" });
+  });
+});
+
+describe("invalid input matrix", () => {
+  test("requires every parser to reject every malformed or unsupported PSBT cleanly", async () => {
+    const initial = encodedPsbt([[]]);
+    const implementations = [
+      rustImplementation,
+      goImplementation,
+      bitcoinjsImplementation,
+      bdkImplementation,
+    ];
+    const adapters = new Map(
+      implementations.map((implementation) => [
+        implementation.name,
+        adapter((request) => ({
+          protocol: "psbt-lab.adapter/0.2",
+          id: request.id,
+          status: "rejected",
+          implementation,
+          error: { class: "psbt.parse_failed", message: "Invalid PSBT" },
+        })),
+      ]),
+    );
+    const context = executionContext(adapters);
+
+    const [result] = await runScenarioCatalog(
+      [createInvalidInputScenario(fixture("happy-path", initial, 1))],
+      context,
+      new Map([
+        ["rust-bitcoin", rustNegotiated],
+        ["btcsuite-go", goNegotiated],
+        ["bitcoinjs-lib", bitcoinjsNegotiated],
+        ["bdkpython", bdkNegotiated],
+      ]),
+    );
+
+    expect(result).toMatchObject({ id: "invalid-and-unsupported-inputs", outcome: "passed" });
+    expect(result?.assertions).toHaveLength(20);
+  });
+
+  test("fails if an adapter accepts malformed input", async () => {
+    const initial = encodedPsbt([[]]);
+    const rejecting = (implementation: AdapterImplementation) =>
+      adapter((request) => ({
+        protocol: "psbt-lab.adapter/0.2",
+        id: request.id,
+        status: "rejected",
+        implementation,
+        error: { class: "psbt.parse_failed", message: "Invalid PSBT" },
+      }));
+    const lyingGo = adapter((request) =>
+      success(request, goImplementation, { psbt: String(request.payload["psbt"]) }),
+    );
+    const context = executionContext(
+      new Map([
+        ["rust-bitcoin", rejecting(rustImplementation)],
+        ["btcsuite-go", lyingGo],
+        ["bitcoinjs-lib", rejecting(bitcoinjsImplementation)],
+        ["bdkpython", rejecting(bdkImplementation)],
+      ]),
+    );
+
+    const [result] = await runScenarioCatalog(
+      [createInvalidInputScenario(fixture("happy-path", initial, 1))],
+      context,
+      new Map([
+        ["rust-bitcoin", rustNegotiated],
+        ["btcsuite-go", goNegotiated],
+        ["bitcoinjs-lib", bitcoinjsNegotiated],
+        ["bdkpython", bdkNegotiated],
+      ]),
+    );
+
+    expect(result).toMatchObject({ outcome: "failed" });
+  });
+});
+
+describe("proprietary metadata preservation", () => {
+  test("preserves global, input, and output extension fields through every parser", async () => {
+    const initial = encodedPsbt([[]]);
+    const implementations = [
+      rustImplementation,
+      goImplementation,
+      bitcoinjsImplementation,
+      bdkImplementation,
+    ];
+    const adapters = new Map(
+      implementations.map((implementation) => [
+        implementation.name,
+        adapter((request) =>
+          success(request, implementation, { psbt: String(request.payload["psbt"]) }),
+        ),
+      ]),
+    );
+    const context = executionContext(adapters);
+
+    const [result] = await runScenarioCatalog(
+      [createMetadataPreservationScenario(fixture("happy-path", initial, 1))],
+      context,
+      new Map([
+        ["rust-bitcoin", rustNegotiated],
+        ["btcsuite-go", goNegotiated],
+        ["bitcoinjs-lib", bitcoinjsNegotiated],
+        ["bdkpython", bdkNegotiated],
+      ]),
+    );
+
+    expect(result).toMatchObject({ id: "proprietary-metadata-preservation", outcome: "passed" });
+    expect(enrichPsbtWithProprietaryFields(fixture("happy-path", initial, 1))).not.toBe(initial);
+  });
+
+  test("fails at the exact adapter that drops extension fields", async () => {
+    const initial = encodedPsbt([[]]);
+    const preserve = (implementation: AdapterImplementation) =>
+      adapter((request) =>
+        success(request, implementation, { psbt: String(request.payload["psbt"]) }),
+      );
+    const droppingGo = adapter((request) => success(request, goImplementation, { psbt: initial }));
+    const context = executionContext(
+      new Map([
+        ["rust-bitcoin", preserve(rustImplementation)],
+        ["btcsuite-go", droppingGo],
+        ["bitcoinjs-lib", preserve(bitcoinjsImplementation)],
+        ["bdkpython", preserve(bdkImplementation)],
+      ]),
+    );
+
+    const [result] = await runScenarioCatalog(
+      [createMetadataPreservationScenario(fixture("happy-path", initial, 1))],
+      context,
+      new Map([
+        ["rust-bitcoin", rustNegotiated],
+        ["btcsuite-go", goNegotiated],
+        ["bitcoinjs-lib", bitcoinjsNegotiated],
+        ["bdkpython", bdkNegotiated],
+      ]),
+    );
+
+    expect(result).toMatchObject({
+      outcome: "failed",
+      assertions: [
+        {
+          name: "btcsuite-go-preserved-proprietary-fields",
+          passed: false,
+          failures: expect.arrayContaining([expect.objectContaining({ code: "ENTRY_REMOVED" })]),
+        },
+      ],
+    });
   });
 });

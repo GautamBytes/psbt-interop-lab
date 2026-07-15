@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -46,10 +47,18 @@ func TestExplicitlyAcceptsPSBTV0AndRejectsOtherGlobalVersions(t *testing.T) {
 	}
 	for _, version := range []uint32{1, 2} {
 		t.Run("version", func(t *testing.T) {
-			response := request(t, "roundtrip", map[string]any{"psbt": globalVersionPSBT(version)})
+			response := request(t, "roundtrip", map[string]any{"psbt": versionedFixturePSBT(t, version)})
 			assertFailureClass(t, response, "rejected", "psbt.parse_failed")
 		})
 	}
+
+	canonical := decodeBase64(t, fixturePSBT(t, 1))
+	nonMinimalKeyLength := make([]byte, 0, len(canonical)+2)
+	nonMinimalKeyLength = append(nonMinimalKeyLength, canonical[:5]...)
+	nonMinimalKeyLength = append(nonMinimalKeyLength, 0xfd, 0x01, 0x00)
+	nonMinimalKeyLength = append(nonMinimalKeyLength, canonical[6:]...)
+	nonCanonical := request(t, "roundtrip", map[string]any{"psbt": base64.StdEncoding.EncodeToString(nonMinimalKeyLength)})
+	assertFailureClass(t, nonCanonical, "rejected", "psbt.parse_failed")
 }
 
 func TestLineSafePSBTLimitBoundsSuccessfulResponse(t *testing.T) {
@@ -134,6 +143,36 @@ func TestPSBTCardinalityCaps(t *testing.T) {
 				t.Fatalf("response = %#v, want ok", response)
 			}
 		})
+	}
+}
+
+func TestPSBTPreflightRejectsHostileCardinalities(t *testing.T) {
+	for name, raw := range map[string][]byte{
+		"declared inputs":  psbtWithUnsignedTransaction(t, hostileUnsignedTransaction(t, true)),
+		"declared outputs": psbtWithUnsignedTransaction(t, hostileUnsignedTransaction(t, false)),
+		"global map":       decodeBase64(t, cardinalityPSBT(t, 1, 1, "global", maxPSBTMapEntries)),
+		"input map":        decodeBase64(t, cardinalityPSBT(t, 1, 1, "input", maxPSBTMapEntries+1)),
+		"output map":       decodeBase64(t, cardinalityPSBT(t, 1, 1, "output", maxPSBTMapEntries+1)),
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := preflightPSBT(raw); err == nil {
+				t.Fatal("hostile PSBT passed bounded preflight")
+			}
+		})
+	}
+}
+
+func TestPSBTPreflightDoesNotAllocatePerMapEntry(t *testing.T) {
+	raw := decodeBase64(t, cardinalityPSBT(t, 1, 1, "input", maxPSBTMapEntries))
+	var preflightErr error
+	allocations := testing.AllocsPerRun(100, func() {
+		preflightErr = preflightPSBT(raw)
+	})
+	if preflightErr != nil {
+		t.Fatalf("at-cap PSBT failed preflight: %v", preflightErr)
+	}
+	if allocations != 0 {
+		t.Fatalf("preflight allocations = %f, want 0", allocations)
 	}
 }
 
@@ -285,6 +324,33 @@ func TestFinalizeRejectsForgedFinalWitness(t *testing.T) {
 		"psbt": encodePacket(t, packet), "network": "regtest", "fixtureId": "bdk-finalize-regression", "inputIndexes": []any{1, 0},
 	})
 	assertFailureClass(t, response, "rejected", "finalize.signature_invalid")
+}
+
+func TestFinalWitnessRejectsMillionsOfItemsBeforeAllocation(t *testing.T) {
+	const itemCount = 2_000_000
+	serialized := make([]byte, 5+itemCount)
+	serialized[0] = 0xfe
+	binary.LittleEndian.PutUint32(serialized[1:5], itemCount)
+
+	runtime.GC()
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	witness, err := deserializeWitness(serialized)
+	runtime.ReadMemStats(&after)
+	if err == nil {
+		t.Error("oversized witness item count was accepted")
+	}
+	if witness != nil {
+		t.Error("oversized witness returned an allocated witness stack")
+	}
+	if allocated := after.TotalAlloc - before.TotalAlloc; allocated > 1<<20 {
+		t.Fatalf("oversized witness allocated %d bytes, want at most %d", allocated, 1<<20)
+	}
+
+	packet := decodePacket(t, fixturePSBT(t, 1))
+	packet.Inputs[0].FinalScriptWitness = serialized
+	response := request(t, "finalize", signingPayload(encodePacket(t, packet), "happy-path"))
+	assertFailureClass(t, response, "rejected", "policy.psbt_not_authorized")
 }
 
 func TestFinalizeAcceptsScriptEngineValidMixedState(t *testing.T) {
@@ -577,10 +643,13 @@ func decodeWitness(t *testing.T, serialized []byte) wire.TxWitness {
 	return witness
 }
 
-func globalVersionPSBT(version uint32) string {
-	raw := []byte{'p', 's', 'b', 't', 0xff, 1, 0xfb, 4, 0, 0, 0, 0, 0}
-	binary.LittleEndian.PutUint32(raw[8:12], version)
-	return base64.StdEncoding.EncodeToString(raw)
+func versionedFixturePSBT(t *testing.T, version uint32) string {
+	t.Helper()
+	packet := decodePacket(t, fixturePSBT(t, 1))
+	encodedVersion := make([]byte, 4)
+	binary.LittleEndian.PutUint32(encodedVersion, version)
+	packet.Unknowns = append(packet.Unknowns, &psbt.Unknown{Key: []byte{0xfb}, Value: encodedVersion})
+	return encodePacket(t, packet)
 }
 
 func paddedFixturePSBT(t *testing.T, targetSize int) string {
@@ -638,6 +707,51 @@ func cardinalityPSBT(t *testing.T, inputs, outputs int, unknownMap string, unkno
 		t.Fatalf("unknown map %q", unknownMap)
 	}
 	return encodePacket(t, packet)
+}
+
+func hostileUnsignedTransaction(t *testing.T, inputs bool) []byte {
+	t.Helper()
+	var transaction bytes.Buffer
+	if err := binary.Write(&transaction, binary.LittleEndian, uint32(2)); err != nil {
+		t.Fatal(err)
+	}
+	if inputs {
+		if err := wire.WriteVarInt(&transaction, 0, maxPSBTInputs+1); err != nil {
+			t.Fatal(err)
+		}
+		return transaction.Bytes()
+	}
+	if err := wire.WriteVarInt(&transaction, 0, 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := wire.WriteVarInt(&transaction, 0, maxPSBTOutputs+1); err != nil {
+		t.Fatal(err)
+	}
+	return transaction.Bytes()
+}
+
+func psbtWithUnsignedTransaction(t *testing.T, transaction []byte) []byte {
+	t.Helper()
+	var raw bytes.Buffer
+	raw.Write([]byte{'p', 's', 'b', 't', 0xff})
+	if err := wire.WriteVarInt(&raw, 0, 1); err != nil {
+		t.Fatal(err)
+	}
+	raw.WriteByte(0x00)
+	if err := wire.WriteVarBytes(&raw, 0, transaction); err != nil {
+		t.Fatal(err)
+	}
+	raw.WriteByte(0x00)
+	return raw.Bytes()
+}
+
+func decodeBase64(t *testing.T, encoded string) []byte {
+	t.Helper()
+	raw, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return raw
 }
 
 func jsonEqual(actual, expected any) bool {

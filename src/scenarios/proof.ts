@@ -18,6 +18,8 @@ import {
 import { runScenarioCatalog } from "./engine.js";
 import { classifyHappyPath, createHappyPathScenario } from "./happy-path.js";
 import { createParallelCombineScenario, createRoundtripChainScenario } from "./interop-matrix.js";
+import { createInvalidInputScenario } from "./invalid-inputs.js";
+import { createMetadataPreservationScenario } from "./metadata-preservation.js";
 
 export { classifyHappyPath, classifyRegression };
 export type PolicyResult = CorePolicyResult;
@@ -189,6 +191,8 @@ export async function runProof(options: ProofOptions): Promise<ProofResult> {
         }),
         createRoundtripChainScenario(fixtures.happy),
         createParallelCombineScenario(fixtures.happy),
+        createInvalidInputScenario(fixtures.happy),
+        createMetadataPreservationScenario(fixtures.happy),
         createBdkRegressionScenario(fixtures.regression),
         createBdkRegressionScenario(fixtures.regression, {
           adapter: "btcsuite-go",

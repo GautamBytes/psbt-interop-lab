@@ -8,8 +8,8 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"io"
 	"strconv"
 
 	"github.com/btcsuite/btcd/btcutil"
@@ -27,7 +27,6 @@ const (
 	maxPSBTInputs              = 1024
 	maxPSBTOutputs             = 1024
 	maxPSBTMapEntries          = 1024
-	maxPSBTMaps                = 1 + maxPSBTInputs + maxPSBTOutputs
 	maxSafeInteger             = uint64(9_007_199_254_740_991)
 	testWIF                    = "cMahea7zqjxrtgAbB7LSGbcQUr1uX1ojuat9jZodMN87JcbXMTcA"
 )
@@ -410,9 +409,8 @@ func parsePSBT(encoded string) ([]byte, *psbt.Packet, error) {
 	if err != nil || len(raw) > maxPSBTBytes || base64.StdEncoding.EncodeToString(raw) != encoded {
 		return nil, nil, fmt.Errorf("invalid PSBT encoding")
 	}
-	version, err := psbtGlobalVersion(raw)
-	if err != nil || version != 0 || !psbtMapsWithinLimits(raw) {
-		return nil, nil, fmt.Errorf("unsupported PSBT version")
+	if err := preflightPSBT(raw); err != nil {
+		return nil, nil, fmt.Errorf("invalid or unsupported PSBT")
 	}
 	reader := bytes.NewReader(raw)
 	packet, err := psbt.NewFromRawBytes(reader, false)
@@ -441,83 +439,206 @@ func serializePSBT(packet *psbt.Packet) ([]byte, error) {
 	return serialized.Bytes(), nil
 }
 
-func psbtGlobalVersion(raw []byte) (uint32, error) {
+var (
+	errInvalidPSBTPreflight  = errors.New("invalid PSBT preflight")
+	errInvalidFixtureWitness = errors.New("fixture witness must contain exactly two items")
+)
+
+func preflightPSBT(raw []byte) error {
 	if len(raw) < 6 || !bytes.Equal(raw[:5], []byte{'p', 's', 'b', 't', 0xff}) {
-		return 0, fmt.Errorf("invalid PSBT magic")
+		return errInvalidPSBTPreflight
 	}
-	reader := bytes.NewReader(raw[5:])
+	offset := 5
+	unsignedTransaction, err := preflightGlobalMap(raw, &offset)
+	if err != nil {
+		return err
+	}
+	inputs, outputs, err := preflightUnsignedTransaction(unsignedTransaction)
+	if err != nil {
+		return err
+	}
+	for range inputs {
+		if err := preflightMap(raw, &offset); err != nil {
+			return err
+		}
+	}
+	for range outputs {
+		if err := preflightMap(raw, &offset); err != nil {
+			return err
+		}
+	}
+	if offset != len(raw) {
+		return errInvalidPSBTPreflight
+	}
+	return nil
+}
+
+func preflightGlobalMap(raw []byte, offset *int) ([]byte, error) {
+	var unsignedTransaction []byte
+	seenUnsignedTransaction := false
 	var version uint32
 	seenVersion := false
+	entries := 0
 	for {
-		keyLength, err := wire.ReadVarInt(reader, 0)
+		keyLength, err := preflightVarInt(raw, offset)
 		if err != nil {
-			return 0, err
+			return nil, err
 		}
 		if keyLength == 0 {
-			return version, nil
+			break
 		}
-		if keyLength > psbt.MaxPsbtKeyLength || keyLength > uint64(reader.Len()) {
-			return 0, fmt.Errorf("invalid PSBT global key")
+		entries++
+		if entries > maxPSBTMapEntries || keyLength > psbt.MaxPsbtKeyLength {
+			return nil, errInvalidPSBTPreflight
 		}
-		key := make([]byte, keyLength)
-		if _, err := io.ReadFull(reader, key); err != nil {
-			return 0, err
+		key, ok := preflightTake(raw, offset, keyLength)
+		if !ok {
+			return nil, errInvalidPSBTPreflight
 		}
-		valueLength, err := wire.ReadVarInt(reader, 0)
-		if err != nil || valueLength > uint64(reader.Len()) {
-			return 0, fmt.Errorf("invalid PSBT global value")
+		valueLength, err := preflightVarInt(raw, offset)
+		if err != nil {
+			return nil, err
 		}
-		value := make([]byte, valueLength)
-		if _, err := io.ReadFull(reader, value); err != nil {
-			return 0, err
+		value, ok := preflightTake(raw, offset, valueLength)
+		if !ok {
+			return nil, errInvalidPSBTPreflight
 		}
-		if len(key) == 1 && key[0] == 0xfb {
+		if len(key) != 1 {
+			continue
+		}
+		switch key[0] {
+		case 0x00:
+			if seenUnsignedTransaction {
+				return nil, errInvalidPSBTPreflight
+			}
+			seenUnsignedTransaction = true
+			unsignedTransaction = value
+		case 0xfb:
 			if seenVersion || len(value) != 4 {
-				return 0, fmt.Errorf("invalid PSBT version")
+				return nil, errInvalidPSBTPreflight
 			}
 			seenVersion = true
 			version = binary.LittleEndian.Uint32(value)
 		}
 	}
+	if !seenUnsignedTransaction || version != 0 {
+		return nil, errInvalidPSBTPreflight
+	}
+	return unsignedTransaction, nil
 }
 
-func psbtMapsWithinLimits(raw []byte) bool {
-	if len(raw) < 6 || !bytes.Equal(raw[:5], []byte{'p', 's', 'b', 't', 0xff}) {
-		return false
+func preflightUnsignedTransaction(transaction []byte) (int, int, error) {
+	offset := 0
+	if !preflightSkip(transaction, &offset, 4) {
+		return 0, 0, errInvalidPSBTPreflight
 	}
-	reader := bytes.NewReader(raw[5:])
-	maps := 0
-	for reader.Len() > 0 {
-		maps++
-		if maps > maxPSBTMaps {
-			return false
+	inputCount, err := preflightVarInt(transaction, &offset)
+	if err != nil || inputCount > maxPSBTInputs {
+		return 0, 0, errInvalidPSBTPreflight
+	}
+	for range inputCount {
+		if !preflightSkip(transaction, &offset, 36) {
+			return 0, 0, errInvalidPSBTPreflight
 		}
-		entries := 0
-		for {
-			keyLength, err := wire.ReadVarInt(reader, 0)
-			if err != nil {
-				return false
-			}
-			if keyLength == 0 {
-				break
-			}
-			entries++
-			if entries > maxPSBTMapEntries || keyLength > psbt.MaxPsbtKeyLength || keyLength > uint64(reader.Len()) {
-				return false
-			}
-			if _, err := reader.Seek(int64(keyLength), io.SeekCurrent); err != nil {
-				return false
-			}
-			valueLength, err := wire.ReadVarInt(reader, 0)
-			if err != nil || valueLength > uint64(reader.Len()) {
-				return false
-			}
-			if _, err := reader.Seek(int64(valueLength), io.SeekCurrent); err != nil {
-				return false
-			}
+		scriptLength, err := preflightVarInt(transaction, &offset)
+		if err != nil || !preflightSkip(transaction, &offset, scriptLength) || !preflightSkip(transaction, &offset, 4) {
+			return 0, 0, errInvalidPSBTPreflight
 		}
 	}
-	return maps > 0
+	outputCount, err := preflightVarInt(transaction, &offset)
+	if err != nil || outputCount > maxPSBTOutputs {
+		return 0, 0, errInvalidPSBTPreflight
+	}
+	for range outputCount {
+		if !preflightSkip(transaction, &offset, 8) {
+			return 0, 0, errInvalidPSBTPreflight
+		}
+		scriptLength, err := preflightVarInt(transaction, &offset)
+		if err != nil || !preflightSkip(transaction, &offset, scriptLength) {
+			return 0, 0, errInvalidPSBTPreflight
+		}
+	}
+	if !preflightSkip(transaction, &offset, 4) || offset != len(transaction) {
+		return 0, 0, errInvalidPSBTPreflight
+	}
+	return int(inputCount), int(outputCount), nil
+}
+
+func preflightMap(raw []byte, offset *int) error {
+	entries := 0
+	for {
+		keyLength, err := preflightVarInt(raw, offset)
+		if err != nil {
+			return err
+		}
+		if keyLength == 0 {
+			return nil
+		}
+		entries++
+		if entries > maxPSBTMapEntries || keyLength > psbt.MaxPsbtKeyLength || !preflightSkip(raw, offset, keyLength) {
+			return errInvalidPSBTPreflight
+		}
+		valueLength, err := preflightVarInt(raw, offset)
+		if err != nil || !preflightSkip(raw, offset, valueLength) {
+			return errInvalidPSBTPreflight
+		}
+	}
+}
+
+func preflightVarInt(raw []byte, offset *int) (uint64, error) {
+	if *offset < 0 || *offset >= len(raw) {
+		return 0, errInvalidPSBTPreflight
+	}
+	discriminant := raw[*offset]
+	*offset += 1
+	switch discriminant {
+	case 0xff:
+		encoded, ok := preflightTake(raw, offset, 8)
+		if !ok {
+			return 0, errInvalidPSBTPreflight
+		}
+		value := binary.LittleEndian.Uint64(encoded)
+		if value <= uint64(^uint32(0)) {
+			return 0, errInvalidPSBTPreflight
+		}
+		return value, nil
+	case 0xfe:
+		encoded, ok := preflightTake(raw, offset, 4)
+		if !ok {
+			return 0, errInvalidPSBTPreflight
+		}
+		value := uint64(binary.LittleEndian.Uint32(encoded))
+		if value <= uint64(^uint16(0)) {
+			return 0, errInvalidPSBTPreflight
+		}
+		return value, nil
+	case 0xfd:
+		encoded, ok := preflightTake(raw, offset, 2)
+		if !ok {
+			return 0, errInvalidPSBTPreflight
+		}
+		value := uint64(binary.LittleEndian.Uint16(encoded))
+		if value < 0xfd {
+			return 0, errInvalidPSBTPreflight
+		}
+		return value, nil
+	default:
+		return uint64(discriminant), nil
+	}
+}
+
+func preflightTake(raw []byte, offset *int, length uint64) ([]byte, bool) {
+	if *offset < 0 || *offset > len(raw) || length > uint64(len(raw)-*offset) {
+		return nil, false
+	}
+	start := *offset
+	*offset += int(length)
+	return raw[start:*offset], true
+}
+
+func preflightSkip(raw []byte, offset *int, length uint64) bool {
+	_, ok := preflightTake(raw, offset, length)
+	return ok
 }
 
 func serializeWitness(witness wire.TxWitness) ([]byte, error) {
@@ -640,10 +761,10 @@ func hasExpectedFinalWitness(serialized, witnessScript []byte) bool {
 func deserializeWitness(serialized []byte) (wire.TxWitness, error) {
 	reader := bytes.NewReader(serialized)
 	count, err := wire.ReadVarInt(reader, 0)
-	if err != nil || count > uint64(len(serialized)) {
-		return nil, fmt.Errorf("invalid witness item count")
+	if err != nil || count != 2 {
+		return nil, errInvalidFixtureWitness
 	}
-	witness := make(wire.TxWitness, int(count))
+	witness := make(wire.TxWitness, 2)
 	for index := range witness {
 		witness[index], err = wire.ReadVarBytes(reader, 0, maxPSBTBytes, "witness item")
 		if err != nil {
