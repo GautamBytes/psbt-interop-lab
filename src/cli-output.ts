@@ -27,6 +27,19 @@ export function doctorHasBlockingFailure(checks: DoctorCheck[]): boolean {
   return checks.some((check) => check.required && !check.ok);
 }
 
+function scenarioStatus(outcome: ProofResult["manifest"]["scenarios"][number]["outcome"]): string {
+  switch (outcome) {
+    case "passed":
+      return "PASS";
+    case "failed":
+      return "FAIL";
+    case "unsupported":
+      return "UNSUP";
+    case "skipped":
+      return "SKIP";
+  }
+}
+
 export function formatProofSummary(result: ProofResult): string {
   const lines = [
     `PSBT Interop Lab: ${result.manifest.outcome.toUpperCase()}`,
@@ -34,10 +47,7 @@ export function formatProofSummary(result: ProofResult): string {
     "",
   ];
   for (const scenario of result.manifest.scenarios) {
-    lines.push(
-      `${scenario.outcome === "passed" ? "PASS" : "FAIL"}  ${scenario.id}`,
-      `      ${scenario.summary}`,
-    );
+    lines.push(`${scenarioStatus(scenario.outcome)}  ${scenario.id}`, `      ${scenario.summary}`);
   }
   lines.push("", `Artifacts: ${result.artifactDirectory}`);
   return lines.join("\n");
@@ -50,9 +60,7 @@ export function formatReplaySummary(summary: ReplaySummary): string {
     `Verified checkpoints: ${summary.verifiedCheckpoints}`,
   ];
   for (const scenario of summary.scenarios) {
-    lines.push(
-      `${scenario.outcome === "passed" ? "PASS" : "FAIL"}  ${scenario.id}: ${scenario.summary}`,
-    );
+    lines.push(`${scenarioStatus(scenario.outcome)}  ${scenario.id}: ${scenario.summary}`);
   }
   return lines.join("\n");
 }

@@ -142,6 +142,22 @@ export function createBdkRegressionScenario(
           [0],
         ),
       );
+      assertions.push(
+        context.requireInputFieldPresence(
+          "input-1-remains-partially-signed",
+          mixedPsbt,
+          [0x02, 0x13, 0x14],
+          [1],
+        ),
+      );
+      assertions.push(
+        context.requireInputFieldAbsence(
+          "input-1-remains-unfinalized",
+          mixedPsbt,
+          [0x07, 0x08],
+          [1],
+        ),
+      );
       await context.checkpoint(options.id, "input-0-finalized", mixedPsbt);
 
       const bdkResponse = await context.request("bdkpython", "finalize", {

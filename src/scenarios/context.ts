@@ -248,6 +248,67 @@ export class ScenarioExecutionContext {
     return evidence;
   }
 
+  requireInputFieldPresence(
+    name: string,
+    psbt: string,
+    keyTypes: readonly number[],
+    inputIndexes: readonly number[],
+  ): ScenarioAssertionEvidence {
+    return this.#requireInputFieldState(name, psbt, keyTypes, inputIndexes, true);
+  }
+
+  requireInputFieldAbsence(
+    name: string,
+    psbt: string,
+    keyTypes: readonly number[],
+    inputIndexes: readonly number[],
+  ): ScenarioAssertionEvidence {
+    return this.#requireInputFieldState(name, psbt, keyTypes, inputIndexes, false);
+  }
+
+  #requireInputFieldState(
+    name: string,
+    psbt: string,
+    keyTypes: readonly number[],
+    inputIndexes: readonly number[],
+    expectedPresent: boolean,
+  ): ScenarioAssertionEvidence {
+    if (
+      keyTypes.length === 0 ||
+      keyTypes.some((keyType) => !Number.isSafeInteger(keyType) || keyType < 0 || keyType > 0xff)
+    ) {
+      throw new TypeError("Expected input field types must be non-empty bytes");
+    }
+    const document = parsePsbtDocument(psbt);
+    if (
+      inputIndexes.length === 0 ||
+      new Set(inputIndexes).size !== inputIndexes.length ||
+      inputIndexes.some(
+        (index) => !Number.isSafeInteger(index) || index < 0 || index >= document.inputCount,
+      )
+    ) {
+      throw new TypeError("Expected input indexes must be unique in-range integers");
+    }
+    const matches = inputIndexes.every((index) => {
+      const input = document.maps.find(
+        (map) => map.location.kind === "input" && map.location.index === index,
+      );
+      const present = input?.entries.some((entry) => keyTypes.includes(entry.keyType)) ?? false;
+      return present === expectedPresent;
+    });
+    const evidence: ScenarioAssertionEvidence = {
+      name,
+      passed: matches,
+      summary: matches
+        ? `Selected inputs have the expected field ${expectedPresent ? "presence" : "absence"}`
+        : `Selected inputs do not have the expected field ${expectedPresent ? "presence" : "absence"}`,
+    };
+    if (!matches) {
+      throw new ScenarioAssertionError(evidence.summary ?? name, [evidence]);
+    }
+    return evidence;
+  }
+
   async checkpoint(scenario: string, stage: string, psbt: string): Promise<CheckpointRecord> {
     const checkpoint = await this.#artifacts.checkpoint(scenario, stage, psbt);
     this.#checkpoints.push(checkpoint);

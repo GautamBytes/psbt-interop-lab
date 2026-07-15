@@ -130,11 +130,13 @@ describe("redactValue", () => {
       redactValue({
         psbt: MINIMAL_PSBT,
         keyWif: "cMahea7zqjxrtgAbB7LSGbcQUr1uX1ojuat9jZodMN87JcbXMTcA",
+        summary: "adapter error wif=cMahea7zqjxrtgAbB7LSGbcQUr1uX1ojuat9jZodMN87JcbXMTcA",
         sha256: "a".repeat(64),
       }),
     ).toEqual({
       psbt: "[redacted:psbt]",
       keyWif: "[redacted:secret]",
+      summary: "adapter error wif=[redacted:secret]",
       sha256: "a".repeat(64),
     });
   });

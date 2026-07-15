@@ -25,6 +25,7 @@ const rustAdapter: NegotiatedAdapter = {
 
 const MINIMAL_PSBT =
   "cHNidP8BADwCAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/////wD/////AQAAAAAAAAAAAAAAAAAAAAA=";
+const TESTNET_WIF = "cMahea7zqjxrtgAbB7LSGbcQUr1uX1ojuat9jZodMN87JcbXMTcA";
 
 function passingEvidence(name: string) {
   return [{ name, passed: true }] as const;
@@ -188,10 +189,13 @@ describe("scenario engine", () => {
               rawPsbt: Buffer.from(MINIMAL_PSBT, "base64"),
             },
           ],
-          summary: `Metadata exposed ${MINIMAL_PSBT}`,
+          summary: `Metadata exposed ${MINIMAL_PSBT}; wif=${TESTNET_WIF}`,
           rawPsbt: Buffer.from(MINIMAL_PSBT, "base64"),
         } as const;
-        throw new ScenarioAssertionError(`Metadata changed: ${MINIMAL_PSBT}`, [leakedAssertion]);
+        throw new ScenarioAssertionError(
+          `Metadata changed: ${MINIMAL_PSBT}; private key=${TESTNET_WIF}`,
+          [leakedAssertion],
+        );
       }),
       scenario("still-runs", async (value) => {
         value.calls.push("still-runs");
@@ -204,13 +208,13 @@ describe("scenario engine", () => {
     expect(context.calls).toEqual(["bad-roundtrip", "still-runs"]);
     expect(results[0]).toMatchObject({
       outcome: "failed",
-      summary: "Metadata changed: [redacted:psbt]",
+      summary: "Metadata changed: [redacted:psbt]; private key=[redacted:secret]",
       assertions: [
         {
           name: "roundtrip-preserves-fields",
           policy: "roundtrip",
           passed: false,
-          summary: "Metadata exposed [redacted:psbt]",
+          summary: "Metadata exposed [redacted:psbt]; wif=[redacted:secret]",
           failures: [
             {
               code: "ENTRY_REMOVED",
@@ -225,6 +229,7 @@ describe("scenario engine", () => {
       ],
     });
     expect(JSON.stringify(results[0])).not.toContain(MINIMAL_PSBT);
+    expect(JSON.stringify(results[0])).not.toContain(TESTNET_WIF);
     expect(JSON.stringify(results[0])).not.toContain("rawPsbt");
     expect(JSON.stringify(results[0])).not.toContain('"type":"Buffer"');
     expect(results[1]).toMatchObject({ outcome: "passed" });

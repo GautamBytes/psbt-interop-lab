@@ -1,6 +1,7 @@
 import { performance } from "node:perf_hooks";
 import type { NegotiatedAdapter } from "../protocol/types.js";
 import type { PsbtTransitionFailure } from "../psbt/invariants.js";
+import { redactSensitiveText } from "../runner/report.js";
 import type {
   AdapterCapabilityRequirement,
   MissingCapability,
@@ -11,7 +12,6 @@ import type {
 } from "./definition.js";
 
 const SAFE_IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
-const PSBT_VALUE = /cHNidP8[A-Za-z0-9+/]*={0,2}/g;
 
 export class ScenarioAssertionError extends Error {
   override readonly name = "ScenarioAssertionError";
@@ -101,10 +101,6 @@ function elapsedMilliseconds(startedAt: number): number {
   return Math.max(0, Math.round((performance.now() - startedAt) * 1000) / 1000);
 }
 
-function redactPsbtValues(value: string): string {
-  return value.replace(PSBT_VALUE, "[redacted:psbt]");
-}
-
 function copyFailure(failure: PsbtTransitionFailure): PsbtTransitionFailure {
   const location =
     failure.location.kind === "global"
@@ -146,7 +142,7 @@ function copyAssertion(assertion: ScenarioAssertionEvidence): ScenarioAssertionE
     ...(assertion.failures !== undefined
       ? { failures: assertion.failures.map((failure) => copyFailure(failure)) }
       : {}),
-    ...(assertion.summary !== undefined ? { summary: redactPsbtValues(assertion.summary) } : {}),
+    ...(assertion.summary !== undefined ? { summary: redactSensitiveText(assertion.summary) } : {}),
   };
 }
 
@@ -172,7 +168,7 @@ function assertValidCatalog<Context>(catalog: readonly ScenarioDefinition<Contex
 }
 
 function redactErrorMessage(error: Error): Error {
-  const redacted = redactPsbtValues(error.message);
+  const redacted = redactSensitiveText(error.message);
   if (redacted !== error.message) {
     error.message = redacted;
   }
@@ -193,7 +189,7 @@ function completedResult<Context>(
     title: definition.title,
     category: definition.category,
     outcome: passed ? "passed" : "failed",
-    summary: redactPsbtValues(output.summary ?? definition.summary),
+    summary: redactSensitiveText(output.summary ?? definition.summary),
     durationMs: elapsedMilliseconds(startedAt),
     assertions,
     ...(output.expectedFailure
@@ -226,7 +222,7 @@ export async function runScenarioCatalog<Context>(
         title: definition.title,
         category: definition.category,
         outcome: "unsupported",
-        summary: redactPsbtValues(
+        summary: redactSensitiveText(
           `${definition.title} is unsupported by the negotiated adapter capabilities.`,
         ),
         durationMs: elapsedMilliseconds(startedAt),
@@ -238,13 +234,13 @@ export async function runScenarioCatalog<Context>(
 
     const requestedSkipReason = await definition.skip?.(context);
     if (requestedSkipReason !== undefined) {
-      const skipReason = redactPsbtValues(requestedSkipReason);
+      const skipReason = redactSensitiveText(requestedSkipReason);
       results.push({
         id: definition.id,
         title: definition.title,
         category: definition.category,
         outcome: "skipped",
-        summary: redactPsbtValues(`${definition.title} was skipped: ${skipReason}.`),
+        summary: redactSensitiveText(`${definition.title} was skipped: ${skipReason}.`),
         durationMs: elapsedMilliseconds(startedAt),
         assertions: [],
         skipReason,
@@ -264,7 +260,7 @@ export async function runScenarioCatalog<Context>(
         title: definition.title,
         category: definition.category,
         outcome: "failed",
-        summary: redactPsbtValues(error.message),
+        summary: redactSensitiveText(error.message),
         durationMs: elapsedMilliseconds(startedAt),
         assertions: copyAssertions(error.assertions),
       });

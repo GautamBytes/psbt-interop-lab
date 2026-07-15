@@ -434,6 +434,38 @@ describe("BDK regression scenario", () => {
     expect(result).toMatchObject({ id: "bdk-regression-btcsuite-go", outcome: "passed" });
     expect(go.requests.map(({ operation }) => operation)).toEqual(["sign", "finalize-inputs"]);
   });
+
+  test("fails if the selected finalizer also finalizes the second input", async () => {
+    const initial = encodedPsbt([[], []]);
+    const signed = encodedPsbt([[signedInput()], [signedInput()]]);
+    const fullyFinalized = encodedPsbt([[finalizedInput()], [finalizedInput()]]);
+    const rust = adapter((request) =>
+      success(request, rustImplementation, {
+        psbt: request.operation === "finalize-inputs" ? fullyFinalized : signed,
+      }),
+    );
+    const bdk = adapter((request) => success(request, bdkImplementation, { psbt: initial }));
+    const context = executionContext(
+      new Map([
+        ["rust-bitcoin", rust],
+        ["bdkpython", bdk],
+      ]),
+    );
+
+    const [result] = await runScenarioCatalog(
+      [createBdkRegressionScenario(fixture("bdk-finalize-regression", initial, 2))],
+      context,
+      new Map([
+        ["rust-bitcoin", rustNegotiated],
+        ["bdkpython", bdkNegotiated],
+      ]),
+    );
+
+    expect(result).toMatchObject({
+      outcome: "failed",
+      assertions: [{ name: "input-1-remains-partially-signed", passed: false }],
+    });
+  });
 });
 
 describe("active implementation matrix scenarios", () => {

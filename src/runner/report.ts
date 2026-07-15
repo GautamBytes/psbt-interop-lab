@@ -1,7 +1,22 @@
 import type { RunManifest } from "./artifacts.js";
 
 const SECRET_KEY = /(private|secret|password|mnemonic|seed|wif)/i;
-const PSBT_VALUE = /^cHNidP8[A-Za-z0-9+/]*={0,2}$/;
+const PSBT_VALUE = /cHNidP8[A-Za-z0-9+/]*={0,2}/g;
+const LABELED_SECRET =
+  /\b(private(?:\s+key)?|secret|password|mnemonic|seed|wif)\s*[:=]\s*[^\s,;]+/gi;
+const WIF_VALUE = /\b[5KLc9][1-9A-HJ-NP-Za-km-z]{50,51}\b/g;
+const EXTENDED_PRIVATE_KEY = /\b(?:xprv|tprv)[1-9A-HJ-NP-Za-km-z]{100,110}\b/g;
+
+export function redactSensitiveText(value: string): string {
+  return value
+    .replace(PSBT_VALUE, "[redacted:psbt]")
+    .replace(
+      LABELED_SECRET,
+      (match) => `${match.slice(0, match.search(/[:=]/) + 1)}[redacted:secret]`,
+    )
+    .replace(WIF_VALUE, "[redacted:secret]")
+    .replace(EXTENDED_PRIVATE_KEY, "[redacted:secret]");
+}
 
 export function redactValue(value: unknown, key = "", depth = 0): unknown {
   if (depth > 20) {
@@ -13,8 +28,8 @@ export function redactValue(value: unknown, key = "", depth = 0): unknown {
   if (key.toLowerCase() === "psbt") {
     return "[redacted:psbt]";
   }
-  if (typeof value === "string" && PSBT_VALUE.test(value)) {
-    return "[redacted:psbt]";
+  if (typeof value === "string") {
+    return redactSensitiveText(value);
   }
   if (Array.isArray(value)) {
     return value.map((item) => redactValue(item, "", depth + 1));

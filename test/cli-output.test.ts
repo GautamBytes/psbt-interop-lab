@@ -55,6 +55,30 @@ describe("CLI output", () => {
     ).toContain("Verified checkpoints: 5");
   });
 
+  test("keeps unsupported and skipped outcomes distinct from failures", () => {
+    const base = {
+      title: "Scenario",
+      category: "test",
+      durationMs: 1,
+      assertions: [],
+      summary: "Recorded outcome",
+    } as const;
+    const output = formatReplaySummary({
+      runId: "run-outcomes",
+      outcome: "failed",
+      verifiedCheckpoints: 0,
+      scenarios: [
+        { ...base, id: "unsupported-case", outcome: "unsupported" },
+        { ...base, id: "skipped-case", outcome: "skipped" },
+        { ...base, id: "failed-case", outcome: "failed" },
+      ],
+    });
+
+    expect(output).toContain("UNSUP  unsupported-case");
+    expect(output).toContain("SKIP  skipped-case");
+    expect(output).toContain("FAIL  failed-case");
+  });
+
   test("reports an unbuilt image without failing the preflight", () => {
     const checks = [
       { name: "Docker", ok: true, required: true, detail: "29.1.3" },

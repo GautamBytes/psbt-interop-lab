@@ -189,6 +189,25 @@ describe("ScenarioExecutionContext", () => {
     ).toMatchObject({ passed: true });
   });
 
+  test("checks required field presence and absence on selected inputs", () => {
+    const signed = Buffer.concat([
+      magic,
+      map(unsignedTxEntry),
+      map(entry(0x02, partialSignature, fixturePublicKey)),
+      map(),
+    ]).toString("base64");
+
+    expect(
+      context().requireInputFieldPresence("partial-signature-remains", signed, [0x02], [0]),
+    ).toMatchObject({ passed: true });
+    expect(
+      context().requireInputFieldAbsence("input-not-finalized", signed, [0x07, 0x08], [0]),
+    ).toMatchObject({ passed: true });
+    expect(() =>
+      context().requireInputFieldPresence("missing-final-data", signed, [0x07, 0x08], [0]),
+    ).toThrow(ScenarioAssertionError);
+  });
+
   test("frames adapter requests with stable incrementing protocol ids", async () => {
     const adapter = fakeAdapter();
     const value = context(adapter);
