@@ -1,25 +1,13 @@
 # PSBT Interop Lab
 
-PSBT Interop Lab is a local, deterministic developer tool for testing whether Bitcoin
-implementations preserve, sign, and finalize the same Partially Signed Bitcoin Transaction
-(PSBT) correctly.
+PSBT Interop Lab is a local developer tool for finding interoperability failures between Bitcoin
+PSBT implementations. It runs deterministic PSBT workflows through real libraries, checks every
+handoff semantically, asks Bitcoin Core to finalize and policy-check completed transactions, and
+writes replayable compatibility reports.
 
-The proof suite exercises the complete handoff with real software:
-
-1. Bitcoin Core 31.1 creates a funded PSBTv0 on regtest.
-2. A native `rust-bitcoin` 0.32.102 adapter round-trips and signs it.
-3. Bitcoin Core finalizes the result and `testmempoolaccept` accepts the transaction.
-4. A second two-input fixture reproduces
-   [BDK issue #488](https://github.com/bitcoindevkit/bdk_wallet/issues/488) in frozen
-   `bdkpython` 2.3.1.
-5. Bitcoin Core finalizes that same returned PSBT, recording the expected BDK/Core contrast under
-   the trusted-image scope.
-
-Each run writes private PSBT checkpoints, structural facts, implementation identities, a JSON
-manifest, and a readable Markdown report. Replay reparses each PSBT and verifies its SHA256 against
-the manifest and the stored facts JSON `sha256`; it does not recompute other stored facts or recorded
-outcomes, and it does not rerun adapters. Because all values remain in the same mutable directory,
-replay does not authenticate the artifact.
+The current suite integrates Bitcoin Core 31.1, rust-bitcoin 0.32.102, btcsuite PSBT 1.2.0,
+bitcoinjs-lib 7.0.1, and a frozen bdkpython 2.3.1 regression specimen. Everything runs on regtest;
+the tool never broadcasts and has no mainnet mode.
 
 ## Quick Start
 
@@ -33,19 +21,20 @@ Requirements:
 pnpm install --frozen-lockfile
 pnpm build
 node dist/cli.js doctor
-pnpm proof
+node dist/cli.js self-test
+node dist/cli.js matrix
 ```
 
-The first proof builds images from digest- and checksum-pinned inputs and may take several minutes.
-Later runs can reuse them:
+The first matrix run builds checksum- and digest-pinned images. Later runs can reuse them:
 
 ```bash
-node dist/cli.js run --suite proof --no-build
+node dist/cli.js matrix --no-build
 ```
 
-The command prints the artifact directory. Verify a recorded run with:
+List the executable scenarios or replay a completed run:
 
 ```bash
+node dist/cli.js list
 node dist/cli.js replay artifacts/<run-id>
 ```
 
@@ -55,82 +44,56 @@ Stop the local regtest node when finished:
 docker compose stop core
 ```
 
-## What Passing Means
+## Current Coverage
 
-Within the trusted-image scope, the happy path passes only when the runner observes a byte-identical
-Rust round trip, then Core reports finalization as complete and accepts the extracted transaction
-under current regtest mempool policy.
+The suite currently runs ten scenarios:
 
-The regression path passes only when the BDK-labeled response returns the exact historical
-`finalize.missing_witness_script` class, while Core completes and policy-accepts the same returned
-PSBT. An expected old failure is therefore a passing regression result, not a hidden error. Core
-validates the returned PSBT, but does not prove BDK executed or that later adapter operations
-preserved the intended unsigned transaction.
+- Core-created P2WSH signing handoffs through rust-bitcoin, btcsuite, and bitcoinjs-lib
+- A four-library BDK to Rust to Go to JavaScript roundtrip and signing chain
+- Parallel signing where Rust and Go contribute different inputs before bitcoinjs combines them
+- Twenty invalid-input cells across four parsers and five malformed or undeclared PSBT cases
+- BIP174 proprietary-field preservation in every global, input, and output map
+- BDK issue #488 reproduction after Rust, Go, and JavaScript finalization workflows
 
-Example terminal result:
+Exact-byte equality is recorded, but it is not the main success rule. Libraries may legally reorder
+PSBT map entries. The lab instead verifies transaction identity and field-level transition rules for
+roundtripping, signing, combining, and finalization. Unsupported capabilities are reported as
+unsupported rather than counted as passes.
 
-```text
-PSBT Interop Lab: PASSED
-PASS  happy-path
-PASS  bdk-finalize-regression
-```
+Run `node dist/cli.js self-test` to prove the detectors catch deliberate metadata loss, output-amount
+mutation, sequence mutation, and signature removal.
 
-## Artifacts
+## Reports
 
-Runs are written under `artifacts/<run-id>/`:
+Each run creates a private directory under `artifacts/<run-id>/` containing:
 
-- `manifest.json`: machine-readable run identity, versions, outcomes, and checkpoint hashes
-- `report.json`: redacted machine-readable report
-- `report.md`: short human-readable result
-- `checkpoints/**/*.psbt`: canonical base64 PSBT state at each handoff
-- `checkpoints/**/*.facts.json`: bounded structural facts and SHA256 hash
+- `manifest.json`: machine-readable identities, outcomes, assertions, and checkpoint hashes
+- `report.json`: redacted machine-readable compatibility results
+- `report.md`: readable scenario and assertion summary
+- `report.html`: self-contained static compatibility report with no scripts or network requests
+- `checkpoints/**/*.psbt`: canonical PSBT states at important handoffs
+- `checkpoints/**/*.facts.json`: bounded field facts and hashes
 
-Artifact directories are created with mode `0700`; files are created with mode `0600`. Raw PSBT,
-script, and UTXO material is excluded from reports. Adapter name, version, source revision, and
-self-reported digest metadata are intentionally recorded in the manifest and JSON report and are
-protected only by those local permissions. Treat checkpoint files as sensitive anyway: real-world
-PSBTs can contain wallet metadata even when they contain no private keys.
-
-Replay rejects absolute and lexically escaping checkpoint paths and caps a manifest at 1,000
-checkpoints. Intermediate symlinks remain trusted. Final-component `O_NOFOLLOW` protection applies
-only where Node exposes the flag. Replay reparses each PSBT and verifies its SHA256 against the
-manifest and stored facts JSON `sha256`; other stored facts and recorded outcomes are not recomputed.
-This does not stop the trusted host account from replacing a whole self-consistent artifact
-directory.
+Raw PSBTs are stored only in checkpoint files with local mode `0600`; artifact directories use
+`0700`. Reports redact PSBTs, WIFs, common BIP32/SLIP-132 extended private keys, mnemonics, seed
+phrases, and labeled password or secret values. Replay verifies every checkpoint's canonical base64
+and SHA256 against the manifest and stored facts. It does not authenticate a mutable artifact
+directory controlled by the same host.
 
 ## Safety Boundary
 
 This is test infrastructure, not a wallet or signer:
 
-- The runner supplies only regtest fixtures generated by this suite.
-- The runner compares canonical returned PSBT bytes independently of an adapter's `byteIdentical`
-  claim.
-- The signer accepts no caller-provided key and rejects PSBTs outside the known fixture identifiers,
-  public fixture script, and internally consistent prevout data.
-- The only signing key is the public Bitcoin scalar-one test key. It has no secrecy or economic
-  value and must never receive real funds.
-- Bitcoin Core starts with networking disabled, exposes RPC only on host loopback, requires exact RPC
-  response IDs, and must report numeric version `310100`.
-- Core and adapters have read-only roots, dropped capabilities, process/memory limits, and
-  `no-new-privileges`; Core alone keeps its named regtest data volume writable. Adapters have no
-  network.
-- Adapter name, version, source revision, and capability checks are compatibility self-reports, not
-  cryptographic image attestation. A malicious adapter can spoof the expected identity strings and
-  supply any schema-valid self-reported digest; the runner does not compare a pinned content digest.
-  Dockerfile digests and dependency hashes support reproducible build selection, not runtime
-  attestation.
-- The tool never broadcasts a transaction and has no mainnet, testnet, or signet mode.
+- Only suite-generated regtest fixtures are accepted for signing.
+- Signers require a run-scoped SHA256 commitment to the exact unsigned transaction.
+- The only private key is Bitcoin scalar one, a public test key with no economic value.
+- Core requires version 31.1, zero peers, and disabled networking; RPC binds to host loopback.
+- Adapter containers have no network, read-only roots, dropped capabilities, memory/process limits,
+  and `no-new-privileges`.
+- Adapter identity fields are compatibility self-reports, not cryptographic image attestation.
 
 Read [SECURITY.md](SECURITY.md) and the
 [threat model](psbt-interop-lab-threat-model.md) before extending the signing surface.
-
-## Current Coverage
-
-The `proof` suite covers a Core-created PSBTv0 happy path and the BDK 2.3.1 finalization regression.
-The runner, adapter protocol, artifact format, and replay command provide the base for adding more
-libraries, versions, PSBT corpora, transition invariants, mutation cases, and CI report formats.
-
-See [the architecture](docs/architecture.md) and [official source ledger](docs/sources.md).
 
 ## Development
 
@@ -141,4 +104,6 @@ pnpm test
 pnpm build
 ```
 
-Native adapter checks are also run inside their Docker builds. The repository is MIT licensed.
+Native adapter checks run in CI and during Docker builds. See
+[the architecture](docs/architecture.md) and [official source ledger](docs/sources.md). The project
+is MIT licensed.

@@ -1,6 +1,6 @@
 # Official Source Ledger
 
-Research and dependency snapshot: 2026-07-15.
+Research and dependency snapshot: 2026-07-16.
 
 This file records the primary sources used to choose protocol behavior, APIs, versions, and pinned
 artifacts. Runtime dependencies are also locked in `pnpm-lock.yaml`, `Cargo.lock`, and the hashed
@@ -12,8 +12,10 @@ Python requirement.
   key-value maps, minimally encoded CompactSize values, unique complete keys, creator/updater/signer
   roles, and PSBTv0 fields.
 - [BIP370: PSBT Version 2](https://bips.dev/370/) defines PSBTv2's global input/output counts and
-  per-input/per-output transaction fields. The wire parser recognizes its map framing, while the
-  current proof scenarios use Core-created PSBTv0.
+  per-input/per-output transaction fields. The wire parser validates PSBTv2 and the rejection matrix
+  uses the official required-fields vector, while signing scenarios use Core-created PSBTv0.
+- [BIP371: Taproot Fields for PSBT](https://bips.dev/371/) defines Taproot key, signature, leaf,
+  derivation, internal-key, and tree fields. The semantic parser validates their field layouts.
 
 ## Bitcoin Core
 
@@ -40,6 +42,23 @@ Python requirement.
   signature, and PSBT APIs used by the adapter.
 - The adapter builds with the official `rust:1.97.0-bookworm` image and a committed `Cargo.lock`.
   `cargo test --locked` runs during the image build.
+
+## Go Adapter
+
+- [`btcsuite/btcutil/psbt` v1.2.0](https://pkg.go.dev/github.com/btcsuite/btcd/btcutil/psbt@v1.2.0)
+  provides the parser, updater, signer, finalizer, and extractor APIs used by the Go adapter.
+- [`btcsuite/btcd/txscript`](https://pkg.go.dev/github.com/btcsuite/btcd/txscript) provides sighash
+  calculation and script execution used to independently verify fixture signatures.
+- The adapter builds with the official Go 1.26.5 image. The committed `go.mod` and `go.sum` lock its
+  dependency graph, and `go test ./...` runs during the image build.
+
+## JavaScript Adapter
+
+- [`bitcoinjs-lib` 7.0.1](https://github.com/bitcoinjs/bitcoinjs-lib/tree/v7.0.1) provides PSBT
+  parsing, signing, combining, finalization, and extraction. Its own documentation warns callers to
+  verify and test cryptographic behavior; the lab therefore validates signatures independently.
+- [`tiny-secp256k1` 2.2.4](https://github.com/bitcoinjs/tiny-secp256k1/tree/v2.2.4) provides the
+  secp256k1 operations used by the adapter. `package-lock.json` pins the complete npm graph.
 
 ## BDK Regression Adapter
 
@@ -82,10 +101,14 @@ Python requirement.
   `8fa55b2f3ddf97471ab6a767bfa3f37e6bad0986ba823e75fea57e2a2a5c3073`, and Python 3.13
   slim-bookworm `9d7f287598e1a5a978c015ee176d8216435aaf335ed69ac3c38dd1bbb10e8d64`.
 - [GitHub Actions checkout v6](https://github.com/actions/checkout),
+  [setup-go v6.4.0](https://github.com/actions/setup-go/releases/tag/v6.4.0),
   [setup-node v6](https://github.com/actions/setup-node), and
   [setup-python v6](https://github.com/actions/setup-python), plus
-  [pnpm/action-setup v6](https://github.com/pnpm/action-setup), are used by CI. The workflow pins
-  each action to the exact commit behind its reviewed v6 release rather than a mutable tag.
+  [pnpm/action-setup v6](https://github.com/pnpm/action-setup), are used by CI. The complete proof
+  publishes only redacted reports with
+  [upload-artifact v7.0.1](https://github.com/actions/upload-artifact/releases/tag/v7.0.1). The
+  workflow pins every action to the exact commit behind its reviewed release rather than a mutable
+  tag.
 - GitHub's workflow references define
   [concurrency cancellation](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency)
   and per-job

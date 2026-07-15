@@ -6,7 +6,7 @@ const LABELED_MULTIWORD_SECRET = /\b(mnemonic|seed(?:\s+phrase)?)\s*[:=]\s*[^,;\
 const LABELED_SECRET =
   /\b(private(?:\s+key)?|secret|password|mnemonic|seed|wif)\s*[:=]\s*[^\s,;]+/gi;
 const WIF_VALUE = /\b[5KLc9][1-9A-HJ-NP-Za-km-z]{50,51}\b/g;
-const EXTENDED_PRIVATE_KEY = /\b(?:xprv|tprv)[1-9A-HJ-NP-Za-km-z]{100,110}\b/g;
+const EXTENDED_PRIVATE_KEY = /\b[xyzuvt]prv[1-9A-HJ-NP-Za-km-z]{100,110}\b/gi;
 
 export function redactSensitiveText(value: string): string {
   return value

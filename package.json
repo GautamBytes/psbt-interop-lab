@@ -1,12 +1,41 @@
 {
-  "name": "@psbt-lab/cli",
-  "version": "0.0.1",
-  "description": "Deterministic PSBT workflow interoperability proof for Bitcoin software",
+  "name": "psbt-interop-lab",
+  "version": "0.1.0",
+  "description": "Deterministic PSBT interoperability testing for Bitcoin software",
   "type": "module",
-  "private": true,
+  "private": false,
   "bin": {
     "psbt-lab": "dist/cli.js"
   },
+  "files": [
+    "dist",
+    "src",
+    "scripts",
+    "compose.yaml",
+    "docker",
+    "adapters/bdkpython-2.3.1/Dockerfile",
+    "adapters/bdkpython-2.3.1/*.py",
+    "adapters/bdkpython-2.3.1/requirements.txt",
+    "adapters/bitcoinjs-lib/Dockerfile",
+    "adapters/bitcoinjs-lib/*.mjs",
+    "adapters/bitcoinjs-lib/*.json",
+    "adapters/bitcoinjs-lib/test",
+    "adapters/btcsuite-go/Dockerfile",
+    "adapters/btcsuite-go/*.go",
+    "adapters/btcsuite-go/go.mod",
+    "adapters/btcsuite-go/go.sum",
+    "adapters/btcsuite-go/cmd",
+    "adapters/rust-bitcoin/Cargo.lock",
+    "adapters/rust-bitcoin/Cargo.toml",
+    "adapters/rust-bitcoin/Dockerfile",
+    "adapters/rust-bitcoin/src",
+    "adapters/rust-bitcoin/tests",
+    "docs",
+    "README.md",
+    "SECURITY.md",
+    "psbt-interop-lab-threat-model.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
@@ -14,7 +43,8 @@
     "test:watch": "vitest",
     "lint": "biome check .",
     "format": "biome format --write .",
-    "proof": "pnpm build && node scripts/proof.mjs"
+    "proof": "pnpm build && node scripts/proof.mjs",
+    "prepack": "pnpm build"
   },
   "engines": {
     "node": ">=22"

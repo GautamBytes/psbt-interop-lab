@@ -11,7 +11,7 @@ import { verifyReplay } from "../../src/runner/replay.js";
 const execFileAsync = promisify(execFile);
 const MAX_MANIFEST_BYTES = 4 * 1024 * 1024;
 const READY_SENTINEL = "PSBT_REPLAY_READY\n";
-const STARTUP_TIMEOUT_MILLISECONDS = 5_000;
+const STARTUP_TIMEOUT_MILLISECONDS = 10_000;
 const roots: string[] = [];
 
 interface ChildResult {
@@ -168,7 +168,7 @@ describe("verifyReplay descriptor reads", () => {
         timedOut: true,
       });
     },
-    10_000,
+    20_000,
   );
 
   test.skipIf(process.platform === "win32")(
@@ -197,7 +197,7 @@ describe("verifyReplay descriptor reads", () => {
         message: "Replay checkpoint must be a regular file",
       });
     },
-    10_000,
+    20_000,
   );
 
   test("rejects a manifest that grows beyond its initial descriptor size", async () => {

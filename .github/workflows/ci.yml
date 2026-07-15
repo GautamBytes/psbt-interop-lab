@@ -36,6 +36,7 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
+      - run: node dist/cli.js self-test
 
   rust-adapter:
     name: Rust adapter
@@ -53,6 +54,68 @@ jobs:
       - run: cargo fmt --check
       - run: cargo clippy --locked --all-targets -- -D warnings
       - run: cargo test --locked
+
+  package-smoke:
+    name: Release tarball smoke test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@b0f76dfb45f55f8421693e4803ac7bb65143bd34 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+          cache: pnpm
+          package-manager-cache: false
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: mkdir -p /tmp/psbt-package /tmp/psbt-install
+      - run: npm pack --ignore-scripts --pack-destination /tmp/psbt-package
+      - run: npm install --prefix /tmp/psbt-install /tmp/psbt-package/psbt-interop-lab-0.1.0.tgz --ignore-scripts
+      - run: /tmp/psbt-install/node_modules/.bin/psbt-lab self-test
+      - run: test -f /tmp/psbt-install/node_modules/psbt-interop-lab/compose.yaml
+      - run: test -f /tmp/psbt-install/node_modules/psbt-interop-lab/adapters/rust-bitcoin/Dockerfile
+
+  go-adapter:
+    name: btcsuite Go adapter
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: adapters/btcsuite-go
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        with:
+          go-version: "1.26.5"
+          cache-dependency-path: adapters/btcsuite-go/go.sum
+      - run: go test -count=1 ./...
+      - run: go vet ./...
+
+  bitcoinjs-adapter:
+    name: bitcoinjs-lib adapter
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: adapters/bitcoinjs-lib
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: adapters/bitcoinjs-lib/package-lock.json
+          package-manager-cache: false
+      - run: npm ci --ignore-scripts
+      - run: npm test
+      - run: npm run typecheck
 
   bdk-adapter:
     name: Frozen BDK Python adapter
@@ -88,5 +151,16 @@ jobs:
           package-manager-cache: false
       - run: pnpm install --frozen-lockfile
       - run: pnpm proof
+      - name: Upload redacted compatibility reports
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: psbt-interop-reports
+          path: |
+            artifacts/*/report.json
+            artifacts/*/report.md
+            artifacts/*/report.html
+          if-no-files-found: warn
+          retention-days: 14
       - if: always()
         run: docker compose stop core

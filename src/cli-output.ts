@@ -1,3 +1,4 @@
+import { type DetectorCanaryResult, detectorCanariesPassed } from "./canaries.js";
 import type { ReplaySummary } from "./runner/replay.js";
 import type { ProofResult, ProofScenarioSummary } from "./scenarios/proof.js";
 
@@ -25,6 +26,17 @@ export function formatDoctorChecks(checks: DoctorCheck[]): string {
 
 export function doctorHasBlockingFailure(checks: DoctorCheck[]): boolean {
   return checks.some((check) => check.required && !check.ok);
+}
+
+export function formatCanaryResults(results: readonly DetectorCanaryResult[]): string {
+  const passed = detectorCanariesPassed(results);
+  return [
+    `PSBT detector self-test: ${passed ? "PASSED" : "FAILED"}`,
+    ...results.map(
+      (result) =>
+        `${result.detected ? "PASS" : "FAIL"}  ${result.id}: ${result.failureCode} at key type 0x${result.keyType.toString(16).padStart(2, "0")}`,
+    ),
+  ].join("\n");
 }
 
 function scenarioStatus(outcome: ProofResult["manifest"]["scenarios"][number]["outcome"]): string {

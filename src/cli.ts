@@ -1,11 +1,14 @@
 #!/usr/bin/env node
 
+import { realpathSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Command } from "commander";
+import { detectorCanariesPassed, runDetectorCanaries } from "./canaries.js";
 import {
   type DoctorCheck,
   doctorHasBlockingFailure,
+  formatCanaryResults,
   formatDoctorChecks,
   formatProofSummary,
   formatReplaySummary,
@@ -16,7 +19,7 @@ import { verifyReplay } from "./runner/replay.js";
 import { PROOF_SCENARIOS, runProof } from "./scenarios/proof.js";
 import { runCommand } from "./system/command.js";
 
-const VERSION = "0.0.1";
+const VERSION = "0.1.0";
 const PROJECT_DIRECTORY = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const DEFAULT_RPC_URL = "http://127.0.0.1:18443";
 const DEFAULT_RPC_USER = "psbtlab";
@@ -119,7 +122,7 @@ function addRuntimeOptions(command: Command): Command {
     .option(
       "--artifacts <directory>",
       "Artifact root directory",
-      resolve(PROJECT_DIRECTORY, "artifacts"),
+      resolve(process.cwd(), "artifacts"),
     )
     .option("--rpc-url <url>", "Loopback Bitcoin Core RPC URL", DEFAULT_RPC_URL)
     .option("--no-build", "Use existing Docker images without rebuilding")
@@ -172,6 +175,15 @@ export function createProgram(): Command {
     });
 
   program
+    .command("self-test")
+    .description("Prove semantic detectors catch representative PSBT corruption")
+    .action(() => {
+      const results = runDetectorCanaries();
+      process.stdout.write(`${formatCanaryResults(results)}\n`);
+      if (!detectorCanariesPassed(results)) process.exitCode = 1;
+    });
+
+  program
     .command("list")
     .description("List the executable interoperability scenarios")
     .option("--json", "Print machine-readable output")
@@ -216,7 +228,17 @@ export async function main(argv = process.argv): Promise<void> {
   await createProgram().parseAsync(argv);
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+function isDirectExecution(argvEntry: string | undefined): boolean {
+  if (!argvEntry) return false;
+
+  try {
+    return realpathSync(argvEntry) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return resolve(argvEntry) === fileURLToPath(import.meta.url);
+  }
+}
+
+if (isDirectExecution(process.argv[1])) {
   main().catch((error: unknown) => {
     const message = error instanceof Error ? error.message : "Unknown failure";
     process.stderr.write(`psbt-lab: ${message}\n`);

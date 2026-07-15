@@ -1,0 +1,9 @@
+artifacts/
+coverage/
+.superpowers/
+adapters/rust-bitcoin/target/
+adapters/bitcoinjs-lib/node_modules/
+**/__pycache__/
+*.py[cod]
+*.log
+.DS_Store

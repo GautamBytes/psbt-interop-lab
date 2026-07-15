@@ -7,6 +7,7 @@ const MINIMAL_PSBT =
 const TESTNET_WIF = "cMahea7zqjxrtgAbB7LSGbcQUr1uX1ojuat9jZodMN87JcbXMTcA";
 const TEST_MNEMONIC =
   "abandon ability able about above absent absorb abstract absurd abuse access accident";
+const TEST_SLIP132_PRIVATE_KEY = `yprv${"A".repeat(107)}`;
 
 function manifest(): RunManifest {
   return {
@@ -35,7 +36,7 @@ function manifest(): RunManifest {
         title: "Metadata <script>alert(1)</script>",
         category: "metadata-preservation",
         outcome: "failed",
-        summary: `Adapter leaked wif=${TESTNET_WIF}, mnemonic: ${TEST_MNEMONIC}; PSBT ${MINIMAL_PSBT}`,
+        summary: `Adapter leaked wif=${TESTNET_WIF}, ${TEST_SLIP132_PRIVATE_KEY}, mnemonic: ${TEST_MNEMONIC}; PSBT ${MINIMAL_PSBT}`,
         durationMs: 12.5,
         assertions: [
           {
@@ -84,6 +85,7 @@ describe("HTML report", () => {
     expect(html).toContain("Content-Security-Policy");
     expect(html).not.toContain("<script>");
     expect(html).not.toContain(TESTNET_WIF);
+    expect(html).not.toContain(TEST_SLIP132_PRIVATE_KEY);
     expect(html).not.toContain(TEST_MNEMONIC);
     expect(html).not.toContain(MINIMAL_PSBT);
     expect(html).toContain("[redacted:secret]");

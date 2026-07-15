@@ -11,9 +11,11 @@ each native library parses and acts on the PSBT itself.
 flowchart LR
   CLI["TypeScript CLI"] -->|"JSON-RPC on loopback"| Core["Bitcoin Core 31.1 regtest"]
   CLI -->|"bounded JSONL"| Rust["rust-bitcoin 0.32.102 adapter"]
+  CLI -->|"bounded JSONL"| Go["btcsuite psbt 1.2.0 adapter"]
+  CLI -->|"bounded JSONL"| JS["bitcoinjs-lib 7.0.1 adapter"]
   CLI -->|"bounded JSONL"| BDK["bdkpython 2.3.1 adapter"]
-  CLI --> Facts["Lossless wire-facts parser"]
-  CLI --> Artifacts["Private checkpoints and reports"]
+  CLI --> Facts["Lossless semantic PSBT parser and transition rules"]
+  CLI --> Artifacts["Private checkpoints plus JSON, Markdown, and HTML reports"]
   Artifacts --> Replay["Offline PSBT-digest replay"]
 ```
 
@@ -42,7 +44,7 @@ PSBT format version. The generated fixture is inspected as PSBTv0 before any ada
 
 ### Native adapters
 
-Adapters speak `psbt-lab.adapter/0.1`, one JSON object per line. Every response repeats the request
+Adapters speak `psbt-lab.adapter/0.2`, one JSON object per line. Every response repeats the request
 ID and includes implementation name, version, and artifact digest. The status is one of `ok`,
 `unsupported`, `rejected`, `crashed`, or `timeout`; failures use stable error classes rather than
 language-specific stack traces.
@@ -54,9 +56,9 @@ These values are not cryptographic attestation of the running image. Dockerfile 
 downloaded checksums, and dependency hashes support reproducible build selection rather than
 runtime provenance.
 
-The Rust adapter signs and finalizes only known fixture inputs. The Python adapter freezes the
-affected `bdkpython` 2.3.1 wheel and exposes round-trip/finalize behavior. Neither adapter has
-network access at runtime.
+The Rust, Go, and JavaScript adapters sign and finalize only known run-committed fixture inputs.
+The Python adapter freezes the affected `bdkpython` 2.3.1 wheel and exposes round-trip/finalize
+behavior. No adapter has network access at runtime.
 
 ### Wire facts and artifacts
 
@@ -78,7 +80,7 @@ only where Node exposes the flag.
 
 ## Runtime And CI Boundaries
 
-Locally, one trusted developer controls the host account and Docker daemon. Core and both adapters
+Locally, one trusted developer controls the host account and Docker daemon. Core and all adapters
 run with read-only roots, dropped capabilities, process/memory limits, and `no-new-privileges`; Core
 alone retains its named regtest data volume and a bounded temporary `/tmp` mount. Adapters use no
 network, while Core JSON-RPC is published only to host loopback. These settings reduce ordinary
@@ -88,7 +90,8 @@ kernel, or base image.
 GitHub-hosted CI is separate from that runtime. `.github/workflows/ci.yml` gives jobs read-only
 repository permission, no persisted checkout credential or workflow secrets, pinned action commits,
 ephemeral runners, timeouts, and concurrency cancellation. Pull requests run the TypeScript, Rust,
-and BDK checks; the complete Docker proof runs only on `refs/heads/main` or a trusted manual dispatch.
+Go, JavaScript, and BDK checks; the complete Docker proof runs only on `refs/heads/main` or a trusted
+manual dispatch.
 These controls mitigate credential, compute, and network abuse. Pull-request code can alter its own
 tests and build scripts, so green means revision self-consistency rather than independent check
 integrity. The workflow does not publish or attest a release image.
@@ -98,30 +101,19 @@ The detailed assumptions, abuse paths, and residual risks are recorded in the
 
 ## Proof Scenarios
 
-### Happy path
+The executable catalog currently contains ten scenarios. Three independent Core-to-library handoffs
+exercise rust-bitcoin, btcsuite, and bitcoinjs signing. A four-library chain proves byte-semantic
+preservation across BDK, Rust, Go, and JavaScript. A parallel path has Rust sign input zero and Go
+sign input one, then requires bitcoinjs to combine the union before Core accepts it.
 
-1. Core builds one funded P2WSH input and one output.
-2. Rust deserializes and serializes it byte-identically.
-3. Rust signs the known input.
-4. Core finalizes, extracts, and policy-checks the transaction.
+The rejection matrix runs five malformed or undeclared PSBT cases through all four parsers. The
+metadata scenario injects valid BIP174 proprietary entries into every global, input, and output map
+and checks their preservation at each handoff. Three regression scenarios reproduce BDK issue #488
+after Rust, Go, or JavaScript prepares the same mixed finalized/partial state; Core independently
+finalizes and policy-checks the same PSBT.
 
-### BDK finalization regression
-
-1. Core builds a two-input P2WSH PSBT.
-2. BDK round-trips it byte-identically.
-3. Rust signs both inputs.
-4. Rust finalizes input zero and removes metadata as a conforming finalizer may do; input one stays
-   partially signed.
-5. Frozen BDK 2.3.1 tries to finalize the already-finalized first input and returns the historical
-   missing-witness-script failure.
-6. Core finalizes the same mixed-state PSBT and policy-accepts the extracted transaction.
-
-This is a synthetic minimal fixture based on the state transition described in BDK issue #488. It
-does not copy the reporter's wallet data or seed.
-
-Core validates the returned PSBT but does not prove BDK executed or that later adapter operations
-preserved the intended unsigned transaction. The interpretation above retains low false-PASS risk
-only under the trusted-image scope.
+`psbt-lab self-test` deliberately drops metadata, changes an output amount, changes an input
+sequence, and removes a signature. It passes only when the semantic detectors identify every fault.
 
 ## Extension Points
 
