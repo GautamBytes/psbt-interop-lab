@@ -1,7 +1,7 @@
 use std::fs;
 use std::io::{self, BufRead, Write};
 
-use psbt_lab_rust_adapter::{ADAPTER_PROTOCOL, handle_value};
+use psbt_lab_rust_adapter::{ADAPTER_PROTOCOL, FixtureCommitments, handle_value_with_commitments};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
@@ -43,6 +43,9 @@ fn read_bounded_line<R: BufRead>(reader: &mut R, line: &mut Vec<u8>) -> io::Resu
 
 fn main() -> io::Result<()> {
     let digest = artifact_digest();
+    let raw_commitments = std::env::var("PSBT_LAB_FIXTURE_COMMITMENTS").ok();
+    let commitments = FixtureCommitments::from_json(raw_commitments.as_deref())
+        .unwrap_or_else(|_| FixtureCommitments::invalid());
     let stdin = io::stdin();
     let mut reader = stdin.lock();
     let stdout = io::stdout();
@@ -51,7 +54,7 @@ fn main() -> io::Result<()> {
 
     while read_bounded_line(&mut reader, &mut line)? {
         let response = match serde_json::from_slice::<Value>(&line) {
-            Ok(value) => handle_value(value, &digest),
+            Ok(value) => handle_value_with_commitments(value, &digest, &commitments),
             Err(_) => json!({
                 "protocol": ADAPTER_PROTOCOL,
                 "id": "invalid-1",

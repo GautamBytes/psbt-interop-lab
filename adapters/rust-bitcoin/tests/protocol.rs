@@ -12,8 +12,9 @@ use bitcoin::transaction::Version;
 use bitcoin::{
     Amount, OutPoint, Psbt, ScriptBuf, Sequence, Transaction, TxIn, TxOut, Txid, Witness,
 };
-use psbt_lab_rust_adapter::handle_value;
+use psbt_lab_rust_adapter::{FixtureCommitments, handle_value, handle_value_with_commitments};
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 
 const MINIMAL_PSBT: &str = "cHNidP8BADwCAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/////wD/////AQAAAAAAAAAAAAAAAAAAAAA=";
 
@@ -24,6 +25,23 @@ fn request(operation: &str, payload: Value) -> Value {
         "operation": operation,
         "payload": payload
     })
+}
+
+fn fixture_commitments(fixture_id: &str, encoded: &str) -> FixtureCommitments {
+    let psbt = Psbt::deserialize(&STANDARD.decode(encoded).expect("base64 PSBT"))
+        .expect("valid fixture PSBT");
+    let transaction = bitcoin::consensus::serialize(&psbt.unsigned_tx);
+    let commitment = format!("sha256:{:x}", Sha256::digest(transaction));
+    FixtureCommitments::from_json(Some(&format!(r#"{{"{fixture_id}":"{commitment}"}}"#)))
+        .expect("fixture commitments")
+}
+
+fn handle_authorized(value: Value, fixture_id: &str, encoded: &str) -> Value {
+    handle_value_with_commitments(
+        value,
+        "sha256:deadbeef",
+        &fixture_commitments(fixture_id, encoded),
+    )
 }
 
 #[test]
@@ -38,9 +56,78 @@ fn negotiates_supported_operations() {
             "operations": ["hello", "roundtrip", "sign", "finalize-inputs"],
             "roles": ["parser", "signer", "finalizer"],
             "psbtVersions": [0],
-            "scriptTypes": ["p2wsh"]
+            "scriptTypes": ["p2wsh"],
+            "features": ["fixture-commitment-sha256"]
         })
     );
+}
+
+#[test]
+fn signing_requires_the_configured_unsigned_transaction_commitment() {
+    let encoded = unsigned_two_input_fixture();
+    let request_value = request(
+        "sign",
+        json!({
+            "psbt": encoded.clone(),
+            "network": "regtest",
+            "fixtureId": "bdk-finalize-regression"
+        }),
+    );
+
+    let missing = handle_value(request_value.clone(), "sha256:deadbeef");
+    assert_eq!(missing["status"], "rejected");
+    assert_eq!(
+        missing["error"]["class"],
+        "policy.fixture_commitment_missing"
+    );
+
+    let wrong = FixtureCommitments::from_json(Some(&format!(
+        r#"{{"bdk-finalize-regression":"sha256:{}"}}"#,
+        "00".repeat(32)
+    )))
+    .expect("valid mismatched commitment config");
+    let mismatched = handle_value_with_commitments(request_value, "sha256:deadbeef", &wrong);
+    assert_eq!(mismatched["status"], "rejected");
+    assert_eq!(
+        mismatched["error"]["class"],
+        "policy.fixture_commitment_mismatch"
+    );
+
+    let invalid = handle_value_with_commitments(
+        request(
+            "sign",
+            json!({
+                "psbt": encoded,
+                "network": "regtest",
+                "fixtureId": "bdk-finalize-regression"
+            }),
+        ),
+        "sha256:deadbeef",
+        &FixtureCommitments::invalid(),
+    );
+    assert_eq!(invalid["status"], "crashed");
+    assert_eq!(invalid["error"]["class"], "adapter.invalid_configuration");
+}
+
+#[test]
+fn validates_bounded_fixture_commitment_configuration() {
+    assert!(FixtureCommitments::from_json(None).is_ok());
+    assert!(FixtureCommitments::from_json(Some("[]")).is_err());
+    assert!(
+        FixtureCommitments::from_json(Some(&format!(
+            r#"{{"unknown":"sha256:{}"}}"#,
+            "00".repeat(32)
+        )))
+        .is_err()
+    );
+    assert!(
+        FixtureCommitments::from_json(Some(&format!(
+            r#"{{"happy-path":"sha256:{}"}}"#,
+            "AA".repeat(32)
+        )))
+        .is_err()
+    );
+    assert!(FixtureCommitments::from_json(Some(&"x".repeat(4 * 1024 + 1))).is_err());
 }
 
 #[test]
@@ -162,17 +249,18 @@ fn rejects_invalid_finalize_input_indexes() {
 #[test]
 fn finalize_inputs_only_finalizes_requested_inputs() {
     let signed_psbt = signed_two_input_fixture();
-    let response = handle_value(
+    let response = handle_authorized(
         request(
             "finalize-inputs",
             json!({
-                "psbt": signed_psbt,
+                "psbt": signed_psbt.clone(),
                 "network": "regtest",
                 "fixtureId": "bdk-finalize-regression",
                 "inputIndexes": [1]
             }),
         ),
-        "sha256:deadbeef",
+        "bdk-finalize-regression",
+        &signed_psbt,
     );
     assert_eq!(response["status"], "ok", "{response}");
     assert_eq!(response["output"]["finalizedInputs"], json!([1]));
@@ -187,17 +275,18 @@ fn finalize_inputs_only_finalizes_requested_inputs() {
 #[test]
 fn finalize_inputs_finalizes_every_requested_input() {
     let signed_psbt = signed_two_input_fixture();
-    let response = handle_value(
+    let response = handle_authorized(
         request(
             "finalize-inputs",
             json!({
-                "psbt": signed_psbt,
+                "psbt": signed_psbt.clone(),
                 "network": "regtest",
                 "fixtureId": "bdk-finalize-regression",
                 "inputIndexes": [0, 1]
             }),
         ),
-        "sha256:deadbeef",
+        "bdk-finalize-regression",
+        &signed_psbt,
     );
     assert_eq!(response["status"], "ok", "{response}");
     assert_eq!(response["output"]["finalizedInputs"], json!([0, 1]));
@@ -232,6 +321,27 @@ fn finalize_inputs_rejects_non_regression_fixture() {
 }
 
 fn signed_two_input_fixture() -> String {
+    let encoded = unsigned_two_input_fixture();
+    let signed = handle_authorized(
+        request(
+            "sign",
+            json!({
+                "psbt": encoded.clone(),
+                "network": "regtest",
+                "fixtureId": "bdk-finalize-regression"
+            }),
+        ),
+        "bdk-finalize-regression",
+        &encoded,
+    );
+    assert_eq!(signed["status"], "ok");
+    signed["output"]["psbt"]
+        .as_str()
+        .expect("signed PSBT")
+        .to_owned()
+}
+
+fn unsigned_two_input_fixture() -> String {
     let key = PrivateKey::from_wif("cMahea7zqjxrtgAbB7LSGbcQUr1uX1ojuat9jZodMN87JcbXMTcA")
         .expect("fixture key");
     let public_key = key.public_key(&bitcoin::secp256k1::Secp256k1::new());
@@ -282,22 +392,7 @@ fn signed_two_input_fixture() -> String {
             (Fingerprint::from([0; 4]), DerivationPath::master()),
         );
     }
-    let signed = handle_value(
-        request(
-            "sign",
-            json!({
-                "psbt": STANDARD.encode(psbt.serialize()),
-                "network": "regtest",
-                "fixtureId": "bdk-finalize-regression"
-            }),
-        ),
-        "sha256:deadbeef",
-    );
-    assert_eq!(signed["status"], "ok");
-    signed["output"]["psbt"]
-        .as_str()
-        .expect("signed PSBT")
-        .to_owned()
+    STANDARD.encode(psbt.serialize())
 }
 
 fn response_psbt(response: &Value) -> Psbt {
@@ -350,16 +445,18 @@ fn refuses_a_non_witness_utxo_with_the_wrong_txid() {
     psbt.inputs[0].witness_script = Some(witness_script);
     psbt.inputs[0].non_witness_utxo = Some(funding_transaction);
 
-    let response = handle_value(
+    let encoded = STANDARD.encode(psbt.serialize());
+    let response = handle_authorized(
         request(
             "sign",
             json!({
-                "psbt": STANDARD.encode(psbt.serialize()),
+                "psbt": encoded.clone(),
                 "network": "regtest",
                 "fixtureId": "happy-path"
             }),
         ),
-        "sha256:deadbeef",
+        "happy-path",
+        &encoded,
     );
 
     assert_eq!(response["status"], "rejected");
@@ -412,16 +509,18 @@ fn refuses_a_non_witness_utxo_with_an_out_of_range_vout() {
     psbt.inputs[0].witness_utxo = Some(funding_output);
     psbt.inputs[0].non_witness_utxo = Some(funding_transaction);
 
-    let response = handle_value(
+    let encoded = STANDARD.encode(psbt.serialize());
+    let response = handle_authorized(
         request(
             "sign",
             json!({
-                "psbt": STANDARD.encode(psbt.serialize()),
+                "psbt": encoded.clone(),
                 "network": "regtest",
                 "fixtureId": "happy-path"
             }),
         ),
-        "sha256:deadbeef",
+        "happy-path",
+        &encoded,
     );
 
     assert_eq!(response["status"], "rejected");

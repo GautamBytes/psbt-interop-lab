@@ -9,11 +9,116 @@ use bitcoin::secp256k1::Secp256k1;
 use bitcoin::{PublicKey, Witness};
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
+use sha2::{Digest, Sha256};
 
 pub const ADAPTER_PROTOCOL: &str = "psbt-lab.adapter/0.2";
 const MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
+const MAX_COMMITMENTS_BYTES: usize = 4 * 1024;
 const TEST_WIF: &str = "cMahea7zqjxrtgAbB7LSGbcQUr1uX1ojuat9jZodMN87JcbXMTcA";
 const ALLOWED_FIXTURES: [&str; 2] = ["happy-path", "bdk-finalize-regression"];
+
+#[derive(Clone, Debug)]
+pub struct FixtureCommitments {
+    values: BTreeMap<String, [u8; 32]>,
+    valid: bool,
+}
+
+impl Default for FixtureCommitments {
+    fn default() -> Self {
+        Self {
+            values: BTreeMap::new(),
+            valid: true,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum FixtureCommitmentError {
+    InvalidConfiguration,
+    Missing,
+    Mismatch,
+}
+
+impl FixtureCommitments {
+    pub fn from_json(raw: Option<&str>) -> Result<Self, &'static str> {
+        let Some(raw) = raw else {
+            return Ok(Self::default());
+        };
+        if raw.len() > MAX_COMMITMENTS_BYTES {
+            return Err("fixture commitment configuration exceeds its size limit");
+        }
+        let object = serde_json::from_str::<Value>(raw)
+            .ok()
+            .and_then(|value| value.as_object().cloned())
+            .ok_or("fixture commitment configuration must be a JSON object")?;
+        if object.len() > ALLOWED_FIXTURES.len() {
+            return Err("fixture commitment configuration has too many entries");
+        }
+        let mut values = BTreeMap::new();
+        for (fixture_id, value) in object {
+            if !ALLOWED_FIXTURES.contains(&fixture_id.as_str()) {
+                return Err("fixture commitment configuration has an unknown fixture");
+            }
+            let encoded = value
+                .as_str()
+                .ok_or("fixture commitment must be a string")?;
+            values.insert(
+                fixture_id,
+                parse_commitment(encoded).ok_or("fixture commitment is invalid")?,
+            );
+        }
+        Ok(Self {
+            values,
+            valid: true,
+        })
+    }
+
+    pub fn invalid() -> Self {
+        Self {
+            values: BTreeMap::new(),
+            valid: false,
+        }
+    }
+
+    fn verify(&self, fixture_id: &str, psbt: &Psbt) -> Result<(), FixtureCommitmentError> {
+        if !self.valid {
+            return Err(FixtureCommitmentError::InvalidConfiguration);
+        }
+        let expected = self
+            .values
+            .get(fixture_id)
+            .ok_or(FixtureCommitmentError::Missing)?;
+        let transaction = bitcoin::consensus::serialize(&psbt.unsigned_tx);
+        let actual: [u8; 32] = Sha256::digest(transaction).into();
+        let difference = actual
+            .iter()
+            .zip(expected)
+            .fold(0_u8, |accumulator, (left, right)| {
+                accumulator | (left ^ right)
+            });
+        if difference == 0 {
+            Ok(())
+        } else {
+            Err(FixtureCommitmentError::Mismatch)
+        }
+    }
+}
+
+fn parse_commitment(value: &str) -> Option<[u8; 32]> {
+    let hex = value.strip_prefix("sha256:")?;
+    if hex.len() != 64
+        || !hex
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
+        return None;
+    }
+    let mut decoded = [0_u8; 32];
+    for (index, byte) in decoded.iter_mut().enumerate() {
+        *byte = u8::from_str_radix(&hex[index * 2..index * 2 + 2], 16).ok()?;
+    }
+    Some(decoded)
+}
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -138,6 +243,39 @@ fn validate_fixture_payload<'a>(
     Ok((encoded, fixture_id))
 }
 
+fn commitment_failure(
+    request: &Request,
+    digest: &str,
+    commitments: &FixtureCommitments,
+    fixture_id: &str,
+    psbt: &Psbt,
+) -> Option<Value> {
+    match commitments.verify(fixture_id, psbt) {
+        Ok(()) => None,
+        Err(FixtureCommitmentError::InvalidConfiguration) => Some(failure(
+            &request.id,
+            digest,
+            "crashed",
+            "adapter.invalid_configuration",
+            "Fixture commitment configuration is invalid",
+        )),
+        Err(FixtureCommitmentError::Missing) => Some(failure(
+            &request.id,
+            digest,
+            "rejected",
+            "policy.fixture_commitment_missing",
+            "The selected fixture has no run-scoped transaction commitment",
+        )),
+        Err(FixtureCommitmentError::Mismatch) => Some(failure(
+            &request.id,
+            digest,
+            "rejected",
+            "policy.fixture_commitment_mismatch",
+            "The PSBT does not match the selected run-scoped fixture transaction",
+        )),
+    }
+}
+
 fn expected_witness_script(public_key: &PublicKey) -> bitcoin::ScriptBuf {
     Builder::new()
         .push_key(public_key)
@@ -226,13 +364,14 @@ fn roundtrip(request: &Request, digest: &str) -> Value {
     }
 }
 
-fn sign(request: &Request, digest: &str) -> Value {
-    let (encoded, _) = match validate_fixture_payload(request, &["psbt", "network", "fixtureId"]) {
-        Ok(values) => values,
-        Err((class, message)) => {
-            return failure(&request.id, digest, "rejected", class, message);
-        }
-    };
+fn sign(request: &Request, digest: &str, commitments: &FixtureCommitments) -> Value {
+    let (encoded, fixture_id) =
+        match validate_fixture_payload(request, &["psbt", "network", "fixtureId"]) {
+            Ok(values) => values,
+            Err((class, message)) => {
+                return failure(&request.id, digest, "rejected", class, message);
+            }
+        };
     let (_, mut psbt) = match parse_psbt(encoded) {
         Ok(value) => value,
         Err(message) => {
@@ -245,6 +384,9 @@ fn sign(request: &Request, digest: &str) -> Value {
             );
         }
     };
+    if let Some(response) = commitment_failure(request, digest, commitments, fixture_id, &psbt) {
+        return response;
+    }
     let (private_key, public_key) = match fixture_key() {
         Ok(value) => value,
         Err(message) => {
@@ -300,7 +442,7 @@ fn sign(request: &Request, digest: &str) -> Value {
     }
 }
 
-fn finalize_inputs(request: &Request, digest: &str) -> Value {
+fn finalize_inputs(request: &Request, digest: &str, commitments: &FixtureCommitments) -> Value {
     let (encoded, fixture_id) = match validate_fixture_payload(
         request,
         &["psbt", "network", "fixtureId", "inputIndexes"],
@@ -343,6 +485,9 @@ fn finalize_inputs(request: &Request, digest: &str) -> Value {
             );
         }
     };
+    if let Some(response) = commitment_failure(request, digest, commitments, fixture_id, &psbt) {
+        return response;
+    }
     let (_, public_key) = match fixture_key() {
         Ok(value) => value,
         Err(message) => {
@@ -441,6 +586,16 @@ fn requested_input_indexes(
 }
 
 pub fn handle_value(value: Value, digest: &str) -> Value {
+    let commitments = FixtureCommitments::from_json(None)
+        .expect("an absent fixture commitment configuration is valid");
+    handle_value_with_commitments(value, digest, &commitments)
+}
+
+pub fn handle_value_with_commitments(
+    value: Value,
+    digest: &str,
+    commitments: &FixtureCommitments,
+) -> Value {
     let fallback = fallback_id(&value).to_owned();
     let request: Request = match serde_json::from_value(value) {
         Ok(request) => request,
@@ -472,7 +627,8 @@ pub fn handle_value(value: Value, digest: &str) -> Value {
                 "operations": ["hello", "roundtrip", "sign", "finalize-inputs"],
                 "roles": ["parser", "signer", "finalizer"],
                 "psbtVersions": [0],
-                "scriptTypes": ["p2wsh"]
+                "scriptTypes": ["p2wsh"],
+                "features": ["fixture-commitment-sha256"]
             }),
         ),
         "hello" => failure(
@@ -483,8 +639,8 @@ pub fn handle_value(value: Value, digest: &str) -> Value {
             "hello expects an empty payload",
         ),
         "roundtrip" => roundtrip(&request, digest),
-        "sign" => sign(&request, digest),
-        "finalize-inputs" => finalize_inputs(&request, digest),
+        "sign" => sign(&request, digest, commitments),
+        "finalize-inputs" => finalize_inputs(&request, digest, commitments),
         _ => failure(
             &request.id,
             digest,
