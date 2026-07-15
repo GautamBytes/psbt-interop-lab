@@ -8,7 +8,13 @@ import { ArtifactRun, type RunManifest } from "../runner/artifacts.js";
 import { generateMarkdownReport, redactValue } from "../runner/report.js";
 import { classifyRegression, createBdkRegressionScenario } from "./bdk-regression.js";
 import { type CorePolicyResult, ScenarioExecutionContext } from "./context.js";
-import { assertAdapterHello, BDK_ADAPTER_CONTRACT, RUST_ADAPTER_CONTRACT } from "./contracts.js";
+import {
+  assertAdapterHello,
+  BDK_ADAPTER_CONTRACT,
+  BITCOINJS_ADAPTER_CONTRACT,
+  GO_ADAPTER_CONTRACT,
+  RUST_ADAPTER_CONTRACT,
+} from "./contracts.js";
 import { runScenarioCatalog } from "./engine.js";
 import { classifyHappyPath, createHappyPathScenario } from "./happy-path.js";
 
@@ -16,6 +22,8 @@ export { classifyHappyPath, classifyRegression };
 export type PolicyResult = CorePolicyResult;
 
 const RUST_IMAGE = "psbt-interop-lab/rust-bitcoin:0.1.0";
+const GO_IMAGE = "psbt-interop-lab/btcsuite-go:1.2.0";
+const BITCOINJS_IMAGE = "psbt-interop-lab/bitcoinjs-lib:7.0.1";
 const BDK_IMAGE = "psbt-interop-lab/bdkpython:2.3.1";
 const FIXTURE_COMMITMENTS_ENV = "PSBT_LAB_FIXTURE_COMMITMENTS";
 const MAX_COMMITMENT_ENV_BYTES = 4 * 1024;
@@ -128,12 +136,20 @@ export async function runProof(options: ProofOptions): Promise<ProofResult> {
   const rust = createDockerAdapter(RUST_IMAGE, projectDirectory, {
     env: { [FIXTURE_COMMITMENTS_ENV]: commitmentConfiguration },
   });
+  const go = createDockerAdapter(GO_IMAGE, projectDirectory, {
+    env: { [FIXTURE_COMMITMENTS_ENV]: commitmentConfiguration },
+  });
+  const bitcoinjs = createDockerAdapter(BITCOINJS_IMAGE, projectDirectory, {
+    env: { [FIXTURE_COMMITMENTS_ENV]: commitmentConfiguration },
+  });
   const bdk = createDockerAdapter(BDK_IMAGE, projectDirectory, { platform: "linux/amd64" });
   const context = new ScenarioExecutionContext({
     rpc: options.rpc,
     artifacts,
     adapters: new Map([
       ["rust-bitcoin", rust],
+      ["btcsuite-go", go],
+      ["bitcoinjs-lib", bitcoinjs],
       ["bdkpython", bdk],
     ]),
     adapterTimeoutMs: timeoutMs,
@@ -148,9 +164,40 @@ export async function runProof(options: ProofOptions): Promise<ProofResult> {
       await context.request("bdkpython", "hello", {}),
       BDK_ADAPTER_CONTRACT,
     );
-    const negotiated = [rustHello, bdkHello];
+    const goHello = assertAdapterHello(
+      await context.request("btcsuite-go", "hello", {}),
+      GO_ADAPTER_CONTRACT,
+    );
+    const bitcoinjsHello = assertAdapterHello(
+      await context.request("bitcoinjs-lib", "hello", {}),
+      BITCOINJS_ADAPTER_CONTRACT,
+    );
+    const negotiated = [rustHello, goHello, bitcoinjsHello, bdkHello];
     const scenarios = await runScenarioCatalog(
-      [createHappyPathScenario(fixtures.happy), createBdkRegressionScenario(fixtures.regression)],
+      [
+        createHappyPathScenario(fixtures.happy),
+        createHappyPathScenario(fixtures.happy, {
+          adapter: "btcsuite-go",
+          id: "p2wsh-sign-btcsuite-go",
+          title: "Core to btcsuite signing handoff",
+        }),
+        createHappyPathScenario(fixtures.happy, {
+          adapter: "bitcoinjs-lib",
+          id: "p2wsh-sign-bitcoinjs-lib",
+          title: "Core to bitcoinjs-lib signing handoff",
+        }),
+        createBdkRegressionScenario(fixtures.regression),
+        createBdkRegressionScenario(fixtures.regression, {
+          adapter: "btcsuite-go",
+          id: "bdk-regression-btcsuite-go",
+          title: "BDK regression through btcsuite finalization",
+        }),
+        createBdkRegressionScenario(fixtures.regression, {
+          adapter: "bitcoinjs-lib",
+          id: "bdk-regression-bitcoinjs-lib",
+          title: "BDK regression through bitcoinjs-lib finalization",
+        }),
+      ],
       context,
       negotiatedMap(negotiated),
     );
@@ -179,6 +226,6 @@ export async function runProof(options: ProofOptions): Promise<ProofResult> {
     await artifacts.writeReportMarkdown(generateMarkdownReport(manifest));
     return { artifactDirectory: artifacts.directory, manifest };
   } finally {
-    await Promise.all([rust.close(), bdk.close()]);
+    await Promise.all([rust.close(), go.close(), bitcoinjs.close(), bdk.close()]);
   }
 }

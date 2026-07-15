@@ -157,6 +157,12 @@ const bdkImplementation: AdapterImplementation = {
   artifactDigest: `sha256:${"b".repeat(64)}`,
   sourceRevision: "bdk-ffi-v2.3.1",
 };
+const goImplementation: AdapterImplementation = {
+  name: "btcsuite-go",
+  version: "v1.2.0",
+  artifactDigest: `sha256:${"d".repeat(64)}`,
+  sourceRevision: "github.com/btcsuite/btcd/btcutil/psbt@v1.2.0",
+};
 
 const rustNegotiated: NegotiatedAdapter = {
   implementation: rustImplementation,
@@ -176,6 +182,16 @@ const bdkNegotiated: NegotiatedAdapter = {
     psbtVersions: [0],
     scriptTypes: ["p2wsh"],
     features: ["historical-regression.bdk-wallet-488"],
+  },
+};
+const goNegotiated: NegotiatedAdapter = {
+  implementation: goImplementation,
+  capabilities: {
+    operations: ["hello", "inspect", "roundtrip", "sign", "finalize", "finalize-inputs"],
+    roles: ["parser", "signer", "finalizer"],
+    psbtVersions: [0],
+    scriptTypes: ["p2wsh"],
+    features: ["fixture-commitment-sha256"],
   },
 };
 
@@ -254,6 +270,33 @@ describe("happy path scenario", () => {
       assertions: [{ name: "rust-added-signature", passed: false }],
     });
   });
+
+  test("uses the selected active implementation for a matrix handoff", async () => {
+    const initial = encodedPsbt([[]]);
+    const signed = encodedPsbt([[signedInput()]]);
+    const go = adapter((request) =>
+      success(request, goImplementation, {
+        psbt: request.operation === "sign" ? signed : initial,
+        ...(request.operation === "sign" ? { signedInputs: 1 } : {}),
+      }),
+    );
+    const context = executionContext(new Map([["btcsuite-go", go]]));
+
+    const [result] = await runScenarioCatalog(
+      [
+        createHappyPathScenario(fixture("happy-path", initial, 1), {
+          adapter: "btcsuite-go",
+          id: "p2wsh-sign-btcsuite-go",
+          title: "Core to btcsuite signing handoff",
+        }),
+      ],
+      context,
+      new Map([["btcsuite-go", goNegotiated]]),
+    );
+
+    expect(result).toMatchObject({ id: "p2wsh-sign-btcsuite-go", outcome: "passed" });
+    expect(go.requests.map(({ operation }) => operation)).toEqual(["roundtrip", "sign"]);
+  });
 });
 
 describe("BDK regression scenario", () => {
@@ -321,5 +364,54 @@ describe("BDK regression scenario", () => {
         inputIndexes: [0],
       },
     );
+  });
+
+  test("can replay the regression through the selected Go finalizer", async () => {
+    const initial = encodedPsbt([[], []]);
+    const signed = encodedPsbt([[signedInput()], [signedInput()]]);
+    const mixed = encodedPsbt([[finalizedInput()], [signedInput()]]);
+    const go = adapter((request) =>
+      success(request, goImplementation, {
+        psbt: request.operation === "finalize-inputs" ? mixed : signed,
+      }),
+    );
+    const bdk = adapter((request) =>
+      request.operation === "finalize"
+        ? {
+            protocol: "psbt-lab.adapter/0.2",
+            id: request.id,
+            status: "rejected",
+            implementation: bdkImplementation,
+            error: {
+              class: "finalize.missing_witness_script",
+              message: "Expected historical failure",
+            },
+          }
+        : success(request, bdkImplementation, { psbt: initial }),
+    );
+    const context = executionContext(
+      new Map([
+        ["btcsuite-go", go],
+        ["bdkpython", bdk],
+      ]),
+    );
+
+    const [result] = await runScenarioCatalog(
+      [
+        createBdkRegressionScenario(fixture("bdk-finalize-regression", initial, 2), {
+          adapter: "btcsuite-go",
+          id: "bdk-regression-btcsuite-go",
+          title: "BDK regression through btcsuite",
+        }),
+      ],
+      context,
+      new Map([
+        ["btcsuite-go", goNegotiated],
+        ["bdkpython", bdkNegotiated],
+      ]),
+    );
+
+    expect(result).toMatchObject({ id: "bdk-regression-btcsuite-go", outcome: "passed" });
+    expect(go.requests.map(({ operation }) => operation)).toEqual(["sign", "finalize-inputs"]);
   });
 });

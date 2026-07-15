@@ -41,18 +41,32 @@ export function classifyRegression(
   };
 }
 
+export interface RegressionScenarioOptions {
+  readonly adapter: string;
+  readonly id: string;
+  readonly title: string;
+}
+
+const DEFAULT_REGRESSION_OPTIONS: RegressionScenarioOptions = {
+  adapter: "rust-bitcoin",
+  id: "bdk-finalize-regression",
+  title: "BDK mixed-input finalization regression",
+};
+
 export function createBdkRegressionScenario(
   fixture: PsbtFixture,
+  options: RegressionScenarioOptions = DEFAULT_REGRESSION_OPTIONS,
 ): ScenarioDefinition<ScenarioExecutionContext> {
+  const assertionPrefix = options.adapter === "rust-bitcoin" ? "rust" : options.adapter;
   return {
-    id: "bdk-finalize-regression",
-    title: "BDK mixed-input finalization regression",
+    id: options.id,
+    title: options.title,
     category: "historical-regression",
     summary:
       "A mixed finalized and partial PSBT reproduces BDK issue #488 without invalidating it.",
     requirements: [
       {
-        adapter: "rust-bitcoin",
+        adapter: options.adapter,
         operations: ["sign", "finalize-inputs"],
         roles: ["signer", "finalizer"],
         psbtVersions: [0],
@@ -70,7 +84,7 @@ export function createBdkRegressionScenario(
     ],
     async run(context) {
       const assertions = [];
-      await context.checkpoint("bdk-finalize-regression", "core-created", fixture.initialPsbt);
+      await context.checkpoint(options.id, "core-created", fixture.initialPsbt);
 
       const roundtripResponse = await context.request("bdkpython", "roundtrip", {
         psbt: fixture.initialPsbt,
@@ -80,26 +94,31 @@ export function createBdkRegressionScenario(
         context.requireTransition("roundtrip", "bdk-roundtrip", fixture.initialPsbt, roundtripPsbt),
       );
 
-      const signResponse = await context.request("rust-bitcoin", "sign", {
+      const signResponse = await context.request(options.adapter, "sign", {
         psbt: roundtripPsbt,
         network: "regtest",
         fixtureId: fixture.id,
       });
       const signedPsbt = context.outputString(signResponse, "psbt", "sign");
       assertions.push(
-        context.requireTransition("sign", "rust-signing-transition", roundtripPsbt, signedPsbt),
+        context.requireTransition(
+          "sign",
+          `${assertionPrefix}-signing-transition`,
+          roundtripPsbt,
+          signedPsbt,
+        ),
       );
       assertions.push(
         context.requireAddedInputField(
-          "rust-added-signature",
+          `${assertionPrefix}-added-signature`,
           roundtripPsbt,
           signedPsbt,
           [0x02, 0x13, 0x14],
         ),
       );
-      await context.checkpoint("bdk-finalize-regression", "rust-signed", signedPsbt);
+      await context.checkpoint(options.id, `${assertionPrefix}-signed`, signedPsbt);
 
-      const finalizeResponse = await context.request("rust-bitcoin", "finalize-inputs", {
+      const finalizeResponse = await context.request(options.adapter, "finalize-inputs", {
         psbt: signedPsbt,
         network: "regtest",
         fixtureId: fixture.id,
@@ -109,21 +128,21 @@ export function createBdkRegressionScenario(
       assertions.push(
         context.requireTransition(
           "finalize",
-          "rust-finalization-transition",
+          `${assertionPrefix}-finalization-transition`,
           signedPsbt,
           mixedPsbt,
         ),
       );
       assertions.push(
         context.requireAddedInputField(
-          "rust-finalized-input-0",
+          `${assertionPrefix}-finalized-input-0`,
           signedPsbt,
           mixedPsbt,
           [0x07, 0x08],
           [0],
         ),
       );
-      await context.checkpoint("bdk-finalize-regression", "input-0-finalized", mixedPsbt);
+      await context.checkpoint(options.id, "input-0-finalized", mixedPsbt);
 
       const bdkResponse = await context.request("bdkpython", "finalize", {
         psbt: mixedPsbt,
