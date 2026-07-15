@@ -12,6 +12,15 @@ services:
       - lab
     volumes:
       - core-data:/home/bitcoin/.bitcoin
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m
+    cap_drop:
+      - ALL
+    pids_limit: 128
+    mem_limit: 1g
+    security_opt:
+      - no-new-privileges:true
     healthcheck:
       test:
         [
