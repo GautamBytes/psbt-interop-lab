@@ -1,5 +1,9 @@
 import { describe, expect, test } from "vitest";
-import { validateAdapterRequest, validateAdapterResponse } from "../../src/protocol/schema.js";
+import {
+  parseAdapterHelloCapabilities,
+  validateAdapterRequest,
+  validateAdapterResponse,
+} from "../../src/protocol/schema.js";
 
 const VALID_DIGEST = `sha256:${"a".repeat(64)}`;
 
@@ -7,7 +11,7 @@ describe("adapter protocol schemas", () => {
   test("accepts a hello request", () => {
     expect(
       validateAdapterRequest({
-        protocol: "psbt-lab.adapter/0.1",
+        protocol: "psbt-lab.adapter/0.2",
         id: "hello-1",
         operation: "hello",
         payload: {},
@@ -17,7 +21,7 @@ describe("adapter protocol schemas", () => {
 
   test("rejects unknown request properties", () => {
     const result = validateAdapterRequest({
-      protocol: "psbt-lab.adapter/0.1",
+      protocol: "psbt-lab.adapter/0.2",
       id: "hello-1",
       operation: "hello",
       payload: {},
@@ -29,7 +33,7 @@ describe("adapter protocol schemas", () => {
 
   test("rejects unsafe request identifiers", () => {
     const result = validateAdapterRequest({
-      protocol: "psbt-lab.adapter/0.1",
+      protocol: "psbt-lab.adapter/0.2",
       id: "../../artifact",
       operation: "hello",
       payload: {},
@@ -38,10 +42,24 @@ describe("adapter protocol schemas", () => {
     expect(result.ok).toBe(false);
   });
 
+  test.each(["fixture-finalize-input", "broadcast"])(
+    "rejects unknown operation %s",
+    (operation) => {
+      const result = validateAdapterRequest({
+        protocol: "psbt-lab.adapter/0.2",
+        id: "request-1",
+        operation,
+        payload: {},
+      });
+
+      expect(result.ok).toBe(false);
+    },
+  );
+
   test("accepts a successful response", () => {
     expect(
       validateAdapterResponse({
-        protocol: "psbt-lab.adapter/0.1",
+        protocol: "psbt-lab.adapter/0.2",
         id: "hello-1",
         status: "ok",
         implementation: {
@@ -56,7 +74,7 @@ describe("adapter protocol schemas", () => {
 
   test("requires error details for rejected responses", () => {
     const result = validateAdapterResponse({
-      protocol: "psbt-lab.adapter/0.1",
+      protocol: "psbt-lab.adapter/0.2",
       id: "sign-1",
       status: "rejected",
       implementation: {
@@ -76,12 +94,50 @@ describe("adapter protocol schemas", () => {
     `sha256:${"a".repeat(65)}`,
   ])("rejects noncanonical implementation digest %s", (artifactDigest) => {
     const result = validateAdapterResponse({
-      protocol: "psbt-lab.adapter/0.1",
+      protocol: "psbt-lab.adapter/0.2",
       id: "hello-1",
       status: "ok",
       implementation: { name: "fake", version: "1.0.0", artifactDigest },
       output: {},
     });
     expect(result.ok).toBe(false);
+  });
+
+  test("parses a strict hello capability object", () => {
+    expect(
+      parseAdapterHelloCapabilities({
+        operations: ["hello", "roundtrip"],
+        roles: ["parser"],
+        psbtVersions: [0, 2],
+        scriptTypes: ["p2wsh", "p2tr-keypath"],
+        features: ["historical-regression.bdk-wallet-488"],
+      }),
+    ).toEqual({
+      operations: ["hello", "roundtrip"],
+      roles: ["parser"],
+      psbtVersions: [0, 2],
+      scriptTypes: ["p2wsh", "p2tr-keypath"],
+      features: ["historical-regression.bdk-wallet-488"],
+    });
+  });
+
+  test.each([
+    ["duplicate operations", { operations: ["hello", "hello"] }],
+    ["unknown roles", { roles: ["broadcaster"] }],
+    ["unsupported PSBT versions", { psbtVersions: [1] }],
+    ["unknown script types", { scriptTypes: ["p2sh"] }],
+    ["empty required arrays", { roles: [] }],
+    ["unsafe features", { features: ["not a safe feature"] }],
+    ["unknown properties", { signingPolicy: "anything" }],
+  ])("rejects hello capabilities with %s", (_label, override) => {
+    expect(() =>
+      parseAdapterHelloCapabilities({
+        operations: ["hello"],
+        roles: ["parser"],
+        psbtVersions: [0],
+        scriptTypes: ["p2wsh"],
+        ...override,
+      }),
+    ).toThrow(/hello capabilities/i);
   });
 });

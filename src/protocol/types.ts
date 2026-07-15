@@ -1,15 +1,48 @@
-export const ADAPTER_PROTOCOL = "psbt-lab.adapter/0.1" as const;
+export const ADAPTER_PROTOCOL = "psbt-lab.adapter/0.2" as const;
 
 export const adapterOperations = [
   "hello",
   "inspect",
   "roundtrip",
   "sign",
+  "combine",
   "finalize",
-  "fixture-finalize-input",
+  "finalize-inputs",
 ] as const;
 
 export type AdapterOperation = (typeof adapterOperations)[number];
+
+export const adapterRoles = [
+  "parser",
+  "updater",
+  "signer",
+  "combiner",
+  "finalizer",
+  "extractor",
+] as const;
+
+export type AdapterRole = (typeof adapterRoles)[number];
+
+export const adapterScriptTypes = [
+  "p2pkh",
+  "p2sh-p2wpkh",
+  "p2wpkh",
+  "p2wsh",
+  "p2tr-keypath",
+  "p2tr-scriptpath",
+] as const;
+
+export type AdapterScriptType = (typeof adapterScriptTypes)[number];
+
+export type PsbtVersion = 0 | 2;
+
+export interface AdapterHelloCapabilities {
+  operations: AdapterOperation[];
+  roles: AdapterRole[];
+  psbtVersions: PsbtVersion[];
+  scriptTypes: AdapterScriptType[];
+  features?: string[];
+}
 
 export const adapterStatuses = ["ok", "unsupported", "rejected", "crashed", "timeout"] as const;
 
@@ -35,6 +68,11 @@ export interface AdapterImplementation {
   version: string;
   artifactDigest: string;
   sourceRevision?: string;
+}
+
+export interface NegotiatedAdapter {
+  implementation: AdapterImplementation;
+  capabilities: AdapterHelloCapabilities;
 }
 
 export interface AdapterError {

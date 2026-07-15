@@ -9,7 +9,7 @@ import sys
 from bdkpython import Psbt
 
 
-PROTOCOL = "psbt-lab.adapter/0.1"
+PROTOCOL = "psbt-lab.adapter/0.2"
 MAX_LINE_BYTES = 4 * 1024 * 1024
 SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 
@@ -141,8 +141,10 @@ def handle_request(value, digest):
             digest,
             {
                 "operations": ["hello", "inspect", "roundtrip", "finalize"],
+                "roles": ["parser", "finalizer"],
                 "psbtVersions": [0],
-                "historicalRegression": "bdk_wallet#488",
+                "scriptTypes": ["p2wsh"],
+                "features": ["historical-regression.bdk-wallet-488"],
             },
         )
 

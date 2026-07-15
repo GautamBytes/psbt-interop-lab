@@ -10,7 +10,8 @@ use bitcoin::{PublicKey, Witness};
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
 
-const PROTOCOL: &str = "psbt-lab.adapter/0.1";
+const PROTOCOL: &str = "psbt-lab.adapter/0.2";
+const MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
 const TEST_WIF: &str = "cMahea7zqjxrtgAbB7LSGbcQUr1uX1ojuat9jZodMN87JcbXMTcA";
 const ALLOWED_FIXTURES: [&str; 2] = ["happy-path", "bdk-finalize-regression"];
 
@@ -299,14 +300,16 @@ fn sign(request: &Request, digest: &str) -> Value {
     }
 }
 
-fn finalize_first_input(request: &Request, digest: &str) -> Value {
-    let (encoded, fixture_id) =
-        match validate_fixture_payload(request, &["psbt", "network", "fixtureId"]) {
-            Ok(values) => values,
-            Err((class, message)) => {
-                return failure(&request.id, digest, "rejected", class, message);
-            }
-        };
+fn finalize_inputs(request: &Request, digest: &str) -> Value {
+    let (encoded, fixture_id) = match validate_fixture_payload(
+        request,
+        &["psbt", "network", "fixtureId", "inputIndexes"],
+    ) {
+        Ok(values) => values,
+        Err((class, message)) => {
+            return failure(&request.id, digest, "rejected", class, message);
+        }
+    };
     if fixture_id != "bdk-finalize-regression" {
         return failure(
             &request.id,
@@ -325,6 +328,18 @@ fn finalize_first_input(request: &Request, digest: &str) -> Value {
                 "rejected",
                 "psbt.parse_failed",
                 &message,
+            );
+        }
+    };
+    let input_indexes = match requested_input_indexes(&request.payload, psbt.inputs.len()) {
+        Ok(indexes) => indexes,
+        Err(message) => {
+            return failure(
+                &request.id,
+                digest,
+                "rejected",
+                "protocol.invalid_payload",
+                message,
             );
         }
     };
@@ -349,53 +364,80 @@ fn finalize_first_input(request: &Request, digest: &str) -> Value {
             message,
         );
     }
-    let Some(input) = psbt.inputs.first_mut() else {
-        return failure(
-            &request.id,
-            digest,
-            "rejected",
-            "finalize.missing_input",
-            "Regression fixture has no first input",
-        );
-    };
-    let Some(signature) = input.partial_sigs.get(&public_key).cloned() else {
-        return failure(
-            &request.id,
-            digest,
-            "rejected",
-            "finalize.missing_signature",
-            "First input does not contain the fixture signature",
-        );
-    };
-    let Some(witness_script) = input.witness_script.clone() else {
-        return failure(
-            &request.id,
-            digest,
-            "rejected",
-            "finalize.missing_witness_script",
-            "First input does not contain its fixture witness script",
-        );
-    };
+    let mut final_witnesses = Vec::with_capacity(input_indexes.len());
+    for &index in &input_indexes {
+        let input = &psbt.inputs[index];
+        let Some(signature) = input.partial_sigs.get(&public_key).cloned() else {
+            return failure(
+                &request.id,
+                digest,
+                "rejected",
+                "finalize.missing_signature",
+                &format!("Input {index} does not contain the fixture signature"),
+            );
+        };
+        let Some(witness_script) = input.witness_script.clone() else {
+            return failure(
+                &request.id,
+                digest,
+                "rejected",
+                "finalize.missing_witness_script",
+                &format!("Input {index} does not contain its fixture witness script"),
+            );
+        };
+        final_witnesses.push(Witness::from_slice(&[
+            signature.to_vec(),
+            witness_script.as_bytes().to_vec(),
+        ]));
+    }
 
-    input.final_script_witness = Some(Witness::from_slice(&[
-        signature.to_vec(),
-        witness_script.as_bytes().to_vec(),
-    ]));
-    input.partial_sigs.clear();
-    input.sighash_type = None;
-    input.redeem_script = None;
-    input.witness_script = None;
-    input.bip32_derivation.clear();
+    for (&index, witness) in input_indexes.iter().zip(final_witnesses) {
+        let input = &mut psbt.inputs[index];
+        input.final_script_witness = Some(witness);
+        input.partial_sigs.clear();
+        input.sighash_type = None;
+        input.redeem_script = None;
+        input.witness_script = None;
+        input.bip32_derivation.clear();
+    }
 
     success(
         &request.id,
         digest,
         json!({
             "psbt": encoded_psbt(&psbt),
-            "finalizedInput": 0,
+            "finalizedInputs": input_indexes,
             "remainingPartialInputs": psbt.inputs.iter().filter(|item| !item.partial_sigs.is_empty()).count()
         }),
     )
+}
+
+fn requested_input_indexes(
+    payload: &Map<String, Value>,
+    input_count: usize,
+) -> Result<Vec<usize>, &'static str> {
+    let values = payload
+        .get("inputIndexes")
+        .and_then(Value::as_array)
+        .filter(|values| !values.is_empty())
+        .ok_or("inputIndexes must be a non-empty array")?;
+    let mut unique = BTreeSet::new();
+    let mut indexes = Vec::with_capacity(values.len());
+    for value in values {
+        let raw = value
+            .as_u64()
+            .filter(|index| *index <= MAX_SAFE_INTEGER)
+            .ok_or("inputIndexes must contain non-negative safe integers")?;
+        let index = usize::try_from(raw)
+            .ok()
+            .filter(|index| *index < input_count)
+            .ok_or("inputIndexes contains an out-of-range input")?;
+        if !unique.insert(index) {
+            return Err("inputIndexes must not contain duplicates");
+        }
+        indexes.push(index);
+    }
+    Ok(indexes)
 }
 
 pub fn handle_value(value: Value, digest: &str) -> Value {
@@ -427,9 +469,10 @@ pub fn handle_value(value: Value, digest: &str) -> Value {
             &request.id,
             digest,
             json!({
-                "operations": ["hello", "inspect", "roundtrip", "sign", "fixture-finalize-input"],
+                "operations": ["hello", "roundtrip", "sign", "finalize-inputs"],
+                "roles": ["parser", "signer", "finalizer"],
                 "psbtVersions": [0],
-                "signingPolicy": "regtest fixtures using the public scalar-one test key only"
+                "scriptTypes": ["p2wsh"]
             }),
         ),
         "hello" => failure(
@@ -439,49 +482,9 @@ pub fn handle_value(value: Value, digest: &str) -> Value {
             "protocol.invalid_payload",
             "hello expects an empty payload",
         ),
-        "inspect" => {
-            if !exact_fields(&request.payload, &["psbt"]) {
-                failure(
-                    &request.id,
-                    digest,
-                    "rejected",
-                    "protocol.invalid_payload",
-                    "inspect expects only a psbt field",
-                )
-            } else if let Some(encoded) = payload_string(&request.payload, "psbt") {
-                match parse_psbt(encoded) {
-                    Ok((_, psbt)) => success(
-                        &request.id,
-                        digest,
-                        json!({
-                            "psbtVersion": psbt.version,
-                            "inputs": psbt.inputs.len(),
-                            "outputs": psbt.outputs.len(),
-                            "finalizedInputs": psbt.inputs.iter().filter(|input| input.final_script_sig.is_some() || input.final_script_witness.is_some()).count(),
-                            "partialSignatureInputs": psbt.inputs.iter().filter(|input| !input.partial_sigs.is_empty()).count()
-                        }),
-                    ),
-                    Err(message) => failure(
-                        &request.id,
-                        digest,
-                        "rejected",
-                        "psbt.parse_failed",
-                        &message,
-                    ),
-                }
-            } else {
-                failure(
-                    &request.id,
-                    digest,
-                    "rejected",
-                    "protocol.invalid_payload",
-                    "psbt must be a base64 string",
-                )
-            }
-        }
         "roundtrip" => roundtrip(&request, digest),
         "sign" => sign(&request, digest),
-        "fixture-finalize-input" => finalize_first_input(&request, digest),
+        "finalize-inputs" => finalize_inputs(&request, digest),
         _ => failure(
             &request.id,
             digest,

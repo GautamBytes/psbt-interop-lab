@@ -24,7 +24,7 @@ function success(
   implementation: AdapterImplementation = IMPLEMENTATION,
 ): AdapterResponse {
   return {
-    protocol: "psbt-lab.adapter/0.1",
+    protocol: "psbt-lab.adapter/0.2",
     id: "request-1",
     status: "ok",
     implementation,
@@ -36,7 +36,9 @@ function hello(
   implementation: Partial<AdapterImplementation> = {},
   output: Record<string, JsonValue> = {
     operations: [...RUST_ADAPTER_CONTRACT.operations],
+    roles: [...RUST_ADAPTER_CONTRACT.roles],
     psbtVersions: [0],
+    scriptTypes: [...RUST_ADAPTER_CONTRACT.scriptTypes],
   },
 ): AdapterResponse {
   return success(output, { ...IMPLEMENTATION, ...implementation });
@@ -66,7 +68,15 @@ describe("adapter contracts", () => {
   });
 
   test("rejects a missing required operation", () => {
-    const response = hello({}, { operations: ["hello", "roundtrip"], psbtVersions: [0] });
+    const response = hello(
+      {},
+      {
+        operations: ["hello", "roundtrip"],
+        roles: [...RUST_ADAPTER_CONTRACT.roles],
+        psbtVersions: [0],
+        scriptTypes: [...RUST_ADAPTER_CONTRACT.scriptTypes],
+      },
+    );
     expect(() => assertAdapterHello(response, RUST_ADAPTER_CONTRACT)).toThrow(/operation sign/i);
   });
 
@@ -75,9 +85,45 @@ describe("adapter contracts", () => {
       {},
       {
         operations: [...RUST_ADAPTER_CONTRACT.operations],
+        roles: [...RUST_ADAPTER_CONTRACT.roles],
         psbtVersions: [2],
+        scriptTypes: [...RUST_ADAPTER_CONTRACT.scriptTypes],
       },
     );
     expect(() => assertAdapterHello(response, RUST_ADAPTER_CONTRACT)).toThrow(/PSBTv0/i);
+  });
+
+  test.each([
+    ["role", "roles", ["parser", "signer"]],
+    ["script type", "scriptTypes", ["p2wpkh"]],
+  ] as const)("rejects falsely declared required %s support", (_label, key, value) => {
+    const response = hello(
+      {},
+      {
+        operations: [...RUST_ADAPTER_CONTRACT.operations],
+        roles: [...RUST_ADAPTER_CONTRACT.roles],
+        psbtVersions: [...RUST_ADAPTER_CONTRACT.psbtVersions],
+        scriptTypes: [...RUST_ADAPTER_CONTRACT.scriptTypes],
+        [key]: [...value],
+      },
+    );
+
+    expect(() => assertAdapterHello(response, RUST_ADAPTER_CONTRACT)).toThrow(
+      /omitted|does not support/i,
+    );
+  });
+
+  test("returns typed negotiated capabilities", () => {
+    const negotiated = assertAdapterHello(hello(), RUST_ADAPTER_CONTRACT);
+
+    expect(negotiated).toEqual({
+      implementation: IMPLEMENTATION,
+      capabilities: {
+        operations: [...RUST_ADAPTER_CONTRACT.operations],
+        roles: [...RUST_ADAPTER_CONTRACT.roles],
+        psbtVersions: [...RUST_ADAPTER_CONTRACT.psbtVersions],
+        scriptTypes: [...RUST_ADAPTER_CONTRACT.scriptTypes],
+      },
+    });
   });
 });

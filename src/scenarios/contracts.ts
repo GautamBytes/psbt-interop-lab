@@ -1,8 +1,12 @@
+import { parseAdapterHelloCapabilities } from "../protocol/schema.js";
 import type {
   AdapterOperation,
   AdapterResponse,
+  AdapterRole,
+  AdapterScriptType,
   AdapterSuccessResponse,
-  JsonValue,
+  NegotiatedAdapter,
+  PsbtVersion,
 } from "../protocol/types.js";
 import { extractWireFacts } from "../psbt/wire-facts.js";
 
@@ -11,20 +15,31 @@ export interface ExpectedAdapterContract {
   version: string;
   sourceRevision: string;
   operations: readonly AdapterOperation[];
+  roles: readonly AdapterRole[];
+  psbtVersions: readonly PsbtVersion[];
+  scriptTypes: readonly AdapterScriptType[];
+  features?: readonly string[];
 }
 
 export const RUST_ADAPTER_CONTRACT = {
   name: "rust-bitcoin",
   version: "0.1.0",
   sourceRevision: "bitcoin-crate-0.32.101",
-  operations: ["hello", "roundtrip", "sign", "fixture-finalize-input"],
+  operations: ["hello", "roundtrip", "sign", "finalize-inputs"],
+  roles: ["parser", "signer", "finalizer"],
+  psbtVersions: [0],
+  scriptTypes: ["p2wsh"],
 } as const satisfies ExpectedAdapterContract;
 
 export const BDK_ADAPTER_CONTRACT = {
   name: "bdkpython",
   version: "2.3.1",
   sourceRevision: "bdk-ffi-v2.3.1",
-  operations: ["hello", "roundtrip", "finalize"],
+  operations: ["hello", "inspect", "roundtrip", "finalize"],
+  roles: ["parser", "finalizer"],
+  psbtVersions: [0],
+  scriptTypes: ["p2wsh"],
+  features: ["historical-regression.bdk-wallet-488"],
 } as const satisfies ExpectedAdapterContract;
 
 function requireSuccess(response: AdapterResponse, operation: string): AdapterSuccessResponse {
@@ -44,24 +59,10 @@ function outputString(response: AdapterSuccessResponse, key: string): string {
   return value;
 }
 
-function stringArray(value: JsonValue | undefined, label: string): string[] {
-  if (!Array.isArray(value) || value.some((entry) => typeof entry !== "string")) {
-    throw new Error(`Adapter hello omitted string array ${label}`);
-  }
-  return value as string[];
-}
-
-function numberArray(value: JsonValue | undefined, label: string): number[] {
-  if (!Array.isArray(value) || value.some((entry) => !Number.isSafeInteger(entry))) {
-    throw new Error(`Adapter hello omitted integer array ${label}`);
-  }
-  return value as number[];
-}
-
 export function assertAdapterHello(
   response: AdapterResponse,
   expected: ExpectedAdapterContract,
-): AdapterSuccessResponse {
+): NegotiatedAdapter {
   const success = requireSuccess(response, "hello");
   const implementation = success.implementation;
   if (implementation.name !== expected.name) throw new Error("Unexpected adapter name");
@@ -69,14 +70,37 @@ export function assertAdapterHello(
   if (implementation.sourceRevision !== expected.sourceRevision) {
     throw new Error(`Unexpected ${expected.name} source revision`);
   }
-  const operations = stringArray(success.output["operations"], "operations");
-  for (const operation of expected.operations) {
-    if (!operations.includes(operation))
-      throw new Error(`${expected.name} omitted operation ${operation}`);
+  const capabilities = parseAdapterHelloCapabilities(success.output);
+  requireCapabilities(expected.name, "operation", expected.operations, capabilities.operations);
+  requireCapabilities(expected.name, "role", expected.roles, capabilities.roles);
+  requireCapabilities(
+    expected.name,
+    "PSBT version",
+    expected.psbtVersions,
+    capabilities.psbtVersions,
+  );
+  requireCapabilities(expected.name, "script type", expected.scriptTypes, capabilities.scriptTypes);
+  requireCapabilities(
+    expected.name,
+    "feature",
+    expected.features ?? [],
+    capabilities.features ?? [],
+  );
+  return { implementation, capabilities };
+}
+
+function requireCapabilities<T extends string | number>(
+  adapterName: string,
+  label: string,
+  required: readonly T[],
+  declared: readonly T[],
+): void {
+  for (const capability of required) {
+    if (!declared.includes(capability)) {
+      const rendered = label === "PSBT version" ? `PSBTv${capability}` : `${label} ${capability}`;
+      throw new Error(`${adapterName} omitted required ${rendered}`);
+    }
   }
-  const versions = numberArray(success.output["psbtVersions"], "psbtVersions");
-  if (!versions.includes(0)) throw new Error(`${expected.name} does not support PSBTv0`);
-  return success;
 }
 
 export function assertByteIdenticalRoundtrip(

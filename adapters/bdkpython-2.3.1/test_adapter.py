@@ -9,7 +9,7 @@ DIGEST = "sha256:deadbeef"
 
 def request(operation, payload):
     return {
-        "protocol": "psbt-lab.adapter/0.1",
+        "protocol": "psbt-lab.adapter/0.2",
         "id": "test-1",
         "operation": operation,
         "payload": payload,
@@ -29,6 +29,30 @@ class AdapterTests(unittest.TestCase):
         self.assertEqual(response["status"], "ok")
         self.assertEqual(response["implementation"]["name"], "bdkpython")
         self.assertEqual(response["implementation"]["version"], "2.3.1")
+        self.assertEqual(
+            response["output"],
+            {
+                "operations": ["hello", "inspect", "roundtrip", "finalize"],
+                "roles": ["parser", "finalizer"],
+                "psbtVersions": [0],
+                "scriptTypes": ["p2wsh"],
+                "features": ["historical-regression.bdk-wallet-488"],
+            },
+        )
+
+    def test_known_unsupported_operations_have_a_stable_error(self):
+        for operation in ("sign", "combine", "finalize-inputs"):
+            with self.subTest(operation=operation):
+                response = handle_request(request(operation, {}), DIGEST)
+
+                self.assertEqual(response["status"], "unsupported")
+                self.assertEqual(response["error"]["class"], "operation.unsupported")
+
+    def test_removed_fixture_operation_is_unsupported(self):
+        response = handle_request(request("fixture-finalize-input", {}), DIGEST)
+
+        self.assertEqual(response["status"], "unsupported")
+        self.assertEqual(response["error"]["class"], "operation.unsupported")
 
     def test_roundtrips_psbt_v0(self):
         response = handle_request(

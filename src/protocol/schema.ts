@@ -1,9 +1,12 @@
 import { Ajv, type ErrorObject, type JSONSchemaType } from "ajv";
 import {
   ADAPTER_PROTOCOL,
+  type AdapterHelloCapabilities,
   type AdapterRequest,
   type AdapterResponse,
   adapterOperations,
+  adapterRoles,
+  adapterScriptTypes,
   adapterStatuses,
   type ValidationResult,
 } from "./types.js";
@@ -101,9 +104,52 @@ const responseSchema = {
   ],
 } as const;
 
+const helloCapabilitiesSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["operations", "roles", "psbtVersions", "scriptTypes"],
+  properties: {
+    operations: {
+      type: "array",
+      minItems: 1,
+      maxItems: adapterOperations.length,
+      uniqueItems: true,
+      items: { type: "string", enum: [...adapterOperations] },
+    },
+    roles: {
+      type: "array",
+      minItems: 1,
+      maxItems: adapterRoles.length,
+      uniqueItems: true,
+      items: { type: "string", enum: [...adapterRoles] },
+    },
+    psbtVersions: {
+      type: "array",
+      minItems: 1,
+      maxItems: 2,
+      uniqueItems: true,
+      items: { type: "integer", enum: [0, 2] },
+    },
+    scriptTypes: {
+      type: "array",
+      minItems: 1,
+      maxItems: adapterScriptTypes.length,
+      uniqueItems: true,
+      items: { type: "string", enum: [...adapterScriptTypes] },
+    },
+    features: {
+      type: "array",
+      maxItems: 64,
+      uniqueItems: true,
+      items: { type: "string", pattern: safeIdentifierPattern },
+    },
+  },
+} as const;
+
 const ajv = new Ajv({ allErrors: true, strict: true });
 const validateRequest = ajv.compile(requestSchema);
 const validateResponse = ajv.compile<AdapterResponse>(responseSchema);
+const validateHelloCapabilities = ajv.compile<AdapterHelloCapabilities>(helloCapabilitiesSchema);
 
 function describeErrors(errors: ErrorObject[] | null | undefined): string[] {
   return (errors ?? []).map((error) => {
@@ -122,4 +168,18 @@ export function validateAdapterResponse(value: unknown): ValidationResult {
   return validateResponse(value)
     ? { ok: true }
     : { ok: false, errors: describeErrors(validateResponse.errors) };
+}
+
+export function parseAdapterHelloCapabilities(value: unknown): AdapterHelloCapabilities {
+  if (!validateHelloCapabilities(value)) {
+    const errors = describeErrors(validateHelloCapabilities.errors).join("; ");
+    throw new Error(`Invalid adapter hello capabilities: ${errors}`);
+  }
+  return {
+    operations: [...value.operations],
+    roles: [...value.roles],
+    psbtVersions: [...value.psbtVersions],
+    scriptTypes: [...value.scriptTypes],
+    ...(value.features === undefined ? {} : { features: [...value.features] }),
+  };
 }

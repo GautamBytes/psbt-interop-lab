@@ -20,7 +20,7 @@ for await (const line of lines) {
   const id = mode === "wrong-id" ? "different-id" : request.id;
   process.stdout.write(
     `${JSON.stringify({
-      protocol: "psbt-lab.adapter/0.1",
+      protocol: "psbt-lab.adapter/0.2",
       id,
       status: "ok",
       implementation: {
