@@ -1,7 +1,8 @@
-import { createHash } from "node:crypto";
+import { createHash, ECDH } from "node:crypto";
 import { CompactSizeError, readCompactSize } from "./compact-size.js";
 
 const PSBT_MAGIC = Buffer.from("70736274ff", "hex");
+const TAPROOT_EXPLICIT_SIGHASH_TYPES = new Set([0x01, 0x02, 0x03, 0x81, 0x82, 0x83]);
 
 export type PsbtDocumentErrorCode =
   | "INVALID_PSBT"
@@ -185,6 +186,68 @@ function assertSerializedPubkey(
   }
 }
 
+function isValidSecp256k1PublicKey(publicKey: Buffer): boolean {
+  try {
+    ECDH.convertKey(publicKey, "secp256k1", undefined, undefined, "compressed");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function assertSerializedExtendedPublicKey(
+  entry: InternalEntry,
+  location: PsbtMapLocation,
+  label: string,
+): void {
+  assertKeyDataLength(entry, location, label, 78);
+  const publicKey = entry.keyData.subarray(45);
+  if (publicKey.every((byte) => byte === 0)) {
+    invalidField(location, entry, label, "public key payload must not be all zero");
+  }
+
+  const marker = publicKey[0];
+  if (marker !== 0x02 && marker !== 0x03) {
+    invalidField(location, entry, label, "key data must contain a compressed public key");
+  }
+  if (!isValidSecp256k1PublicKey(publicKey)) {
+    invalidField(location, entry, label, "key data contains an invalid secp256k1 public key");
+  }
+
+  const depth = entry.keyData[4] as number;
+  if (depth === 0 && entry.keyData.subarray(5, 13).some((byte) => byte !== 0)) {
+    invalidField(location, entry, label, "master key metadata must be zero");
+  }
+}
+
+function assertXOnlyPublicKey(
+  publicKey: Buffer,
+  entry: InternalEntry,
+  location: PsbtMapLocation,
+  label: string,
+): void {
+  if (
+    publicKey.byteLength !== 32 ||
+    !isValidSecp256k1PublicKey(Buffer.concat([Buffer.from([0x02]), publicKey]))
+  ) {
+    invalidField(location, entry, label, "contains an invalid x-only secp256k1 public key");
+  }
+}
+
+function assertTaprootSignature(
+  entry: InternalEntry,
+  location: PsbtMapLocation,
+  label: string,
+): void {
+  assertValueLengths(entry, location, label, [64, 65]);
+  if (
+    entry.value.byteLength === 65 &&
+    !TAPROOT_EXPLICIT_SIGHASH_TYPES.has(entry.value[64] as number)
+  ) {
+    invalidField(location, entry, label, "value contains an invalid explicit sighash type");
+  }
+}
+
 function assertDerivationValue(
   entry: InternalEntry,
   location: PsbtMapLocation,
@@ -293,7 +356,19 @@ function assertTaprootControlBlock(
   if (length < 33 || length > 33 + 32 * 128 || (length - 33) % 32 !== 0) {
     invalidField(location, entry, label, "key data is not a taproot control block");
   }
+  assertXOnlyPublicKey(entry.keyData.subarray(1, 33), entry, location, label);
   assertNonEmptyValue(entry, location, label);
+}
+
+function assertTaprootLeafVersion(
+  entry: InternalEntry,
+  location: PsbtMapLocation,
+  label: string,
+  leafVersion: number,
+): void {
+  if ((leafVersion & 1) !== 0 || leafVersion === 0x50) {
+    invalidField(location, entry, label, "value contains an invalid taproot leaf version");
+  }
 }
 
 function assertTaprootTree(entry: InternalEntry, location: PsbtMapLocation, label: string): void {
@@ -302,15 +377,38 @@ function assertTaprootTree(entry: InternalEntry, location: PsbtMapLocation, labe
     invalidField(location, entry, label, "value must contain at least one leaf");
   }
   let offset = 0;
+  const subtreeDepths: number[] = [];
   while (offset < entry.value.byteLength) {
     if (offset + 2 > entry.value.byteLength) {
       invalidField(location, entry, label, "value has a truncated taproot leaf");
     }
+    const depth = entry.value[offset] as number;
+    const leafVersion = entry.value[offset + 1] as number;
+    if (depth > 128) {
+      invalidField(location, entry, label, "value contains a taproot leaf depth greater than 128");
+    }
+    assertTaprootLeafVersion(entry, location, label, leafVersion);
     const scriptLength = readFieldCompactSize(entry, location, label, offset + 2);
     offset = scriptLength.nextOffset + scriptLength.value;
     if (offset > entry.value.byteLength) {
       invalidField(location, entry, label, "value has a truncated taproot leaf");
     }
+
+    subtreeDepths.push(depth);
+    while (
+      subtreeDepths.length >= 2 &&
+      subtreeDepths[subtreeDepths.length - 1] === subtreeDepths[subtreeDepths.length - 2]
+    ) {
+      const childDepth = subtreeDepths.pop() as number;
+      subtreeDepths.pop();
+      if (childDepth === 0) {
+        invalidField(location, entry, label, "value does not encode one binary taproot tree");
+      }
+      subtreeDepths.push(childDepth - 1);
+    }
+  }
+  if (subtreeDepths.length !== 1 || subtreeDepths[0] !== 0) {
+    invalidField(location, entry, label, "value does not encode one binary taproot tree");
   }
 }
 
@@ -456,7 +554,7 @@ function validateGlobalMap(entries: InternalEntry[], version: number): void {
         assertNoKeyData(entry, location, "PSBT_GLOBAL_UNSIGNED_TX");
         break;
       case 0x01: {
-        assertKeyDataLength(entry, location, "PSBT_GLOBAL_XPUB", 78);
+        assertSerializedExtendedPublicKey(entry, location, "PSBT_GLOBAL_XPUB");
         assertDerivationValue(entry, location, "PSBT_GLOBAL_XPUB");
         const depth = entry.keyData[4] as number;
         if ((entry.value.byteLength - 4) / 4 !== depth) {
@@ -597,18 +695,17 @@ function validateInputMap(map: InternalMap, version: number): void {
       }
       case 0x13:
         assertNoKeyData(entry, location, "PSBT_IN_TAP_KEY_SIG");
-        assertValueLengths(entry, location, "PSBT_IN_TAP_KEY_SIG", [64, 65]);
+        assertTaprootSignature(entry, location, "PSBT_IN_TAP_KEY_SIG");
         break;
       case 0x14:
         assertKeyDataLength(entry, location, "PSBT_IN_TAP_SCRIPT_SIG", 64);
-        assertValueLengths(entry, location, "PSBT_IN_TAP_SCRIPT_SIG", [64, 65]);
+        assertTaprootSignature(entry, location, "PSBT_IN_TAP_SCRIPT_SIG");
         break;
-      case 0x15:
+      case 0x15: {
         assertTaprootControlBlock(entry, location, "PSBT_IN_TAP_LEAF_SCRIPT");
-        if (
-          ((entry.keyData[0] as number) & 0xfe) !==
-          (entry.value[entry.value.byteLength - 1] as number)
-        ) {
+        const leafVersion = entry.value[entry.value.byteLength - 1] as number;
+        assertTaprootLeafVersion(entry, location, "PSBT_IN_TAP_LEAF_SCRIPT", leafVersion);
+        if (((entry.keyData[0] as number) & 0xfe) !== leafVersion) {
           invalidField(
             location,
             entry,
@@ -617,12 +714,14 @@ function validateInputMap(map: InternalMap, version: number): void {
           );
         }
         break;
+      }
       case 0x16:
         assertTaprootDerivation(entry, location, "PSBT_IN_TAP_BIP32_DERIVATION");
         break;
       case 0x17:
         assertNoKeyData(entry, location, "PSBT_IN_TAP_INTERNAL_KEY");
         assertValueLength(entry, location, "PSBT_IN_TAP_INTERNAL_KEY", 32);
+        assertXOnlyPublicKey(entry.value, entry, location, "PSBT_IN_TAP_INTERNAL_KEY");
         break;
       case 0x18:
         assertNoKeyData(entry, location, "PSBT_IN_TAP_MERKLE_ROOT");
@@ -668,6 +767,7 @@ function validateOutputMap(map: InternalMap, version: number): void {
       case 0x05:
         assertNoKeyData(entry, location, "PSBT_OUT_TAP_INTERNAL_KEY");
         assertValueLength(entry, location, "PSBT_OUT_TAP_INTERNAL_KEY", 32);
+        assertXOnlyPublicKey(entry.value, entry, location, "PSBT_OUT_TAP_INTERNAL_KEY");
         break;
       case 0x06:
         assertTaprootTree(entry, location, "PSBT_OUT_TAP_TREE");

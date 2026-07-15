@@ -23,6 +23,10 @@ function compressedPubkey(fill = 0x02): Buffer {
 }
 
 const proprietaryKeyData = Buffer.from("036c616201", "hex");
+const taprootInternalKey = Buffer.from(
+  "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+  "hex",
+);
 
 function unsignedTransaction(outputScript = Buffer.from("51", "hex")): Buffer {
   return Buffer.concat([
@@ -295,7 +299,7 @@ describe("finalize policy", () => {
           entry(
             0x15,
             Buffer.from([0x51, 0xc0]),
-            Buffer.concat([Buffer.from([0xc0]), Buffer.alloc(32, 0x06)]),
+            Buffer.concat([Buffer.from([0xc0]), taprootInternalKey]),
           ),
         ],
       }),

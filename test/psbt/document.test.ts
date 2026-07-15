@@ -8,6 +8,12 @@ import {
 } from "../../src/psbt/document.js";
 
 const magic = Buffer.from("70736274ff", "hex");
+const secp256k1Generator = Buffer.from(
+  "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+  "hex",
+);
+const secp256k1GeneratorX = secp256k1Generator.subarray(1);
+const invalidSecp256k1X = Buffer.concat([Buffer.alloc(31), Buffer.from([0x07])]);
 
 // Published BIP370 vectors: https://bips.dev/370/
 const bip370ValidRequiredFields =
@@ -48,12 +54,16 @@ function unsignedTransaction(): Buffer {
   ]);
 }
 
-function psbtV0(globalEntries: Buffer[] = [], inputEntries: Buffer[] = []): Buffer {
+function psbtV0(
+  globalEntries: Buffer[] = [],
+  inputEntries: Buffer[] = [],
+  outputEntries: Buffer[] = [],
+): Buffer {
   return Buffer.concat([
     magic,
     map(entry(0x00, unsignedTransaction()), ...globalEntries),
     map(...inputEntries),
-    map(),
+    map(...outputEntries),
   ]);
 }
 
@@ -87,6 +97,51 @@ function validV2Output(): Buffer[] {
     entry(0x03, Buffer.from("1027000000000000", "hex")),
     entry(0x04, Buffer.from("51", "hex")),
   ];
+}
+
+interface XpubOptions {
+  version?: Buffer;
+  depth?: number;
+  parentFingerprint?: Buffer;
+  childNumber?: number;
+  publicKey?: Buffer;
+}
+
+function serializedXpub(options: XpubOptions = {}): Buffer {
+  const xpub = Buffer.alloc(78);
+  (options.version ?? Buffer.from("0488b21e", "hex")).copy(xpub, 0);
+  xpub[4] = options.depth ?? 0;
+  (options.parentFingerprint ?? Buffer.alloc(4)).copy(xpub, 5);
+  xpub.writeUInt32BE(options.childNumber ?? 0, 9);
+  Buffer.alloc(32, 0x11).copy(xpub, 13);
+  (options.publicKey ?? secp256k1Generator).copy(xpub, 45);
+  return xpub;
+}
+
+type TapTreeLeaf = readonly [depth: number, leafVersion: number, script: Buffer];
+
+// BIP371 PSBT_OUT_TAP_TREE values are depth-first leaf tuples.
+function tapTree(...leaves: TapTreeLeaf[]): Buffer {
+  return Buffer.concat(
+    leaves.map(([depth, leafVersion, script]) =>
+      Buffer.concat([Buffer.from([depth, leafVersion, script.byteLength]), script]),
+    ),
+  );
+}
+
+function taprootControlBlock(
+  internalKey: Buffer = secp256k1GeneratorX,
+  leafVersion = 0xc0,
+): Buffer {
+  return Buffer.concat([Buffer.from([leafVersion]), internalKey]);
+}
+
+function taprootSignature(sighashType?: number): Buffer {
+  const signature = Buffer.alloc(sighashType === undefined ? 64 : 65, 0x22);
+  if (sighashType !== undefined) {
+    signature[64] = sighashType;
+  }
+  return signature;
 }
 
 function replaceEntry(entries: Buffer[], index: number, replacement: Buffer): Buffer[] {
@@ -481,6 +536,206 @@ describe("parsePsbtDocument", () => {
       "INVALID_FIELD",
       { kind: "input", index: 0 },
       0x12,
+    );
+  });
+
+  test("accepts serialized global xpubs with either compressed parity and unknown versions", () => {
+    const unknownVersion = Buffer.from("deadbeef", "hex");
+    const oddGenerator = Buffer.concat([Buffer.from([0x03]), secp256k1GeneratorX]);
+    const root = entry(0x01, Buffer.alloc(4), serializedXpub({ version: unknownVersion }));
+    const child = entry(
+      0x01,
+      Buffer.alloc(8),
+      serializedXpub({
+        version: unknownVersion,
+        depth: 1,
+        parentFingerprint: Buffer.from("01020304", "hex"),
+        childNumber: 1,
+        publicKey: oddGenerator,
+      }),
+    );
+
+    expect(() => parsePsbtDocument(psbtV0([root, child]).toString("base64"))).not.toThrow();
+  });
+
+  test.each([
+    [
+      "private marker",
+      serializedXpub({
+        publicKey: Buffer.concat([Buffer.from([0x00]), Buffer.alloc(31), Buffer.from([0x01])]),
+      }),
+    ],
+    ["uncompressed marker", serializedXpub({ publicKey: Buffer.alloc(33, 0x04) })],
+    ["all-zero public-key payload", serializedXpub({ publicKey: Buffer.alloc(33) })],
+    [
+      "invalid compressed point",
+      serializedXpub({
+        publicKey: Buffer.concat([Buffer.from([0x02]), invalidSecp256k1X]),
+      }),
+    ],
+    [
+      "master parent fingerprint",
+      serializedXpub({ parentFingerprint: Buffer.from("01000000", "hex") }),
+    ],
+    ["master child number", serializedXpub({ childNumber: 1 })],
+  ] as const)("rejects a global xpub with an invalid %s", (_name, xpub) => {
+    expectDocumentError(
+      psbtV0([entry(0x01, Buffer.alloc(4), Buffer.from(xpub))]),
+      "INVALID_FIELD",
+      { kind: "global" },
+      0x01,
+    );
+  });
+
+  test.each([
+    ["single-leaf", tapTree([0, 0xc0, Buffer.from([0x51])])],
+    [
+      "balanced",
+      tapTree(
+        [2, 0xc0, Buffer.from([0x51])],
+        [2, 0xc0, Buffer.from([0x52])],
+        [2, 0xc0, Buffer.from([0x53])],
+        [2, 0xc0, Buffer.from([0x54])],
+      ),
+    ],
+    [
+      "unbalanced",
+      tapTree(
+        [1, 0xc0, Buffer.from([0x51])],
+        [2, 0xc0, Buffer.from([0x52])],
+        [2, 0xc0, Buffer.from([0x53])],
+      ),
+    ],
+  ] as const)("accepts a valid BIP371 %s depth-first tap tree", (_name, tree) => {
+    const document = parsePsbtDocument(
+      psbtV0([], [], [entry(0x06, Buffer.from(tree))]).toString("base64"),
+    );
+
+    expect(document.maps[2]?.entries[0]?.keyType).toBe(0x06);
+  });
+
+  test.each([
+    ["single depth-1 leaf", tapTree([1, 0xc0, Buffer.from([0x51])])],
+    [
+      "impossible depth order",
+      tapTree(
+        [2, 0xc0, Buffer.from([0x51])],
+        [1, 0xc0, Buffer.from([0x52])],
+        [2, 0xc0, Buffer.from([0x53])],
+      ),
+    ],
+    ["odd leaf version", tapTree([0, 0xc1, Buffer.from([0x51])])],
+    ["reserved leaf version", tapTree([0, 0x50, Buffer.from([0x51])])],
+    ["depth above 128", tapTree([129, 0xc0, Buffer.from([0x51])])],
+  ] as const)("rejects a BIP371 tap tree with %s", (_name, tree) => {
+    expectDocumentError(
+      psbtV0([], [], [entry(0x06, Buffer.from(tree))]),
+      "INVALID_FIELD",
+      { kind: "output", index: 0 },
+      0x06,
+    );
+  });
+
+  test("accepts liftable BIP341 internal and control-block keys", () => {
+    const document = parsePsbtDocument(
+      psbtV0(
+        [],
+        [
+          entry(0x17, secp256k1GeneratorX),
+          entry(0x15, Buffer.from([0x51, 0xc0]), taprootControlBlock(secp256k1GeneratorX)),
+        ],
+        [entry(0x05, secp256k1GeneratorX)],
+      ).toString("base64"),
+    );
+
+    expect(document.maps[1]?.entries).toHaveLength(2);
+    expect(document.maps[2]?.entries).toHaveLength(1);
+  });
+
+  test.each([
+    {
+      name: "input internal key",
+      psbt: () => psbtV0([], [entry(0x17, invalidSecp256k1X)]),
+      location: { kind: "input", index: 0 } as const,
+      keyType: 0x17,
+    },
+    {
+      name: "output internal key",
+      psbt: () => psbtV0([], [], [entry(0x05, Buffer.alloc(32))]),
+      location: { kind: "output", index: 0 } as const,
+      keyType: 0x05,
+    },
+    {
+      name: "control-block internal key",
+      psbt: () =>
+        psbtV0(
+          [],
+          [entry(0x15, Buffer.from([0x51, 0xc0]), taprootControlBlock(invalidSecp256k1X))],
+        ),
+      location: { kind: "input", index: 0 } as const,
+      keyType: 0x15,
+    },
+    {
+      name: "reserved control-block leaf version",
+      psbt: () =>
+        psbtV0(
+          [],
+          [entry(0x15, Buffer.from([0x51, 0x50]), taprootControlBlock(secp256k1GeneratorX, 0x50))],
+        ),
+      location: { kind: "input", index: 0 } as const,
+      keyType: 0x15,
+    },
+  ])("rejects an invalid BIP341 $name", ({ psbt, location, keyType }) => {
+    expectDocumentError(psbt(), "INVALID_FIELD", location, keyType);
+  });
+
+  test.each([
+    ["default", undefined],
+    ["all", 0x01],
+    ["none", 0x02],
+    ["single", 0x03],
+    ["all anyone-can-pay", 0x81],
+    ["none anyone-can-pay", 0x82],
+    ["single anyone-can-pay", 0x83],
+  ] as const)("accepts a Taproot signature using SIGHASH_%s", (_name, sighashType) => {
+    expect(() =>
+      parsePsbtDocument(
+        psbtV0([], [entry(0x13, taprootSignature(sighashType))]).toString("base64"),
+      ),
+    ).not.toThrow();
+  });
+
+  test("accepts an explicit valid sighash byte on a Taproot script signature", () => {
+    const keyData = Buffer.concat([secp256k1GeneratorX, Buffer.alloc(32, 0x33)]);
+
+    expect(() =>
+      parsePsbtDocument(
+        psbtV0([], [entry(0x14, taprootSignature(0x83), keyData)]).toString("base64"),
+      ),
+    ).not.toThrow();
+  });
+
+  test.each([
+    ["key signature with explicit default", 0x13, 0x00, Buffer.alloc(0)],
+    ["key signature with undefined type", 0x13, 0x04, Buffer.alloc(0)],
+    [
+      "script signature with explicit default",
+      0x14,
+      0x00,
+      Buffer.concat([secp256k1GeneratorX, Buffer.alloc(32, 0x33)]),
+    ],
+    [
+      "script signature with undefined type",
+      0x14,
+      0x80,
+      Buffer.concat([secp256k1GeneratorX, Buffer.alloc(32, 0x33)]),
+    ],
+  ] as const)("rejects a Taproot %s", (_name, keyType, sighashType, keyData) => {
+    expectDocumentError(
+      psbtV0([], [entry(keyType, taprootSignature(sighashType), Buffer.from(keyData))]),
+      "INVALID_FIELD",
+      { kind: "input", index: 0 },
+      keyType,
     );
   });
 
