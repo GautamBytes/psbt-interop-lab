@@ -4,7 +4,7 @@ PSBT Interop Lab is a local, deterministic developer tool for testing whether Bi
 implementations preserve, sign, and finalize the same Partially Signed Bitcoin Transaction
 (PSBT) correctly.
 
-The MVP is deliberately narrow. It proves the hardest part of the product with real software:
+The proof suite exercises the complete handoff with real software:
 
 1. Bitcoin Core 31.1 creates a funded PSBTv0 on regtest.
 2. A native `rust-bitcoin` 0.32.101 adapter round-trips and signs it.
@@ -124,16 +124,13 @@ This is test infrastructure, not a wallet or signer:
 Read [SECURITY.md](SECURITY.md) and the
 [threat model](psbt-interop-lab-threat-model.md) before extending the signing surface.
 
-## MVP Boundary And Grant Scope
+## Current Coverage
 
-This repository is a complete proof MVP, not yet the full compatibility product. The next funded
-stage should turn the proof runner into a reusable lab: a documented adapter SDK, a shared scenario
-format, field-level transition diffs, invariant checks, PSBTv0 and PSBTv2 corpora, more libraries and
-versions, mutation cases, and CI-native reports. Hardware-wallet testing can remain optional and is
-not required for the software-first grant scope.
+The `proof` suite covers a Core-created PSBTv0 happy path and the BDK 2.3.1 finalization regression.
+The runner, adapter protocol, artifact format, and replay command provide the base for adding more
+libraries, versions, PSBT corpora, transition invariants, mutation cases, and CI report formats.
 
-See [the architecture](docs/architecture.md), [official source ledger](docs/sources.md), and
-[implementation record](docs/superpowers/plans/2026-07-15-mvp.md).
+See [the architecture](docs/architecture.md) and [official source ledger](docs/sources.md).
 
 ## Development
 

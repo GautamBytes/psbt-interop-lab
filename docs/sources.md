@@ -12,8 +12,8 @@ Python requirement.
   key-value maps, minimally encoded CompactSize values, unique complete keys, creator/updater/signer
   roles, and PSBTv0 fields.
 - [BIP370: PSBT Version 2](https://bips.dev/370/) defines PSBTv2's global input/output counts and
-  per-input/per-output transaction fields. The wire parser recognizes its map framing, but the MVP
-  proof scenarios intentionally use Core-created PSBTv0.
+  per-input/per-output transaction fields. The wire parser recognizes its map framing, while the
+  current proof scenarios use Core-created PSBTv0.
 
 ## Bitcoin Core
 
@@ -52,7 +52,7 @@ Python requirement.
 - [BDK wallet issue #488](https://github.com/bitcoindevkit/bdk_wallet/issues/488) documents the
   `PSBT is missing witness script` failure when finalization encounters an already-finalized input,
   and confirms that Core can finalize the same PSBT. The upstream discussion records the fix in
-  rust-miniscript 12.3.7 and bdkpython 3.0.0. This MVP keeps 2.3.1 only as a regression specimen.
+  rust-miniscript 12.3.7 and bdkpython 3.0.0. The suite keeps 2.3.1 only as a regression specimen.
 
 ## Tooling
 

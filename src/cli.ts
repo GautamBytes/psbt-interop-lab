@@ -136,7 +136,7 @@ export function createProgram(): Command {
     .option("--no-start-core", "Use an already-running Core instance")
     .action(async (options: RunOptions) => {
       if (options.suite !== "proof") {
-        throw new Error(`Unknown suite ${options.suite}; the MVP provides only proof`);
+        throw new Error(`Unknown suite ${options.suite}; the available suite is proof`);
       }
       await prepareRuntime(options);
       const rpc = new CoreRpc({

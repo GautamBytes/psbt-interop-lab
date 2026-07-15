@@ -5,7 +5,7 @@ intentionally smaller than a general-purpose wallet tool.
 
 ## Supported Use
 
-Use this MVP only with its generated regtest fixtures on a development machine. Do not pass it a
+Use this tool only with its generated regtest fixtures on a development machine. Do not pass it a
 mainnet PSBT, import a real seed, reuse the fixture key for funds, expose Core RPC to another host,
 or treat a passing result as a security audit of an implementation.
 

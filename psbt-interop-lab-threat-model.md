@@ -2,7 +2,7 @@
 
 ## 1. Executive Summary
 
-This model covers the local generated-regtest MVP and its separate GitHub-hosted build pipeline.
+This model covers the local generated-regtest workflow and its separate GitHub-hosted build pipeline.
 Under the confirmed assumptions, no high or critical runtime threat remains: one trusted developer
 runs the CLI from a trusted host account and Docker daemon, and the signer uses only a public,
 valueless regtest key. The main security objectives are proof-result integrity, containment of the

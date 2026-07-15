@@ -92,7 +92,7 @@ fn parse_psbt(encoded: &str) -> Result<(Vec<u8>, Psbt), String> {
     }
     let psbt = Psbt::deserialize(&bytes).map_err(|error| format!("Invalid PSBT: {error}"))?;
     if psbt.version != 0 {
-        return Err("The MVP Rust signer supports PSBTv0 only".to_owned());
+        return Err("The Rust signer supports PSBTv0 only".to_owned());
     }
     Ok((bytes, psbt))
 }

@@ -2,7 +2,7 @@
 
 ## Design Goal
 
-The MVP answers one concrete question: can several real Bitcoin implementations hand the same PSBT
+The proof suite answers one concrete question: can several real Bitcoin implementations hand the same PSBT
 to one another and still produce a transaction that Bitcoin Core can finalize and accept under
 policy? It does not reimplement wallet logic in TypeScript. The orchestrator controls the run while
 each native library parses and acts on the PSBT itself.
@@ -125,7 +125,7 @@ only under the trusted-image scope.
 
 ## Extension Points
 
-A grant-funded implementation can add adapters without changing scenario semantics. The next
-interfaces should be a public adapter conformance kit, a declarative scenario format, transition
-invariants, and a normalized diff model. New implementations can then be compared by capability and
-version while raw PSBT bytes remain the source of truth.
+New adapters can be added without changing scenario semantics. The extension interfaces are an
+adapter conformance kit, a declarative scenario format, transition invariants, and a normalized diff
+model. Implementations can then be compared by capability and version while raw PSBT bytes remain
+the source of truth.
