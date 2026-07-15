@@ -1,3 +1,4 @@
+import { parsePsbtDocument } from "../psbt/document.js";
 import { extractWireFacts } from "../psbt/wire-facts.js";
 import {
   FIXTURE_DESCRIPTORS,
@@ -12,6 +13,14 @@ const COINBASE_MATURITY_BLOCKS = 100;
 const LEGACY_SINGLE_KEY_UTXOS = 3;
 const LEGACY_DESCRIPTOR_ID = "p2wsh-single-key" as const;
 const DEFAULT_GENERATE_MAX_TRIES = 1_000_000;
+const SINGLE_KEY_WITNESS_SCRIPT = `21${FIXTURE_PUBLIC_KEYS.scalar1}ac`;
+const MULTISIG_WITNESS_SCRIPT =
+  `5221${FIXTURE_PUBLIC_KEYS.scalar1}21${FIXTURE_PUBLIC_KEYS.scalar2}` +
+  `21${FIXTURE_PUBLIC_KEYS.scalar3}53ae`;
+const EXPECTED_WITNESS_SCRIPTS = {
+  "p2wsh-single-key": SINGLE_KEY_WITNESS_SCRIPT,
+  "p2wsh-2-of-3": MULTISIG_WITNESS_SCRIPT,
+} as const satisfies Partial<Record<FixtureDescriptorId, string>>;
 export const BITCOIN_CORE_VERSION = 310100;
 
 export interface RpcCaller {
@@ -44,6 +53,7 @@ export interface PsbtFixture {
   psbtVersion: 0;
   transactionId: string;
   psbtSha256: string;
+  unsignedTxSha256: `sha256:${string}`;
 }
 
 export interface PreparedFixtures {
@@ -80,6 +90,7 @@ interface CanonicalDescriptor {
   id: FixtureDescriptorId;
   descriptor: string;
   address: string;
+  scriptPubKey: string;
 }
 
 interface ScanUnspent {
@@ -114,6 +125,17 @@ function assertHex(value: unknown, bytes: number, label: string): string {
     throw new Error(`${label} is invalid`);
   }
   return value.toLowerCase();
+}
+
+function parseScriptHex(value: unknown, label: string): string {
+  if (typeof value !== "string" || value.length === 0 || !/^(?:[0-9a-f]{2})+$/i.test(value)) {
+    throw new Error(`${label} is invalid`);
+  }
+  return value.toLowerCase();
+}
+
+function parseDecodedScript(value: unknown, label: string): string {
+  return parseScriptHex(assertObject(value, label)["hex"], `${label} hex`);
 }
 
 function parseBlockchainInfo(value: unknown): BlockchainInfo {
@@ -164,6 +186,33 @@ function parseAddress(value: unknown, label: string): string {
     throw new Error(`${label} did not return one regtest witness address`);
   }
   return value;
+}
+
+function parseValidatedScriptPubKey(
+  value: unknown,
+  id: FixtureDescriptorId,
+  address: string,
+): string {
+  const object = assertObject(value, `validateaddress ${id}`);
+  const scriptPubKey = object["scriptPubKey"];
+  const witnessVersion = id === "p2tr-keypath" ? 1 : 0;
+  const expectedScriptPattern =
+    id === "p2tr-keypath"
+      ? /^5120[0-9a-f]{64}$/i
+      : id === "p2wpkh"
+        ? /^0014[0-9a-f]{40}$/i
+        : /^0020[0-9a-f]{64}$/i;
+  if (
+    object["isvalid"] !== true ||
+    object["address"] !== address ||
+    object["iswitness"] !== true ||
+    object["witness_version"] !== witnessVersion ||
+    typeof scriptPubKey !== "string" ||
+    !expectedScriptPattern.test(scriptPubKey)
+  ) {
+    throw new Error(`validateaddress returned invalid script metadata for ${id}`);
+  }
+  return scriptPubKey.toLowerCase();
 }
 
 function parseScan(value: unknown): ScanResult {
@@ -249,12 +298,18 @@ async function canonicalizeDescriptors(
         if (!Array.isArray(addresses) || addresses.length !== 1) {
           throw new Error(`deriveaddresses did not return one fixture address for ${id}`);
         }
+        const address = parseAddress(addresses[0], `deriveaddresses ${id}`);
         return [
           id,
           {
             id,
             descriptor: descriptorInfo.descriptor,
-            address: parseAddress(addresses[0], `deriveaddresses ${id}`),
+            address,
+            scriptPubKey: parseValidatedScriptPubKey(
+              await rpc.call("validateaddress", { address }),
+              id,
+              address,
+            ),
           },
         ] as const;
       },
@@ -340,11 +395,10 @@ async function scanAllFixtureUtxos(
   descriptors: Record<FixtureDescriptorId, CanonicalDescriptor>,
   blocks: number,
 ): Promise<Record<FixtureDescriptorId, FixtureOutpoint[]>> {
-  const entries = await Promise.all(
-    (Object.keys(descriptors) as FixtureDescriptorId[]).map(
-      async (id) => [id, await scanFixtureUtxos(rpc, descriptors[id].descriptor, blocks)] as const,
-    ),
-  );
+  const entries: Array<readonly [FixtureDescriptorId, FixtureOutpoint[]]> = [];
+  for (const id of Object.keys(descriptors) as FixtureDescriptorId[]) {
+    entries.push([id, await scanFixtureUtxos(rpc, descriptors[id].descriptor, blocks)]);
+  }
   return Object.fromEntries(entries) as Record<FixtureDescriptorId, FixtureOutpoint[]>;
 }
 
@@ -412,11 +466,31 @@ function assertPsbtFacts(
   return facts;
 }
 
+function unsignedTransactionSha256(encoded: string, id: FixtureId): `sha256:${string}` {
+  const document = parsePsbtDocument(encoded);
+  const globalMaps = document.maps.filter((map) => map.location.kind === "global");
+  const unsignedTransactions = globalMaps[0]?.entries.filter(
+    (entry) => entry.keyType === 0 && entry.keyData.byteLength === 0,
+  );
+  const unsignedTransaction = unsignedTransactions?.[0];
+  if (
+    document.psbtVersion !== 0 ||
+    globalMaps.length !== 1 ||
+    unsignedTransactions?.length !== 1 ||
+    !unsignedTransaction ||
+    !/^[0-9a-f]{64}$/.test(unsignedTransaction.valueSha256)
+  ) {
+    throw new Error(`Fixture ${id} lacks one valid PSBTv0 unsigned transaction`);
+  }
+  return `sha256:${unsignedTransaction.valueSha256}`;
+}
+
 function assertDecodedFixture(
   value: unknown,
   plan: FixturePlan,
   outpoints: readonly FixtureOutpoint[],
   outputSats: number,
+  descriptors: Record<FixtureDescriptorId, CanonicalDescriptor>,
 ): string {
   const decoded = assertObject(value, "decodepsbt");
   const transaction = assertObject(decoded["tx"], `Fixture ${plan.id} decoded transaction`);
@@ -446,6 +520,14 @@ function assertDecodedFixture(
   ) {
     throw new Error(`Fixture ${plan.id} decoded transaction output amount is invalid`);
   }
+  if (
+    parseDecodedScript(
+      output["scriptPubKey"],
+      `Fixture ${plan.id} decoded transaction output scriptPubKey`,
+    ) !== descriptors[plan.outputDescriptorId].scriptPubKey
+  ) {
+    throw new Error(`Fixture ${plan.id} decoded output script does not match descriptor`);
+  }
   if (!Array.isArray(decoded["inputs"]) || decoded["inputs"].length !== outpoints.length) {
     throw new Error(`Fixture ${plan.id} has invalid decoded inputs`);
   }
@@ -456,21 +538,39 @@ function assertDecodedFixture(
       `Fixture ${plan.id} input ${index} witness UTXO`,
     );
     const outpoint = outpoints[index];
+    const descriptorId = plan.inputDescriptorIds[index];
     const scriptType = plan.scriptTypes[index] ?? plan.scriptTypes[0];
     if (
       !outpoint ||
+      !descriptorId ||
       (typeof witnessUtxo["amount"] !== "string" && typeof witnessUtxo["amount"] !== "number") ||
       btcToSats(witnessUtxo["amount"]) !== outpoint.amountSats
     ) {
       throw new Error(`Fixture ${plan.id} input ${index} has invalid witness UTXO metadata`);
     }
-    if (scriptType === "p2wsh") {
-      if (
-        typeof input["witness_script"] !== "string" ||
-        !/^[0-9a-f]+$/i.test(input["witness_script"])
-      ) {
-        throw new Error(`Fixture ${plan.id} input ${index} lacks witness script metadata`);
-      }
+    if (
+      parseDecodedScript(
+        witnessUtxo["scriptPubKey"],
+        `Fixture ${plan.id} input ${index} witness UTXO scriptPubKey`,
+      ) !== descriptors[descriptorId].scriptPubKey
+    ) {
+      throw new Error(
+        `Fixture ${plan.id} input ${index} witness UTXO script does not match descriptor`,
+      );
+    }
+    const expectedWitnessScript =
+      EXPECTED_WITNESS_SCRIPTS[descriptorId as keyof typeof EXPECTED_WITNESS_SCRIPTS];
+    if (scriptType === "p2wsh" && !expectedWitnessScript) {
+      throw new Error(`Fixture ${plan.id} input ${index} has no declared witness script`);
+    }
+    if (
+      expectedWitnessScript &&
+      parseDecodedScript(
+        input["witness_script"],
+        `Fixture ${plan.id} input ${index} witness script`,
+      ) !== expectedWitnessScript
+    ) {
+      throw new Error(`Fixture ${plan.id} input ${index} witness script does not match descriptor`);
     }
     if (scriptType === "p2tr-keypath") {
       if (input["taproot_internal_key"] !== FIXTURE_PUBLIC_KEYS.scalar1.slice(2)) {
@@ -524,6 +624,7 @@ async function buildFixture(
     plan,
     outpoints,
     outputSats,
+    descriptors,
   );
   return {
     id: plan.id,
@@ -538,6 +639,7 @@ async function buildFixture(
     psbtVersion: 0,
     transactionId,
     psbtSha256: facts.sha256,
+    unsignedTxSha256: unsignedTransactionSha256(updated, plan.id),
   };
 }
 
