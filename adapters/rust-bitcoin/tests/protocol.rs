@@ -5,6 +5,7 @@ use base64::{Engine as _, engine::general_purpose::STANDARD};
 use bitcoin::absolute::LockTime;
 use bitcoin::bip32::{DerivationPath, Fingerprint};
 use bitcoin::hashes::Hash;
+use bitcoin::hex::DisplayHex;
 use bitcoin::key::PrivateKey;
 use bitcoin::opcodes::all::OP_CHECKSIG;
 use bitcoin::script::Builder;
@@ -17,6 +18,11 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
 const MINIMAL_PSBT: &str = "cHNidP8BADwCAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/////wD/////AQAAAAAAAAAAAAAAAAAAAAA=";
+const FIXED_SIGNABLE_PSBT_V0: &str = "cHNidP8BAF4CAAAAAabTulINz+LhVA4VD8G0vFOohTRR1SaURoBkvPBzDudKAAAAAAD/////AWi/AAAAAAAAIgAgGGMUPBTFFmgEvRkgM1baE2yYVnjNTSehuMYylgSQMmIAAAAAAAEBK1DDAAAAAAAAIgAgGGMUPBTFFmgEvRkgM1baE2yYVnjNTSehuMYylgSQMmIBBSMhAnm+Zn753LusVaBilc6HCwcCm/zbLc4o2VnygVsW+BeYrAAA";
+const CORE_TYPESCRIPT_UNSIGNED_TX_HEX: &str = "0200000001a6d3ba520dcfe2e1540e150fc1b4bc53a8853451d52694468064bcf0730ee74a0000000000ffffffff0168bf0000000000002200201863143c14c5166804bd19203356da136c985678cd4d27a1b8c632960490326200000000";
+const CORE_TYPESCRIPT_UNSIGNED_TX_COMMITMENT: &str =
+    "sha256:2f46d1ac133fc2d11c6c267ae8a299eb19d688f9d1ea7d1fa0e178aaf339e4de";
+const FIXTURE_COMMITMENTS_ENV: &str = "PSBT_LAB_FIXTURE_COMMITMENTS";
 
 fn request(operation: &str, payload: Value) -> Value {
     json!({
@@ -25,6 +31,47 @@ fn request(operation: &str, payload: Value) -> Value {
         "operation": operation,
         "payload": payload
     })
+}
+
+fn spawned_signing_response(fixture_commitments: Option<&str>) -> Value {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_psbt-lab-rust-adapter"));
+    command
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    match fixture_commitments {
+        Some(value) => {
+            command.env(FIXTURE_COMMITMENTS_ENV, value);
+        }
+        None => {
+            command.env_remove(FIXTURE_COMMITMENTS_ENV);
+        }
+    }
+
+    let mut child = command.spawn().expect("adapter executable starts");
+    let mut stdin = child.stdin.take().expect("adapter stdin");
+    serde_json::to_writer(
+        &mut stdin,
+        &request(
+            "sign",
+            json!({
+                "psbt": FIXED_SIGNABLE_PSBT_V0,
+                "network": "regtest",
+                "fixtureId": "happy-path"
+            }),
+        ),
+    )
+    .expect("serialize signing request");
+    stdin.write_all(b"\n").expect("write request terminator");
+    drop(stdin);
+
+    let output = child.wait_with_output().expect("adapter exits");
+    assert!(
+        output.status.success(),
+        "adapter failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    serde_json::from_slice(&output.stdout).expect("JSON response")
 }
 
 fn fixture_commitments(fixture_id: &str, encoded: &str) -> FixtureCommitments {
@@ -107,6 +154,47 @@ fn signing_requires_the_configured_unsigned_transaction_commitment() {
     );
     assert_eq!(invalid["status"], "crashed");
     assert_eq!(invalid["error"]["class"], "adapter.invalid_configuration");
+}
+
+#[test]
+fn spawned_adapter_signs_with_valid_startup_fixture_commitments() {
+    let psbt = Psbt::deserialize(
+        &STANDARD
+            .decode(FIXED_SIGNABLE_PSBT_V0)
+            .expect("base64 fixture vector"),
+    )
+    .expect("valid PSBTv0 fixture vector");
+    assert_eq!(
+        bitcoin::consensus::serialize(&psbt.unsigned_tx).to_lower_hex_string(),
+        CORE_TYPESCRIPT_UNSIGNED_TX_HEX
+    );
+
+    // This digest was produced independently from the exact bytes above by the TypeScript
+    // PSBT document parser and node:crypto, so keep it literal rather than deriving it here.
+    let commitments = format!(r#"{{"happy-path":"{CORE_TYPESCRIPT_UNSIGNED_TX_COMMITMENT}"}}"#);
+    let response = spawned_signing_response(Some(&commitments));
+
+    assert_eq!(response["status"], "ok", "{response}");
+    assert_eq!(response["output"]["signedInputs"], 1);
+}
+
+#[test]
+fn spawned_adapter_rejects_signing_without_startup_fixture_commitments() {
+    let response = spawned_signing_response(None);
+
+    assert_eq!(response["status"], "rejected", "{response}");
+    assert_eq!(
+        response["error"]["class"],
+        "policy.fixture_commitment_missing"
+    );
+}
+
+#[test]
+fn spawned_adapter_reports_malformed_startup_fixture_commitments() {
+    let response = spawned_signing_response(Some("{not-json}"));
+
+    assert_eq!(response["status"], "crashed", "{response}");
+    assert_eq!(response["error"]["class"], "adapter.invalid_configuration");
 }
 
 #[test]
