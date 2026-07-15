@@ -7,7 +7,7 @@ implementations preserve, sign, and finalize the same Partially Signed Bitcoin T
 The proof suite exercises the complete handoff with real software:
 
 1. Bitcoin Core 31.1 creates a funded PSBTv0 on regtest.
-2. A native `rust-bitcoin` 0.32.101 adapter round-trips and signs it.
+2. A native `rust-bitcoin` 0.32.102 adapter round-trips and signs it.
 3. Bitcoin Core finalizes the result and `testmempoolaccept` accepts the transaction.
 4. A second two-input fixture reproduces
    [BDK issue #488](https://github.com/bitcoindevkit/bdk_wallet/issues/488) in frozen

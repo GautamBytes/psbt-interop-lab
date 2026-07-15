@@ -29,7 +29,7 @@ fn implementation(digest: &str) -> Value {
         "name": "rust-bitcoin",
         "version": env!("CARGO_PKG_VERSION"),
         "artifactDigest": digest,
-        "sourceRevision": "bitcoin-crate-0.32.101"
+        "sourceRevision": "bitcoin-crate-0.32.102"
     })
 }
 

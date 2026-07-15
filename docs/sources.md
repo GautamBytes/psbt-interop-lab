@@ -35,8 +35,8 @@ Python requirement.
 
 ## Rust Adapter
 
-- [`bitcoin` 0.32.101 documentation](https://docs.rs/bitcoin/0.32.101/bitcoin/) and its
-  [PSBT module](https://docs.rs/bitcoin/0.32.101/bitcoin/psbt/) define the native parsing, sighash,
+- [`bitcoin` 0.32.102 documentation](https://docs.rs/bitcoin/0.32.102/bitcoin/) and its
+  [PSBT module](https://docs.rs/bitcoin/0.32.102/bitcoin/psbt/) define the native parsing, sighash,
   signature, and PSBT APIs used by the adapter.
 - The adapter builds with the official `rust:1.97.0-bookworm` image and a committed `Cargo.lock`.
   `cargo test --locked` runs during the image build.

@@ -16,7 +16,7 @@ const IMPLEMENTATION: AdapterImplementation = {
   name: "rust-bitcoin",
   version: "0.1.0",
   artifactDigest: `sha256:${"a".repeat(64)}`,
-  sourceRevision: "bitcoin-crate-0.32.101",
+  sourceRevision: "bitcoin-crate-0.32.102",
 };
 
 function success(

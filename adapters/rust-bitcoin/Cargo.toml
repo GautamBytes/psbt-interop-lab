@@ -8,7 +8,7 @@ publish = false
 
 [dependencies]
 base64 = "=0.22.1"
-bitcoin = { version = "=0.32.101", features = ["base64"] }
+bitcoin = { version = "=0.32.102", features = ["base64"] }
 serde = { version = "=1.0.228", features = ["derive"] }
 serde_json = "=1.0.150"
 sha2 = "=0.10.9"

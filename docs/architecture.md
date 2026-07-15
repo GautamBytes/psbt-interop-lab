@@ -10,7 +10,7 @@ each native library parses and acts on the PSBT itself.
 ```mermaid
 flowchart LR
   CLI["TypeScript CLI"] -->|"JSON-RPC on loopback"| Core["Bitcoin Core 31.1 regtest"]
-  CLI -->|"bounded JSONL"| Rust["rust-bitcoin 0.32.101 adapter"]
+  CLI -->|"bounded JSONL"| Rust["rust-bitcoin 0.32.102 adapter"]
   CLI -->|"bounded JSONL"| BDK["bdkpython 2.3.1 adapter"]
   CLI --> Facts["Lossless wire-facts parser"]
   CLI --> Artifacts["Private checkpoints and reports"]

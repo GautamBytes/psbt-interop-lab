@@ -24,7 +24,7 @@ export interface ExpectedAdapterContract {
 export const RUST_ADAPTER_CONTRACT = {
   name: "rust-bitcoin",
   version: "0.1.0",
-  sourceRevision: "bitcoin-crate-0.32.101",
+  sourceRevision: "bitcoin-crate-0.32.102",
   operations: ["hello", "roundtrip", "sign", "finalize-inputs"],
   roles: ["parser", "signer", "finalizer"],
   psbtVersions: [0],
