@@ -49,6 +49,17 @@ const proprietaryEntry = entry(
   Buffer.from("private metadata"),
   Buffer.from("036c616201", "hex"),
 );
+const fixturePublicKey = Buffer.from(
+  "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+  "hex",
+);
+const partialSignature = Buffer.concat([
+  Buffer.from("30440220", "hex"),
+  Buffer.alloc(32, 0x01),
+  Buffer.from("0220", "hex"),
+  Buffer.alloc(32, 0x02),
+  Buffer.from([0x01]),
+]);
 
 function response(
   request: AdapterRequest,
@@ -140,6 +151,42 @@ describe("ScenarioExecutionContext", () => {
         psbt([unsignedTxEntry]),
       ),
     ).toThrow(ScenarioAssertionError);
+  });
+
+  test("requires a real new signature field when a scenario expects signing", () => {
+    const before = psbt([unsignedTxEntry]);
+    const signed = Buffer.concat([
+      magic,
+      map(unsignedTxEntry),
+      map(entry(0x02, partialSignature, fixturePublicKey)),
+      map(),
+    ]).toString("base64");
+
+    expect(
+      context().requireAddedInputField("signature-added", before, signed, [0x02, 0x13, 0x14]),
+    ).toMatchObject({ passed: true });
+    expect(() =>
+      context().requireAddedInputField("signature-added", before, before, [0x02, 0x13, 0x14]),
+    ).toThrow(ScenarioAssertionError);
+  });
+
+  test("requires final script data on every selected input", () => {
+    const before = psbt([unsignedTxEntry]);
+    const finalWitness = Buffer.concat([
+      Buffer.from([2, partialSignature.byteLength]),
+      partialSignature,
+      Buffer.from([1, 0x51]),
+    ]);
+    const finalized = Buffer.concat([
+      magic,
+      map(unsignedTxEntry),
+      map(entry(0x08, finalWitness)),
+      map(),
+    ]).toString("base64");
+
+    expect(
+      context().requireAddedInputField("input-finalized", before, finalized, [0x07, 0x08], [0]),
+    ).toMatchObject({ passed: true });
   });
 
   test("frames adapter requests with stable incrementing protocol ids", async () => {

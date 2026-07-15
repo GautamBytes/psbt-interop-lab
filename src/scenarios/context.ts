@@ -188,6 +188,66 @@ export class ScenarioExecutionContext {
     return evidence;
   }
 
+  requireAddedInputField(
+    name: string,
+    beforePsbt: string,
+    afterPsbt: string,
+    keyTypes: readonly number[],
+    inputIndexes?: readonly number[],
+  ): ScenarioAssertionEvidence {
+    if (
+      keyTypes.length === 0 ||
+      keyTypes.some((keyType) => !Number.isSafeInteger(keyType) || keyType < 0 || keyType > 0xff)
+    ) {
+      throw new TypeError("Expected input field types must be non-empty bytes");
+    }
+    const before = parsePsbtDocument(beforePsbt);
+    const after = parsePsbtDocument(afterPsbt);
+    const targetIndexes =
+      inputIndexes ?? Array.from({ length: after.inputCount }, (_, index) => index);
+    if (
+      targetIndexes.length === 0 ||
+      new Set(targetIndexes).size !== targetIndexes.length ||
+      targetIndexes.some(
+        (index) => !Number.isSafeInteger(index) || index < 0 || index >= after.inputCount,
+      )
+    ) {
+      throw new TypeError("Expected input indexes must be unique in-range integers");
+    }
+
+    const addedAtIndex = (index: number): boolean => {
+      const beforeMap = before.maps.find(
+        (map) => map.location.kind === "input" && map.location.index === index,
+      );
+      const afterMap = after.maps.find(
+        (map) => map.location.kind === "input" && map.location.index === index,
+      );
+      if (!afterMap) return false;
+      const beforeKeys = new Set(
+        (beforeMap?.entries ?? []).map((entry) => entry.completeKey.toString("hex")),
+      );
+      return afterMap.entries.some(
+        (entry) =>
+          keyTypes.includes(entry.keyType) && !beforeKeys.has(entry.completeKey.toString("hex")),
+      );
+    };
+
+    const passed = inputIndexes
+      ? targetIndexes.every((index) => addedAtIndex(index))
+      : targetIndexes.some((index) => addedAtIndex(index));
+    const evidence: ScenarioAssertionEvidence = {
+      name,
+      passed,
+      summary: passed
+        ? "Expected input fields were added"
+        : "The adapter did not add the expected input fields",
+    };
+    if (!passed) {
+      throw new ScenarioAssertionError(evidence.summary ?? name, [evidence]);
+    }
+    return evidence;
+  }
+
   async checkpoint(scenario: string, stage: string, psbt: string): Promise<CheckpointRecord> {
     const checkpoint = await this.#artifacts.checkpoint(scenario, stage, psbt);
     this.#checkpoints.push(checkpoint);
