@@ -1,6 +1,7 @@
 // @ts-check
 
-import { createHash } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
+import { once } from "node:events";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
@@ -15,8 +16,17 @@ const ADAPTER_VERSION = "1.0.0";
 const SOURCE_REVISION = "bitcoinjs-lib-7.0.1+tiny-secp256k1-2.2.4";
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const SAFE_OPERATION = /^[a-z][a-z-]{0,63}$/;
+const SAFE_COMMITMENT = /^sha256:[0-9a-f]{64}$/;
 const ALLOWED_FIXTURES = new Set(["happy-path", "bdk-finalize-regression"]);
+const MAX_FIXTURE_COMMITMENTS_BYTES = 4096;
 const TEST_PRIVATE_KEY = Buffer.concat([Buffer.alloc(31), Buffer.from([1])]);
+/** @typedef {{ fixtureCommitments: Map<string, string> | null, fixtureCommitmentsError?: "missing" | "invalid" }} AdapterConfig */
+/** @typedef {{ protocol: string, id: string, operation: string, payload: Record<string, any> }} AdapterRequest */
+/** @type {Readonly<AdapterConfig>} */
+const MISSING_FIXTURE_CONFIG = Object.freeze({
+  fixtureCommitments: null,
+  fixtureCommitmentsError: "missing",
+});
 
 bitcoin.initEccLib(ecc);
 
@@ -55,6 +65,10 @@ function fallbackId(value) {
   return isRecord(value) && typeof value.id === "string" && SAFE_ID.test(value.id) ? value.id : "invalid-1";
 }
 
+/**
+ * @param {unknown} value
+ * @returns {value is Record<string, any>}
+ */
 function isRecord(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -63,8 +77,42 @@ function hasExactFields(value, fields) {
   return isRecord(value) && Object.keys(value).length === fields.length && fields.every((field) => Object.hasOwn(value, field));
 }
 
+/**
+ * @param {string | undefined} raw
+ * @returns {AdapterConfig}
+ */
+export function parseFixtureCommitments(raw) {
+  if (raw === undefined) return MISSING_FIXTURE_CONFIG;
+  if (typeof raw !== "string" || Buffer.byteLength(raw, "utf8") > MAX_FIXTURE_COMMITMENTS_BYTES) {
+    return { fixtureCommitments: null, fixtureCommitmentsError: "invalid" };
+  }
+  try {
+    const value = JSON.parse(raw);
+    if (!isRecord(value)) throw new Error("invalid fixture commitments");
+    const entries = Object.entries(value);
+    if (
+      entries.length === 0 ||
+      entries.length > ALLOWED_FIXTURES.size ||
+      entries.some(([fixtureId, commitment]) =>
+        !ALLOWED_FIXTURES.has(fixtureId) ||
+        typeof commitment !== "string" ||
+        !SAFE_COMMITMENT.test(commitment))
+    ) {
+      throw new Error("invalid fixture commitments");
+    }
+    return { fixtureCommitments: new Map(entries) };
+  } catch {
+    return { fixtureCommitments: null, fixtureCommitmentsError: "invalid" };
+  }
+}
+
+/**
+ * @param {unknown} value
+ * @returns {value is AdapterRequest}
+ */
 function validRequest(value) {
   return (
+    isRecord(value) &&
     hasExactFields(value, ["protocol", "id", "operation", "payload"]) &&
     value.protocol === PROTOCOL &&
     typeof value.id === "string" &&
@@ -148,29 +196,122 @@ function validateFixturePayload(payload, fields) {
   return parsed === null ? { error: "psbt.parse_failed" } : { parsed, fixtureId: payload.fixtureId };
 }
 
+function authorizeFixture(psbt, fixtureId, config) {
+  if (config?.fixtureCommitmentsError === "missing" || config === undefined) {
+    return {
+      class: "adapter.fixture_commitments_missing",
+      message: "Fixture commitment configuration is required",
+    };
+  }
+  if (!(config.fixtureCommitments instanceof Map)) {
+    return {
+      class: "adapter.fixture_commitments_invalid",
+      message: "Fixture commitment configuration is invalid",
+    };
+  }
+  const expected = config.fixtureCommitments.get(fixtureId);
+  if (typeof expected !== "string") {
+    return {
+      class: "policy.fixture_commitment_missing",
+      message: "Selected fixture is not committed for this run",
+    };
+  }
+  if (!SAFE_COMMITMENT.test(expected)) {
+    return {
+      class: "adapter.fixture_commitments_invalid",
+      message: "Fixture commitment configuration is invalid",
+    };
+  }
+  const actualDigest = createHash("sha256")
+    .update(psbt.data.globalMap.unsignedTx.toBuffer())
+    .digest();
+  const expectedDigest = Buffer.from(expected.slice("sha256:".length), "hex");
+  if (!timingSafeEqual(actualDigest, expectedDigest)) {
+    return {
+      class: "policy.fixture_commitment_mismatch",
+      message: "PSBT does not match the run-scoped fixture commitment",
+    };
+  }
+  return null;
+}
+
+function validateFundingScope(input, txInput) {
+  /** @type {{ script: Uint8Array, value: bigint } | undefined} */
+  let nonWitnessOutput;
+  if (input.nonWitnessUtxo) {
+    try {
+      const funding = bitcoin.Transaction.fromBuffer(input.nonWitnessUtxo);
+      if (!sameBytes(funding.getHash(), txInput.hash) || txInput.index >= funding.outs.length) return false;
+      nonWitnessOutput = funding.outs[txInput.index];
+    } catch {
+      return false;
+    }
+  }
+  const witnessOutput = input.witnessUtxo;
+  if (!witnessOutput && !nonWitnessOutput) return false;
+  if (witnessOutput && nonWitnessOutput && (!sameBytes(witnessOutput.script, nonWitnessOutput.script) || witnessOutput.value !== nonWitnessOutput.value)) return false;
+  const fundingOutput = witnessOutput ?? nonWitnessOutput;
+  return fundingOutput !== undefined && sameBytes(fundingOutput.script, TEST_SCRIPT_PUBKEY);
+}
+
+function parseWitnessStack(serialized) {
+  try {
+    const bytes = Buffer.from(serialized);
+    const [itemCount, firstItemOffset] = readCompactSize(bytes, 0);
+    if (itemCount > 100) return null;
+    const items = [];
+    let offset = firstItemOffset;
+    for (let index = 0; index < itemCount; index += 1) {
+      const [length, valueOffset] = readCompactSize(bytes, offset);
+      if (length > bytes.length - valueOffset) return null;
+      items.push(bytes.subarray(valueOffset, valueOffset + length));
+      offset = valueOffset + length;
+    }
+    return offset === bytes.length ? items : null;
+  } catch {
+    return null;
+  }
+}
+
+function expectedSignatureIsValid(psbt, inputIndex) {
+  try {
+    return psbt.validateSignaturesOfInput(
+      inputIndex,
+      (publicKey, hash, signature) => ecc.verify(hash, publicKey, signature),
+      TEST_PUBLIC_KEY,
+    );
+  } catch {
+    return false;
+  }
+}
+
+function validateFinalizedInput(psbt, inputIndex, input) {
+  if (!input.finalScriptWitness || input.finalScriptSig) return false;
+  const witness = parseWitnessStack(input.finalScriptWitness);
+  if (!witness || witness.length !== 2 || !sameBytes(witness[1], TEST_WITNESS_SCRIPT)) return false;
+  try {
+    const validationCopy = psbt.clone();
+    validationCopy.updateInput(inputIndex, {
+      witnessScript: TEST_WITNESS_SCRIPT,
+      partialSig: [{ pubkey: TEST_PUBLIC_KEY, signature: witness[0] }],
+    });
+    return expectedSignatureIsValid(validationCopy, inputIndex);
+  } catch {
+    return false;
+  }
+}
+
 function validateSigningScope(psbt) {
   if (psbt.inputCount === 0 || psbt.txInputs.length !== psbt.inputCount) return false;
   for (let index = 0; index < psbt.inputCount; index += 1) {
     const input = psbt.data.inputs[index];
     const txInput = psbt.txInputs[index];
-    if (!input || !txInput || !input.witnessScript || !sameBytes(input.witnessScript, TEST_WITNESS_SCRIPT)) return false;
-
-    /** @type {{ script: Uint8Array, value: bigint } | undefined} */
-    let nonWitnessOutput;
-    if (input.nonWitnessUtxo) {
-      try {
-        const funding = bitcoin.Transaction.fromBuffer(input.nonWitnessUtxo);
-        if (!sameBytes(funding.getHash(), txInput.hash) || txInput.index >= funding.outs.length) return false;
-        nonWitnessOutput = funding.outs[txInput.index];
-      } catch {
-        return false;
-      }
+    if (!input || !txInput || !validateFundingScope(input, txInput)) return false;
+    if (input.finalScriptWitness) {
+      if (!validateFinalizedInput(psbt, index, input)) return false;
+    } else if (!input.witnessScript || !sameBytes(input.witnessScript, TEST_WITNESS_SCRIPT)) {
+      return false;
     }
-    const witnessOutput = input.witnessUtxo;
-    if (!witnessOutput && !nonWitnessOutput) return false;
-    if (witnessOutput && nonWitnessOutput && (!sameBytes(witnessOutput.script, nonWitnessOutput.script) || witnessOutput.value !== nonWitnessOutput.value)) return false;
-    const fundingOutput = witnessOutput ?? nonWitnessOutput;
-    if (!fundingOutput || !sameBytes(fundingOutput.script, TEST_SCRIPT_PUBKEY)) return false;
   }
   return true;
 }
@@ -235,6 +376,7 @@ function handleHello(id, digest, payload) {
     roles: ["parser", "signer", "combiner", "finalizer"],
     psbtVersions: [0],
     scriptTypes: ["p2wsh"],
+    features: ["fixture-commitment-sha256"],
   });
 }
 
@@ -253,9 +395,11 @@ function handleInspect(id, digest, payload) {
   return success(id, digest, { inputs: result.parsed.psbt.inputCount, outputs: result.parsed.psbt.txOutputs.length, psbtVersion: 0 });
 }
 
-function handleSign(id, digest, payload) {
+function handleSign(id, digest, payload, config) {
   const result = validateFixturePayload(payload, ["psbt", "network", "fixtureId"]);
   if (result.error) return failureForFixturePayload(id, digest, result);
+  const authorizationError = authorizeFixture(result.parsed.psbt, result.fixtureId, config);
+  if (authorizationError) return failure(id, digest, "rejected", authorizationError.class, authorizationError.message);
   if (!validateSigningScope(result.parsed.psbt)) return failure(id, digest, "rejected", "policy.psbt_not_authorized", "PSBT does not match the deterministic fixture scope");
   try {
     const signedInputs = sign(result.parsed.psbt);
@@ -284,27 +428,44 @@ function handleCombine(id, digest, payload) {
   }
 }
 
-function handleFinalize(id, digest, payload) {
+function handleFinalize(id, digest, payload, config) {
   const result = validateFixturePayload(payload, ["psbt", "network", "fixtureId"]);
   if (result.error) return failureForFixturePayload(id, digest, result);
+  const authorizationError = authorizeFixture(result.parsed.psbt, result.fixtureId, config);
+  if (authorizationError) return failure(id, digest, "rejected", authorizationError.class, authorizationError.message);
   if (!validateSigningScope(result.parsed.psbt)) return failure(id, digest, "rejected", "policy.psbt_not_authorized", "PSBT does not match the deterministic fixture scope");
+  const indexes = Array.from(
+    { length: result.parsed.psbt.inputCount },
+    (_, index) => index,
+  ).filter((index) => !result.parsed.psbt.data.inputs[index].finalScriptWitness);
+  if (indexes.some((index) => !expectedSignatureIsValid(result.parsed.psbt, index))) {
+    return failure(id, digest, "rejected", "finalize.signature_invalid", "An expected fixture signature is missing or invalid");
+  }
   try {
-    for (let index = 0; index < result.parsed.psbt.inputCount; index += 1) result.parsed.psbt.finalizeInput(index, p2wshFixtureFinalizer);
+    for (const index of indexes) result.parsed.psbt.finalizeInput(index, p2wshFixtureFinalizer);
     const encoded = encodedPsbt(result.parsed.psbt);
     if (!encoded) return failure(id, digest, "rejected", "psbt.too_large", "Serialized PSBT exceeds the response limit");
-    return success(id, digest, { psbt: encoded, finalizedInputs: Array.from({ length: result.parsed.psbt.inputCount }, (_, index) => index) });
+    return success(id, digest, { psbt: encoded, finalizedInputs: indexes });
   } catch {
     return failure(id, digest, "rejected", "finalize.failed", "The authorized PSBT could not be finalized");
   }
 }
 
-function handleFinalizeInputs(id, digest, payload) {
+function handleFinalizeInputs(id, digest, payload, config) {
   const result = validateFixturePayload(payload, ["psbt", "network", "fixtureId", "inputIndexes"]);
   if (result.error) return failureForFixturePayload(id, digest, result);
   if (result.fixtureId !== "bdk-finalize-regression") return failure(id, digest, "rejected", "policy.fixture_not_allowed", "Selected-input finalization is reserved for the regression fixture");
+  const authorizationError = authorizeFixture(result.parsed.psbt, result.fixtureId, config);
+  if (authorizationError) return failure(id, digest, "rejected", authorizationError.class, authorizationError.message);
   const indexes = requestedInputIndexes(payload.inputIndexes, result.parsed.psbt.inputCount);
   if (!indexes) return failure(id, digest, "rejected", "protocol.invalid_payload", "inputIndexes must be unique, non-empty, in-range safe integers");
   if (!validateSigningScope(result.parsed.psbt)) return failure(id, digest, "rejected", "policy.psbt_not_authorized", "PSBT does not match the deterministic fixture scope");
+  if (indexes.some((index) => result.parsed.psbt.data.inputs[index].finalScriptWitness)) {
+    return failure(id, digest, "rejected", "finalize.input_already_finalized", "A requested input is already finalized");
+  }
+  if (indexes.some((index) => !expectedSignatureIsValid(result.parsed.psbt, index))) {
+    return failure(id, digest, "rejected", "finalize.signature_invalid", "An expected fixture signature is missing or invalid");
+  }
   try {
     for (const index of indexes) result.parsed.psbt.finalizeInput(index, p2wshFixtureFinalizer);
     const remainingPartialInputs = result.parsed.psbt.data.inputs.filter((input) => (input.partialSig?.length ?? 0) > 0).length;
@@ -316,32 +477,50 @@ function handleFinalizeInputs(id, digest, payload) {
   }
 }
 
-export function handleValue(value, digest = artifactDigest()) {
+/**
+ * @param {unknown} value
+ * @param {string} digest
+ * @param {AdapterConfig} config
+ * @returns {any}
+ */
+export function handleValue(value, digest = artifactDigest(), config = MISSING_FIXTURE_CONFIG) {
   const id = fallbackId(value);
   if (!validRequest(value)) return failure(id, digest, "rejected", "protocol.invalid_request", "Request does not match the adapter protocol");
   switch (value.operation) {
     case "hello": return handleHello(value.id, digest, value.payload);
     case "roundtrip": return handleRoundtrip(value.id, digest, value.payload);
     case "inspect": return handleInspect(value.id, digest, value.payload);
-    case "sign": return handleSign(value.id, digest, value.payload);
+    case "sign": return handleSign(value.id, digest, value.payload, config);
     case "combine": return handleCombine(value.id, digest, value.payload);
-    case "finalize": return handleFinalize(value.id, digest, value.payload);
-    case "finalize-inputs": return handleFinalizeInputs(value.id, digest, value.payload);
+    case "finalize": return handleFinalize(value.id, digest, value.payload, config);
+    case "finalize-inputs": return handleFinalizeInputs(value.id, digest, value.payload, config);
     default: return failure(value.id, digest, "unsupported", "operation.unsupported", "Operation is not implemented by the bitcoinjs-lib adapter");
   }
 }
 
-function writeResponse(value, digest) {
-  process.stdout.write(`${JSON.stringify(handleValue(value, digest))}\n`);
+async function writeJsonLine(output, response) {
+  const line = `${JSON.stringify(response)}\n`;
+  if (Buffer.byteLength(line, "utf8") > MAX_LINE_BYTES) {
+    throw new Error("adapter response exceeds the JSONL limit");
+  }
+  if (!output.write(line)) await once(output, "drain");
 }
 
-async function runJsonLines() {
-  const digest = artifactDigest();
+async function writeResponse(output, value, digest, config) {
+  await writeJsonLine(output, handleValue(value, digest, config));
+}
+
+export async function runJsonLines(options = {}) {
+  const input = options.input ?? process.stdin;
+  const output = options.output ?? process.stdout;
+  const digest = options.digest ?? artifactDigest();
+  const config = options.config ?? parseFixtureCommitments(process.env.PSBT_LAB_FIXTURE_COMMITMENTS);
   /** @type {Buffer[]} */
   let fragments = [];
   let lineBytes = 0;
   let discarding = false;
-  for await (const chunk of process.stdin) {
+  for await (const value of input) {
+    const chunk = Buffer.isBuffer(value) ? value : Buffer.from(value);
     let start = 0;
     while (start < chunk.length) {
       const newline = chunk.indexOf(10, start);
@@ -350,7 +529,7 @@ async function runJsonLines() {
       if (discarding) {
         if (newline !== -1) {
           const oversized = failure("invalid-1", digest, "rejected", "protocol.line_too_large", "Request line exceeds the 4 MiB limit");
-          process.stdout.write(`${JSON.stringify(oversized)}\n`);
+          await writeJsonLine(output, oversized);
           discarding = false;
         }
       } else if (lineBytes + length > MAX_LINE_BYTES) {
@@ -360,7 +539,7 @@ async function runJsonLines() {
           discarding = true;
         } else {
           const oversized = failure("invalid-1", digest, "rejected", "protocol.line_too_large", "Request line exceeds the 4 MiB limit");
-          process.stdout.write(`${JSON.stringify(oversized)}\n`);
+          await writeJsonLine(output, oversized);
         }
       } else {
         if (length > 0) fragments.push(chunk.subarray(start, end));
@@ -369,12 +548,15 @@ async function runJsonLines() {
           const line = Buffer.concat(fragments, lineBytes);
           fragments = [];
           lineBytes = 0;
+          let parsed;
           try {
-            writeResponse(JSON.parse(line.toString("utf8")), digest);
+            parsed = JSON.parse(line.toString("utf8"));
           } catch {
             const invalid = failure("invalid-1", digest, "rejected", "protocol.invalid_json", "Request line is not valid JSON");
-            process.stdout.write(`${JSON.stringify(invalid)}\n`);
+            await writeJsonLine(output, invalid);
+            parsed = undefined;
           }
+          if (parsed !== undefined) await writeResponse(output, parsed, digest, config);
         }
       }
       start = newline === -1 ? chunk.length : newline + 1;
@@ -382,14 +564,17 @@ async function runJsonLines() {
   }
   if (discarding) {
     const oversized = failure("invalid-1", digest, "rejected", "protocol.line_too_large", "Request line exceeds the 4 MiB limit");
-    process.stdout.write(`${JSON.stringify(oversized)}\n`);
+    await writeJsonLine(output, oversized);
   } else if (lineBytes > 0) {
+    let parsed;
     try {
-      writeResponse(JSON.parse(Buffer.concat(fragments, lineBytes).toString("utf8")), digest);
+      parsed = JSON.parse(Buffer.concat(fragments, lineBytes).toString("utf8"));
     } catch {
       const invalid = failure("invalid-1", digest, "rejected", "protocol.invalid_json", "Request line is not valid JSON");
-      process.stdout.write(`${JSON.stringify(invalid)}\n`);
+      await writeJsonLine(output, invalid);
+      parsed = undefined;
     }
+    if (parsed !== undefined) await writeResponse(output, parsed, digest, config);
   }
 }
 

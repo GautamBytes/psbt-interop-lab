@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
+import { EventEmitter } from "node:events";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import * as bitcoin from "bitcoinjs-lib";
 import * as ecc from "tiny-secp256k1";
+import * as adapter from "../adapter.mjs";
 
 import { handleValue, MAX_LINE_BYTES, PROTOCOL } from "../adapter.mjs";
 
@@ -22,8 +24,8 @@ function request(operation, payload = {}) {
   return { protocol: PROTOCOL, id: "test-1", operation, payload };
 }
 
-function response(value) {
-  return handleValue(value, DIGEST);
+function response(value, config = fixtureConfig()) {
+  return handleValue(value, DIGEST, config);
 }
 
 function fixturePsbt(inputCount = 1) {
@@ -45,6 +47,20 @@ function fixturePsbt(inputCount = 1) {
   }
   psbt.addOutput({ script: TEST_SCRIPT_PUBKEY, value: BigInt(50_000 * inputCount - 1_000) });
   return psbt;
+}
+
+function fixtureCommitment(psbt) {
+  const unsignedTx = psbt.data.globalMap.unsignedTx.toBuffer();
+  return `sha256:${createHash("sha256").update(unsignedTx).digest("hex")}`;
+}
+
+function fixtureConfig() {
+  return {
+    fixtureCommitments: new Map([
+      ["happy-path", fixtureCommitment(fixturePsbt())],
+      ["bdk-finalize-regression", fixtureCommitment(fixturePsbt(2))],
+    ]),
+  };
 }
 
 function signingPayload(psbt, fixtureId = "happy-path") {
@@ -72,6 +88,7 @@ test("hello advertises only proven PSBTv0 P2WSH operations", () => {
     roles: ["parser", "signer", "combiner", "finalizer"],
     psbtVersions: [0],
     scriptTypes: ["p2wsh"],
+    features: ["fixture-commitment-sha256"],
   });
   assertSchemaShape(result);
 });
@@ -152,6 +169,71 @@ test("rejects unauthorized fixture signing before accessing signing material", (
   }
 });
 
+test("rejects signing when fixture commitment configuration is missing or invalid", () => {
+  const payload = signingPayload(fixturePsbt());
+  const missing = handleValue(request("sign", payload), DIGEST);
+  const invalid = handleValue(request("sign", payload), DIGEST, {
+    fixtureCommitments: null,
+    fixtureCommitmentsError: "invalid",
+  });
+
+  assert.equal(missing.status, "rejected");
+  assert.equal(missing.error.class, "adapter.fixture_commitments_missing");
+  assert.equal(invalid.status, "rejected");
+  assert.equal(invalid.error.class, "adapter.fixture_commitments_invalid");
+  assertSchemaShape(missing);
+  assertSchemaShape(invalid);
+});
+
+test("parses only bounded fixture commitment environment objects", () => {
+  assert.equal(typeof adapter.parseFixtureCommitments, "function");
+  const configured = fixtureConfig();
+  const raw = JSON.stringify(Object.fromEntries(configured.fixtureCommitments));
+  const parsed = adapter.parseFixtureCommitments(raw);
+  assert.deepEqual(parsed, configured);
+
+  for (const invalid of [
+    undefined,
+    "{}",
+    "[]",
+    JSON.stringify({ unknown: `sha256:${"a".repeat(64)}` }),
+    JSON.stringify({ "happy-path": `sha256:${"A".repeat(64)}` }),
+    "x".repeat(4097),
+  ]) {
+    const result = adapter.parseFixtureCommitments(invalid);
+    assert.equal(result.fixtureCommitments, null);
+    assert.match(result.fixtureCommitmentsError, /^(missing|invalid)$/);
+  }
+});
+
+test("rejects a different unsigned transaction claiming an allowed fixture id", () => {
+  const configured = fixturePsbt();
+  const forged = fixturePsbt();
+  forged.setLocktime(1);
+  const config = {
+    fixtureCommitments: new Map([["happy-path", fixtureCommitment(configured)]]),
+  };
+
+  const result = response(request("sign", signingPayload(forged)), config);
+
+  assert.equal(result.status, "rejected");
+  assert.equal(result.error.class, "policy.fixture_commitment_mismatch");
+  assert.doesNotMatch(result.error.message, /sha256|[0-9a-f]{64}|cHNid/i);
+  assertSchemaShape(result);
+});
+
+test("does not accept caller-provided fixture commitments", () => {
+  const psbt = fixturePsbt();
+  const result = response(request("sign", {
+    ...signingPayload(psbt),
+    fixtureCommitment: fixtureCommitment(psbt),
+  }));
+
+  assert.equal(result.status, "rejected");
+  assert.equal(result.error.class, "protocol.invalid_payload");
+  assertSchemaShape(result);
+});
+
 test("signs and finalizes the authorized deterministic P2WSH fixture", () => {
   const initial = fixturePsbt();
   const signed = response(request("sign", signingPayload(initial)));
@@ -163,8 +245,50 @@ test("signs and finalizes the authorized deterministic P2WSH fixture", () => {
   assert.deepEqual(finalized.output.finalizedInputs, [0]);
   const finalizedPsbt = bitcoin.Psbt.fromBase64(finalized.output.psbt);
   assert.ok(finalizedPsbt.data.inputs[0].finalScriptWitness);
+  assert.equal(finalizedPsbt.extractTransaction().ins.length, 1);
   assertSchemaShape(signed);
   assertSchemaShape(finalized);
+});
+
+test("rejects a tampered expected-key signature before finalization", () => {
+  const initial = fixturePsbt();
+  const signed = response(request("sign", signingPayload(initial)));
+  assert.equal(signed.status, "ok");
+  const tampered = bitcoin.Psbt.fromBase64(signed.output.psbt);
+  const partialSig = tampered.data.inputs[0].partialSig[0];
+  const signature = Buffer.from(partialSig.signature);
+  signature[signature.length - 2] ^= 1;
+  partialSig.signature = signature;
+
+  const result = response(request("finalize", signingPayload(tampered)));
+
+  assert.equal(result.status, "rejected");
+  assert.equal(result.error.class, "finalize.signature_invalid");
+  assert.doesNotMatch(result.error.message, /[0-9a-f]{64}|cHNid/i);
+  assertSchemaShape(result);
+});
+
+test("finalizes remaining inputs after one input was already finalized", () => {
+  const initial = fixturePsbt(2);
+  const signed = response(request("sign", signingPayload(initial, "bdk-finalize-regression")));
+  assert.equal(signed.status, "ok");
+  const first = response(request("finalize-inputs", {
+    ...signingPayload(bitcoin.Psbt.fromBase64(signed.output.psbt), "bdk-finalize-regression"),
+    inputIndexes: [0],
+  }));
+  assert.equal(first.status, "ok");
+
+  const completed = response(request(
+    "finalize",
+    signingPayload(bitcoin.Psbt.fromBase64(first.output.psbt), "bdk-finalize-regression"),
+  ));
+
+  assert.equal(completed.status, "ok");
+  assert.deepEqual(completed.output.finalizedInputs, [1]);
+  const transaction = bitcoin.Psbt.fromBase64(completed.output.psbt).extractTransaction();
+  assert.equal(transaction.ins.length, 2);
+  assert.equal(transaction.ins.every((input) => input.witness.length === 2), true);
+  assertSchemaShape(completed);
 });
 
 test("combines compatible PSBTs and rejects inconsistent candidates", () => {
@@ -217,11 +341,41 @@ test("JSONL entrypoint rejects invalid JSON and a line above the cap", async () 
   child.stdin.end(`${"{not json"}\n${"x".repeat(MAX_LINE_BYTES + 1)}\n`);
   const output = [];
   for await (const chunk of child.stdout) output.push(chunk);
-  const [invalidJson, oversized] = Buffer.concat(output).toString("utf8").trim().split("\n").map(JSON.parse);
+  const [invalidJson, oversized] = Buffer.concat(output)
+    .toString("utf8")
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line));
   assert.equal(invalidJson.error.class, "protocol.invalid_json");
   assert.equal(oversized.error.class, "protocol.line_too_large");
   assertSchemaShape(invalidJson);
   assertSchemaShape(oversized);
+});
+
+test("awaits stdout drain before writing the next JSONL response", async () => {
+  assert.equal(typeof adapter.runJsonLines, "function");
+  const input = [Buffer.from(
+    `${JSON.stringify(request("hello"))}\n${JSON.stringify(request("hello"))}\n`,
+  )];
+  /** @type {EventEmitter & { write: (chunk: string) => boolean }} */
+  const writer = /** @type {any} */ (new EventEmitter());
+  const lines = [];
+  let blocked = false;
+  writer.write = (chunk) => {
+    assert.equal(blocked, false, "write occurred before the preceding drain");
+    blocked = true;
+    lines.push(String(chunk));
+    queueMicrotask(() => {
+      blocked = false;
+      writer.emit("drain");
+    });
+    return false;
+  };
+
+  await adapter.runJsonLines({ input, output: writer, digest: DIGEST, config: fixtureConfig() });
+
+  assert.equal(lines.length, 2);
+  assert.equal(lines.every((line) => JSON.parse(line).status === "ok"), true);
 });
 
 test("implementation digest is a real SHA256-shaped deterministic identity", () => {
