@@ -268,6 +268,94 @@ fn refuses_caller_supplied_private_keys() {
 }
 
 #[test]
+fn sign_only_signs_requested_inputs() {
+    let encoded = unsigned_two_input_fixture();
+    let original = Psbt::deserialize(&STANDARD.decode(&encoded).expect("base64 PSBT"))
+        .expect("valid fixture PSBT");
+    let response = handle_authorized(
+        request(
+            "sign",
+            json!({
+                "psbt": encoded.clone(),
+                "network": "regtest",
+                "fixtureId": "bdk-finalize-regression",
+                "inputIndexes": [1]
+            }),
+        ),
+        "bdk-finalize-regression",
+        &encoded,
+    );
+
+    assert_eq!(response["status"], "ok", "{response}");
+    assert_eq!(response["output"]["signedInputs"], 1);
+    let signed = response_psbt(&response);
+    assert_eq!(signed.inputs[0], original.inputs[0]);
+    assert_eq!(signed.inputs[1].partial_sigs.len(), 1);
+}
+
+#[test]
+fn sign_without_input_indexes_signs_all_inputs() {
+    let encoded = unsigned_two_input_fixture();
+    let response = handle_authorized(
+        request(
+            "sign",
+            json!({
+                "psbt": encoded.clone(),
+                "network": "regtest",
+                "fixtureId": "bdk-finalize-regression"
+            }),
+        ),
+        "bdk-finalize-regression",
+        &encoded,
+    );
+
+    assert_eq!(response["status"], "ok", "{response}");
+    assert_eq!(response["output"]["signedInputs"], 2);
+    let signed = response_psbt(&response);
+    assert!(
+        signed
+            .inputs
+            .iter()
+            .all(|input| input.partial_sigs.len() == 1)
+    );
+}
+
+#[test]
+fn rejects_invalid_sign_input_indexes() {
+    let encoded = unsigned_two_input_fixture();
+    for input_indexes in [
+        json!(null),
+        json!([]),
+        json!([0, 0]),
+        json!([-1]),
+        json!([0.5]),
+        json!([9_007_199_254_740_992_u64]),
+        json!(["0"]),
+        json!([2]),
+    ] {
+        let response = handle_authorized(
+            request(
+                "sign",
+                json!({
+                    "psbt": encoded.clone(),
+                    "network": "regtest",
+                    "fixtureId": "bdk-finalize-regression",
+                    "inputIndexes": input_indexes
+                }),
+            ),
+            "bdk-finalize-regression",
+            &encoded,
+        );
+
+        assert_eq!(response["status"], "rejected", "{response}");
+        assert_eq!(
+            response["error"]["class"], "protocol.invalid_payload",
+            "{response}"
+        );
+    }
+}
+
+#[test]
 fn reports_unsupported_operations_with_a_stable_error() {
     for operation in [
         "inspect",

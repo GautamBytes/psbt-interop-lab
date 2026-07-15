@@ -142,12 +142,18 @@ describe("redactValue", () => {
         psbt: MINIMAL_PSBT,
         keyWif: "cMahea7zqjxrtgAbB7LSGbcQUr1uX1ojuat9jZodMN87JcbXMTcA",
         summary: "adapter error wif=cMahea7zqjxrtgAbB7LSGbcQUr1uX1ojuat9jZodMN87JcbXMTcA",
+        mnemonicError:
+          "adapter error mnemonic: abandon ability able about above absent absorb abstract absurd abuse access accident",
+        seedError:
+          "adapter error seed phrase=alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu; retry denied",
         sha256: "a".repeat(64),
       }),
     ).toEqual({
       psbt: "[redacted:psbt]",
       keyWif: "[redacted:secret]",
       summary: "adapter error wif=[redacted:secret]",
+      mnemonicError: "[redacted:secret]",
+      seedError: "[redacted:secret]",
       sha256: "a".repeat(64),
     });
   });

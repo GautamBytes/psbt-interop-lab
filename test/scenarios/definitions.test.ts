@@ -22,6 +22,7 @@ import { createInvalidInputScenario } from "../../src/scenarios/invalid-inputs.j
 import {
   createMetadataPreservationScenario,
   enrichPsbtWithProprietaryFields,
+  verifyInjectedProprietaryFields,
 } from "../../src/scenarios/metadata-preservation.js";
 
 const magic = Buffer.from("70736274ff", "hex");
@@ -523,13 +524,15 @@ describe("active implementation matrix scenarios", () => {
   });
 
   test("combines independently signed copies and rejects a false-green empty combine", async () => {
-    const initial = encodedPsbt([[]]);
-    const signed = encodedPsbt([[signedInput()]]);
-    const rust = adapter((request) => success(request, rustImplementation, { psbt: signed }));
-    const go = adapter((request) => success(request, goImplementation, { psbt: signed }));
+    const initial = encodedPsbt([[], []]);
+    const rustSigned = encodedPsbt([[signedInput()], []]);
+    const goSigned = encodedPsbt([[], [signedInput()]]);
+    const combined = encodedPsbt([[signedInput()], [signedInput()]]);
+    const rust = adapter((request) => success(request, rustImplementation, { psbt: rustSigned }));
+    const go = adapter((request) => success(request, goImplementation, { psbt: goSigned }));
     const bitcoinjs = adapter((request) =>
       success(request, bitcoinjsImplementation, {
-        psbt: request.operation === "combine" ? signed : initial,
+        psbt: request.operation === "combine" ? combined : initial,
       }),
     );
     const context = executionContext(
@@ -546,12 +549,14 @@ describe("active implementation matrix scenarios", () => {
     ]);
 
     const [passed] = await runScenarioCatalog(
-      [createParallelCombineScenario(fixture("happy-path", initial, 1))],
+      [createParallelCombineScenario(fixture("bdk-finalize-regression", initial, 2))],
       context,
       negotiated,
     );
     expect(passed).toMatchObject({ id: "parallel-sign-and-combine", outcome: "passed" });
-    expect(bitcoinjs.requests[0]?.payload).toEqual({ psbts: [signed, signed] });
+    expect(rust.requests[0]?.payload).toMatchObject({ inputIndexes: [0] });
+    expect(go.requests[0]?.payload).toMatchObject({ inputIndexes: [1] });
+    expect(bitcoinjs.requests[0]?.payload).toEqual({ psbts: [rustSigned, goSigned] });
 
     const emptyCombiner = adapter((request) =>
       success(request, bitcoinjsImplementation, { psbt: initial }),
@@ -564,7 +569,7 @@ describe("active implementation matrix scenarios", () => {
       ]),
     );
     const [failed] = await runScenarioCatalog(
-      [createParallelCombineScenario(fixture("happy-path", initial, 1))],
+      [createParallelCombineScenario(fixture("bdk-finalize-regression", initial, 2))],
       failedContext,
       negotiated,
     );
@@ -678,7 +683,17 @@ describe("proprietary metadata preservation", () => {
     );
 
     expect(result).toMatchObject({ id: "proprietary-metadata-preservation", outcome: "passed" });
-    expect(enrichPsbtWithProprietaryFields(fixture("happy-path", initial, 1))).not.toBe(initial);
+    const metadataFixture = fixture("happy-path", initial, 1);
+    const enriched = enrichPsbtWithProprietaryFields(metadataFixture);
+    expect(enriched).not.toBe(initial);
+    expect(verifyInjectedProprietaryFields(enriched, metadataFixture)).toMatchObject({
+      name: "valid-proprietary-field-in-every-map",
+      passed: true,
+    });
+    expect(result?.assertions[0]).toMatchObject({
+      name: "valid-proprietary-field-in-every-map",
+      passed: true,
+    });
   });
 
   test("fails at the exact adapter that drops extension fields", async () => {

@@ -236,7 +236,7 @@ export function createProofCatalog(
       title: "Core to bitcoinjs-lib signing handoff",
     }),
     createRoundtripChainScenario(fixtures.happy),
-    createParallelCombineScenario(fixtures.happy),
+    createParallelCombineScenario(fixtures.regression),
     createInvalidInputScenario(fixtures.happy),
     createMetadataPreservationScenario(fixtures.happy),
     createBdkRegressionScenario(fixtures.regression),

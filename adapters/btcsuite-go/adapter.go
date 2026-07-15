@@ -210,13 +210,28 @@ func inspect(value adapterRequest, digest string) Response {
 }
 
 func (handler *Handler) sign(value adapterRequest, digest string) Response {
-	encoded, fixtureID, failureResponse := fixturePayload(value, digest, "psbt", "network", "fixtureId")
+	fields := []string{"psbt", "network", "fixtureId"}
+	if _, selected := value.Payload["inputIndexes"]; selected {
+		fields = append(fields, "inputIndexes")
+	}
+	encoded, fixtureID, failureResponse := fixturePayload(value, digest, fields...)
 	if failureResponse != nil {
 		return *failureResponse
 	}
 	_, packet, err := parsePSBT(encoded)
 	if err != nil {
 		return failure(value.ID, digest, "rejected", "psbt.parse_failed", "PSBT could not be parsed")
+	}
+	indexes := make([]int, len(packet.Inputs))
+	if rawIndexes, selected := value.Payload["inputIndexes"]; selected {
+		indexes, err = inputIndexes(rawIndexes, len(packet.Inputs))
+		if err != nil {
+			return invalidPayload(value.ID, digest, "inputIndexes must be non-empty unique in-range safe integers")
+		}
+	} else {
+		for index := range indexes {
+			indexes[index] = index
+		}
 	}
 	key, publicKey, witnessScript, funding, class := handler.authorizeFixture(packet, fixtureID)
 	if class != "" {
@@ -235,7 +250,7 @@ func (handler *Handler) sign(value adapterRequest, digest string) Response {
 	}
 	sigHashes := txscript.NewTxSigHashes(packet.UnsignedTx, txscript.NewMultiPrevOutFetcher(prevOuts))
 	signed := 0
-	for index := range packet.Inputs {
+	for _, index := range indexes {
 		signature, err := txscript.RawTxInWitnessSignature(packet.UnsignedTx, sigHashes, index, funding[index].Value, witnessScript, txscript.SigHashAll, key.PrivKey)
 		if err != nil {
 			return failure(value.ID, digest, "rejected", "signing.failed", "Fixture signing failed")

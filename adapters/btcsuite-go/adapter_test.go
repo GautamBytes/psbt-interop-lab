@@ -287,6 +287,56 @@ func TestSignsAndFinalizesFixtureInputs(t *testing.T) {
 	}
 }
 
+func TestSignsOnlySelectedFixtureInputs(t *testing.T) {
+	payload := signingPayload(fixturePSBT(t, 2), "bdk-finalize-regression")
+	payload["inputIndexes"] = []any{1}
+	signed := request(t, "sign", payload)
+	if signed.Status != "ok" || signed.Output["signedInputs"] != 1 {
+		t.Fatalf("selected sign response = %#v", signed)
+	}
+
+	packet := decodePacket(t, signed.Output["psbt"].(string))
+	if len(packet.Inputs[0].PartialSigs) != 0 || len(packet.Inputs[1].PartialSigs) != 1 {
+		t.Fatal("selected signing changed the wrong inputs")
+	}
+}
+
+func TestSelectedInputSigningRejectsInvalidIndexes(t *testing.T) {
+	for name, indexes := range map[string]any{
+		"empty":        []any{},
+		"null":         nil,
+		"object":       map[string]any{"input": 0},
+		"number":       0,
+		"duplicate":    []any{0, 0},
+		"negative":     []any{-1},
+		"fraction":     []any{0.5},
+		"string":       []any{"0"},
+		"unsafe":       []any{float64(9_007_199_254_740_992)},
+		"out of range": []any{2},
+	} {
+		t.Run(name, func(t *testing.T) {
+			payload := signingPayload(fixturePSBT(t, 2), "bdk-finalize-regression")
+			payload["inputIndexes"] = indexes
+			response := request(t, "sign", payload)
+			assertFailureClass(t, response, "rejected", "protocol.invalid_payload")
+		})
+	}
+}
+
+func TestSelectedInputSigningStillRejectsInvalidExistingSignatures(t *testing.T) {
+	signed := request(t, "sign", signingPayload(fixturePSBT(t, 2), "bdk-finalize-regression"))
+	if signed.Status != "ok" {
+		t.Fatalf("sign response = %#v", signed)
+	}
+	packet := decodePacket(t, signed.Output["psbt"].(string))
+	packet.Inputs[0].PartialSigs[0].Signature = forgedFixtureSignature(t, packet, 0)
+
+	payload := signingPayload(encodePacket(t, packet), "bdk-finalize-regression")
+	payload["inputIndexes"] = []any{1}
+	response := request(t, "sign", payload)
+	assertFailureClass(t, response, "rejected", "signing.signature_invalid")
+}
+
 func TestFinalizeRejectsForgedPartialSignature(t *testing.T) {
 	signed := request(t, "sign", signingPayload(fixturePSBT(t, 1), "happy-path"))
 	if signed.Status != "ok" {

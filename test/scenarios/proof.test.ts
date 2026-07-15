@@ -271,11 +271,29 @@ describe("proof runtime", () => {
     expect(result.manifest.outcome).toBe("passed");
     expect(harness.adapters).toHaveLength(4);
     for (const adapter of harness.adapters) expect(adapter.close).toHaveBeenCalledTimes(1);
-    const commitmentEnvironments = harness.created
-      .map(({ options }) => options.env?.["PSBT_LAB_FIXTURE_COMMITMENTS"])
-      .filter((value) => value !== undefined);
-    expect(commitmentEnvironments).toHaveLength(3);
-    expect(commitmentEnvironments.join(" ")).not.toContain("cHNidP8");
+    const commitments = JSON.stringify({
+      "happy-path": `sha256:${"c".repeat(64)}`,
+      "bdk-finalize-regression": `sha256:${"d".repeat(64)}`,
+    });
+    expect(harness.created).toEqual([
+      {
+        image: "psbt-interop-lab/rust-bitcoin:0.1.0",
+        options: { env: { PSBT_LAB_FIXTURE_COMMITMENTS: commitments } },
+      },
+      {
+        image: "psbt-interop-lab/btcsuite-go:1.2.0",
+        options: { env: { PSBT_LAB_FIXTURE_COMMITMENTS: commitments } },
+      },
+      {
+        image: "psbt-interop-lab/bitcoinjs-lib:7.0.1",
+        options: { env: { PSBT_LAB_FIXTURE_COMMITMENTS: commitments } },
+      },
+      {
+        image: "psbt-interop-lab/bdkpython:2.3.1",
+        options: { platform: "linux/amd64" },
+      },
+    ]);
+    expect(commitments).not.toContain("cHNidP8");
   });
 
   test("closes every adapter exactly once after an infrastructure failure", async () => {

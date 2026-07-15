@@ -109,7 +109,7 @@ export function createParallelCombineScenario(
     title: "Parallel rust-bitcoin and btcsuite signing",
     category: "parallel-signing",
     summary:
-      "Two libraries sign independent copies before bitcoinjs-lib combines and Core validates them.",
+      "Two libraries sign different inputs on independent copies before bitcoinjs-lib combines their contributions and Core validates them.",
     requirements: [
       {
         adapter: "rust-bitcoin",
@@ -136,15 +136,19 @@ export function createParallelCombineScenario(
       },
     ],
     async run(context) {
+      if (fixture.inputCount < 2) {
+        throw new Error("Parallel signing requires a fixture with at least two inputs");
+      }
       const assertions: ScenarioAssertionEvidence[] = [];
       await context.checkpoint("parallel-sign-and-combine", "core-created", fixture.initialPsbt);
       const signedCopies: string[] = [];
 
-      for (const adapter of ["rust-bitcoin", "btcsuite-go"] as const) {
+      for (const [inputIndex, adapter] of ["rust-bitcoin", "btcsuite-go"].entries()) {
         const response = await context.request(adapter, "sign", {
           psbt: fixture.initialPsbt,
           network: "regtest",
           fixtureId: fixture.id,
+          inputIndexes: [inputIndex],
         });
         const signed = context.outputString(response, "psbt", "sign");
         assertions.push(
@@ -161,6 +165,15 @@ export function createParallelCombineScenario(
             fixture.initialPsbt,
             signed,
             [0x02, 0x13, 0x14],
+            [inputIndex],
+          ),
+        );
+        assertions.push(
+          context.requireInputFieldAbsence(
+            `${adapter}-did-not-sign-other-input`,
+            signed,
+            [0x02, 0x13, 0x14],
+            [inputIndex === 0 ? 1 : 0],
           ),
         );
         signedCopies.push(signed);
@@ -177,10 +190,11 @@ export function createParallelCombineScenario(
       }
       assertions.push(
         context.requireAddedInputField(
-          "combined-signature-present",
+          "combined-union-of-both-signatures",
           fixture.initialPsbt,
           combined,
           [0x02, 0x13, 0x14],
+          [0, 1],
         ),
       );
       await context.checkpoint("parallel-sign-and-combine", "bitcoinjs-lib-combined", combined);
@@ -193,7 +207,7 @@ export function createParallelCombineScenario(
       return {
         summary:
           finalized.complete && policy.allowed
-            ? "Independent rust-bitcoin and btcsuite signing results converged through bitcoinjs-lib and passed Core policy."
+            ? "rust-bitcoin signed input 0, btcsuite signed input 1, bitcoinjs-lib preserved both contributions, and Core accepted the result."
             : "The independently signed copies did not combine into a complete policy-accepted transaction.",
         assertions,
         policyAccepted: policy.allowed,

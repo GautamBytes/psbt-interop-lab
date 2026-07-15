@@ -32,10 +32,14 @@ bitcoin.initEccLib(ecc);
 
 const TEST_PUBLIC_KEY = Buffer.from(ecc.pointFromScalar(TEST_PRIVATE_KEY, true));
 const TEST_WITNESS_SCRIPT = bitcoin.script.compile([TEST_PUBLIC_KEY, bitcoin.opcodes.OP_CHECKSIG]);
-const TEST_SCRIPT_PUBKEY = bitcoin.payments.p2wsh({ redeem: { output: TEST_WITNESS_SCRIPT } }).output;
+const TEST_SCRIPT_PUBKEY = bitcoin.payments.p2wsh({
+  redeem: { output: TEST_WITNESS_SCRIPT },
+}).output;
 
 function artifactDigest() {
-  return `sha256:${createHash("sha256").update(readFileSync(fileURLToPath(import.meta.url))).digest("hex")}`;
+  return `sha256:${createHash("sha256")
+    .update(readFileSync(fileURLToPath(import.meta.url)))
+    .digest("hex")}`;
 }
 
 function implementation(digest) {
@@ -62,7 +66,9 @@ function failure(id, digest, status, errorClass, message) {
 }
 
 function fallbackId(value) {
-  return isRecord(value) && typeof value.id === "string" && SAFE_ID.test(value.id) ? value.id : "invalid-1";
+  return isRecord(value) && typeof value.id === "string" && SAFE_ID.test(value.id)
+    ? value.id
+    : "invalid-1";
 }
 
 /**
@@ -74,7 +80,11 @@ function isRecord(value) {
 }
 
 function hasExactFields(value, fields) {
-  return isRecord(value) && Object.keys(value).length === fields.length && fields.every((field) => Object.hasOwn(value, field));
+  return (
+    isRecord(value) &&
+    Object.keys(value).length === fields.length &&
+    fields.every((field) => Object.hasOwn(value, field))
+  );
 }
 
 /**
@@ -93,10 +103,12 @@ export function parseFixtureCommitments(raw) {
     if (
       entries.length === 0 ||
       entries.length > ALLOWED_FIXTURES.size ||
-      entries.some(([fixtureId, commitment]) =>
-        !ALLOWED_FIXTURES.has(fixtureId) ||
-        typeof commitment !== "string" ||
-        !SAFE_COMMITMENT.test(commitment))
+      entries.some(
+        ([fixtureId, commitment]) =>
+          !ALLOWED_FIXTURES.has(fixtureId) ||
+          typeof commitment !== "string" ||
+          !SAFE_COMMITMENT.test(commitment),
+      )
     ) {
       throw new Error("invalid fixture commitments");
     }
@@ -134,15 +146,25 @@ function readCompactSize(bytes, offset) {
   const length = first === 0xfd ? 2 : first === 0xfe ? 4 : 8;
   if (offset + 1 + length > bytes.length) throw new Error("truncated");
   let value = 0n;
-  for (let index = 0; index < length; index += 1) value |= BigInt(bytes[offset + 1 + index]) << BigInt(index * 8);
-  if ((first === 0xfd && value < 0xfdn) || (first === 0xfe && value <= 0xffffn) || (first === 0xff && value <= 0xffffffffn) || value > BigInt(Number.MAX_SAFE_INTEGER)) {
+  for (let index = 0; index < length; index += 1)
+    value |= BigInt(bytes[offset + 1 + index]) << BigInt(index * 8);
+  if (
+    (first === 0xfd && value < 0xfdn) ||
+    (first === 0xfe && value <= 0xffffn) ||
+    (first === 0xff && value <= 0xffffffffn) ||
+    value > BigInt(Number.MAX_SAFE_INTEGER)
+  ) {
     throw new Error("noncanonical");
   }
   return [Number(value), offset + 1 + length];
 }
 
 function psbtVersion(bytes) {
-  if (bytes.length < 6 || !Buffer.from(bytes.subarray(0, 5)).equals(Buffer.from("70736274ff", "hex"))) throw new Error("magic");
+  if (
+    bytes.length < 6 ||
+    !Buffer.from(bytes.subarray(0, 5)).equals(Buffer.from("70736274ff", "hex"))
+  )
+    throw new Error("magic");
   let offset = 5;
   let version = 0;
   while (true) {
@@ -164,7 +186,12 @@ function psbtVersion(bytes) {
 }
 
 function parsePsbt(encoded) {
-  if (typeof encoded !== "string" || encoded.length > Math.ceil((MAX_PSBT_BYTES * 4) / 3) || !/^[A-Za-z0-9+/]*={0,2}$/.test(encoded)) return null;
+  if (
+    typeof encoded !== "string" ||
+    encoded.length > Math.ceil((MAX_PSBT_BYTES * 4) / 3) ||
+    !/^[A-Za-z0-9+/]*={0,2}$/.test(encoded)
+  )
+    return null;
   const bytes = Buffer.from(encoded, "base64");
   if (bytes.length > MAX_PSBT_BYTES || bytes.toString("base64") !== encoded) return null;
   try {
@@ -181,19 +208,27 @@ function encodedPsbt(psbt) {
 }
 
 function parsePsbtPayload(payload, fields) {
-  if (!hasExactFields(payload, fields) || typeof payload.psbt !== "string") return { error: "protocol.invalid_payload" };
+  if (!hasExactFields(payload, fields) || typeof payload.psbt !== "string")
+    return { error: "protocol.invalid_payload" };
   const parsed = parsePsbt(payload.psbt);
   return parsed === null ? { error: "psbt.parse_failed" } : { parsed };
 }
 
 function validateFixturePayload(payload, fields) {
-  if (!hasExactFields(payload, fields) || typeof payload.psbt !== "string" || typeof payload.network !== "string" || typeof payload.fixtureId !== "string") {
+  if (
+    !hasExactFields(payload, fields) ||
+    typeof payload.psbt !== "string" ||
+    typeof payload.network !== "string" ||
+    typeof payload.fixtureId !== "string"
+  ) {
     return { error: "protocol.invalid_payload" };
   }
   if (payload.network !== "regtest") return { error: "policy.network_not_allowed" };
   if (!ALLOWED_FIXTURES.has(payload.fixtureId)) return { error: "policy.fixture_not_allowed" };
   const parsed = parsePsbt(payload.psbt);
-  return parsed === null ? { error: "psbt.parse_failed" } : { parsed, fixtureId: payload.fixtureId };
+  return parsed === null
+    ? { error: "psbt.parse_failed" }
+    : { parsed, fixtureId: payload.fixtureId };
 }
 
 function authorizeFixture(psbt, fixtureId, config) {
@@ -241,7 +276,8 @@ function validateFundingScope(input, txInput) {
   if (input.nonWitnessUtxo) {
     try {
       const funding = bitcoin.Transaction.fromBuffer(input.nonWitnessUtxo);
-      if (!sameBytes(funding.getHash(), txInput.hash) || txInput.index >= funding.outs.length) return false;
+      if (!sameBytes(funding.getHash(), txInput.hash) || txInput.index >= funding.outs.length)
+        return false;
       nonWitnessOutput = funding.outs[txInput.index];
     } catch {
       return false;
@@ -249,7 +285,13 @@ function validateFundingScope(input, txInput) {
   }
   const witnessOutput = input.witnessUtxo;
   if (!witnessOutput && !nonWitnessOutput) return false;
-  if (witnessOutput && nonWitnessOutput && (!sameBytes(witnessOutput.script, nonWitnessOutput.script) || witnessOutput.value !== nonWitnessOutput.value)) return false;
+  if (
+    witnessOutput &&
+    nonWitnessOutput &&
+    (!sameBytes(witnessOutput.script, nonWitnessOutput.script) ||
+      witnessOutput.value !== nonWitnessOutput.value)
+  )
+    return false;
   const fundingOutput = witnessOutput ?? nonWitnessOutput;
   return fundingOutput !== undefined && sameBytes(fundingOutput.script, TEST_SCRIPT_PUBKEY);
 }
@@ -288,7 +330,7 @@ function expectedSignatureIsValid(psbt, inputIndex) {
 function validateFinalizedInput(psbt, inputIndex, input) {
   if (!input.finalScriptWitness || input.finalScriptSig) return false;
   const witness = parseWitnessStack(input.finalScriptWitness);
-  if (!witness || witness.length !== 2 || !sameBytes(witness[1], TEST_WITNESS_SCRIPT)) return false;
+  if (witness?.length !== 2 || !sameBytes(witness[1], TEST_WITNESS_SCRIPT)) return false;
   try {
     const validationCopy = psbt.clone();
     validationCopy.updateInput(inputIndex, {
@@ -330,14 +372,18 @@ function requestedInputIndexes(value, inputCount) {
   if (!Array.isArray(value) || value.length === 0) return null;
   const seen = new Set();
   for (const index of value) {
-    if (!Number.isSafeInteger(index) || index < 0 || index >= inputCount || seen.has(index)) return null;
+    if (!Number.isSafeInteger(index) || index < 0 || index >= inputCount || seen.has(index))
+      return null;
     seen.add(index);
   }
   return value;
 }
 
 function sign(psbt) {
-  const signer = { publicKey: TEST_PUBLIC_KEY, sign: (hash) => Buffer.from(ecc.sign(hash, TEST_PRIVATE_KEY)) };
+  const signer = {
+    publicKey: TEST_PUBLIC_KEY,
+    sign: (hash) => Buffer.from(ecc.sign(hash, TEST_PRIVATE_KEY)),
+  };
   let signedInputs = 0;
   for (let index = 0; index < psbt.inputCount; index += 1) {
     psbt.signInput(index, signer);
@@ -358,7 +404,9 @@ function compactSize(value) {
 }
 
 function p2wshFixtureFinalizer(_inputIndex, input) {
-  const signature = input.partialSig?.find((item) => sameBytes(item.pubkey, TEST_PUBLIC_KEY))?.signature;
+  const signature = input.partialSig?.find((item) =>
+    sameBytes(item.pubkey, TEST_PUBLIC_KEY),
+  )?.signature;
   if (!signature) throw new Error("fixture signature is missing");
   const stack = [Buffer.from(signature), Buffer.from(TEST_WITNESS_SCRIPT)];
   return {
@@ -370,7 +418,14 @@ function p2wshFixtureFinalizer(_inputIndex, input) {
 }
 
 function handleHello(id, digest, payload) {
-  if (!hasExactFields(payload, [])) return failure(id, digest, "rejected", "protocol.invalid_payload", "hello expects an empty payload");
+  if (!hasExactFields(payload, []))
+    return failure(
+      id,
+      digest,
+      "rejected",
+      "protocol.invalid_payload",
+      "hello expects an empty payload",
+    );
   return success(id, digest, {
     operations: ["hello", "inspect", "roundtrip", "sign", "combine", "finalize", "finalize-inputs"],
     roles: ["parser", "signer", "combiner", "finalizer"],
@@ -382,49 +437,135 @@ function handleHello(id, digest, payload) {
 
 function handleRoundtrip(id, digest, payload) {
   const result = parsePsbtPayload(payload, ["psbt"]);
-  if (result.error) return failure(id, digest, "rejected", result.error, result.error === "protocol.invalid_payload" ? "roundtrip expects one psbt field" : "PSBT is not canonical PSBTv0 base64 within the adapter limit");
+  if (result.error)
+    return failure(
+      id,
+      digest,
+      "rejected",
+      result.error,
+      result.error === "protocol.invalid_payload"
+        ? "roundtrip expects one psbt field"
+        : "PSBT is not canonical PSBTv0 base64 within the adapter limit",
+    );
   const serialized = Buffer.from(result.parsed.psbt.toBuffer());
   const encoded = encodedPsbt(result.parsed.psbt);
-  if (!encoded) return failure(id, digest, "rejected", "psbt.too_large", "Serialized PSBT exceeds the response limit");
-  return success(id, digest, { psbt: encoded, byteIdentical: serialized.equals(result.parsed.bytes), psbtVersion: 0 });
+  if (!encoded)
+    return failure(
+      id,
+      digest,
+      "rejected",
+      "psbt.too_large",
+      "Serialized PSBT exceeds the response limit",
+    );
+  return success(id, digest, {
+    psbt: encoded,
+    byteIdentical: serialized.equals(result.parsed.bytes),
+    psbtVersion: 0,
+  });
 }
 
 function handleInspect(id, digest, payload) {
   const result = parsePsbtPayload(payload, ["psbt"]);
-  if (result.error) return failure(id, digest, "rejected", result.error, result.error === "protocol.invalid_payload" ? "inspect expects one psbt field" : "PSBT is not canonical PSBTv0 base64 within the adapter limit");
-  return success(id, digest, { inputs: result.parsed.psbt.inputCount, outputs: result.parsed.psbt.txOutputs.length, psbtVersion: 0 });
+  if (result.error)
+    return failure(
+      id,
+      digest,
+      "rejected",
+      result.error,
+      result.error === "protocol.invalid_payload"
+        ? "inspect expects one psbt field"
+        : "PSBT is not canonical PSBTv0 base64 within the adapter limit",
+    );
+  return success(id, digest, {
+    inputs: result.parsed.psbt.inputCount,
+    outputs: result.parsed.psbt.txOutputs.length,
+    psbtVersion: 0,
+  });
 }
 
 function handleSign(id, digest, payload, config) {
   const result = validateFixturePayload(payload, ["psbt", "network", "fixtureId"]);
   if (result.error) return failureForFixturePayload(id, digest, result);
   const authorizationError = authorizeFixture(result.parsed.psbt, result.fixtureId, config);
-  if (authorizationError) return failure(id, digest, "rejected", authorizationError.class, authorizationError.message);
-  if (!validateSigningScope(result.parsed.psbt)) return failure(id, digest, "rejected", "policy.psbt_not_authorized", "PSBT does not match the deterministic fixture scope");
+  if (authorizationError)
+    return failure(id, digest, "rejected", authorizationError.class, authorizationError.message);
+  if (!validateSigningScope(result.parsed.psbt))
+    return failure(
+      id,
+      digest,
+      "rejected",
+      "policy.psbt_not_authorized",
+      "PSBT does not match the deterministic fixture scope",
+    );
   try {
     const signedInputs = sign(result.parsed.psbt);
     const encoded = encodedPsbt(result.parsed.psbt);
-    if (!encoded) return failure(id, digest, "rejected", "psbt.too_large", "Serialized PSBT exceeds the response limit");
+    if (!encoded)
+      return failure(
+        id,
+        digest,
+        "rejected",
+        "psbt.too_large",
+        "Serialized PSBT exceeds the response limit",
+      );
     return success(id, digest, { psbt: encoded, signedInputs });
   } catch {
-    return failure(id, digest, "rejected", "signing.failed", "The deterministic fixture key could not sign the authorized PSBT");
+    return failure(
+      id,
+      digest,
+      "rejected",
+      "signing.failed",
+      "The deterministic fixture key could not sign the authorized PSBT",
+    );
   }
 }
 
 function handleCombine(id, digest, payload) {
-  if (!hasExactFields(payload, ["psbts"]) || !Array.isArray(payload.psbts) || payload.psbts.length < 2 || payload.psbts.length > 16 || !payload.psbts.every((value) => typeof value === "string")) {
-    return failure(id, digest, "rejected", "protocol.invalid_payload", "combine expects two to sixteen PSBT strings");
+  if (
+    !hasExactFields(payload, ["psbts"]) ||
+    !Array.isArray(payload.psbts) ||
+    payload.psbts.length < 2 ||
+    payload.psbts.length > 16 ||
+    !payload.psbts.every((value) => typeof value === "string")
+  ) {
+    return failure(
+      id,
+      digest,
+      "rejected",
+      "protocol.invalid_payload",
+      "combine expects two to sixteen PSBT strings",
+    );
   }
   const parsed = payload.psbts.map(parsePsbt);
-  if (parsed.some((value) => value === null)) return failure(id, digest, "rejected", "psbt.parse_failed", "Every PSBT must be canonical PSBTv0 base64 within the adapter limit");
+  if (parsed.some((value) => value === null))
+    return failure(
+      id,
+      digest,
+      "rejected",
+      "psbt.parse_failed",
+      "Every PSBT must be canonical PSBTv0 base64 within the adapter limit",
+    );
   try {
     const [first, ...rest] = parsed;
     first.psbt.combine(...rest.map((value) => value.psbt));
     const encoded = encodedPsbt(first.psbt);
-    if (!encoded) return failure(id, digest, "rejected", "psbt.too_large", "Combined PSBT exceeds the response limit");
+    if (!encoded)
+      return failure(
+        id,
+        digest,
+        "rejected",
+        "psbt.too_large",
+        "Combined PSBT exceeds the response limit",
+      );
     return success(id, digest, { psbt: encoded, combinedCount: parsed.length });
   } catch {
-    return failure(id, digest, "rejected", "combine.failed", "PSBTs do not describe the same unsigned transaction");
+    return failure(
+      id,
+      digest,
+      "rejected",
+      "combine.failed",
+      "PSBTs do not describe the same unsigned transaction",
+    );
   }
 }
 
@@ -432,48 +573,123 @@ function handleFinalize(id, digest, payload, config) {
   const result = validateFixturePayload(payload, ["psbt", "network", "fixtureId"]);
   if (result.error) return failureForFixturePayload(id, digest, result);
   const authorizationError = authorizeFixture(result.parsed.psbt, result.fixtureId, config);
-  if (authorizationError) return failure(id, digest, "rejected", authorizationError.class, authorizationError.message);
-  if (!validateSigningScope(result.parsed.psbt)) return failure(id, digest, "rejected", "policy.psbt_not_authorized", "PSBT does not match the deterministic fixture scope");
-  const indexes = Array.from(
-    { length: result.parsed.psbt.inputCount },
-    (_, index) => index,
-  ).filter((index) => !result.parsed.psbt.data.inputs[index].finalScriptWitness);
+  if (authorizationError)
+    return failure(id, digest, "rejected", authorizationError.class, authorizationError.message);
+  if (!validateSigningScope(result.parsed.psbt))
+    return failure(
+      id,
+      digest,
+      "rejected",
+      "policy.psbt_not_authorized",
+      "PSBT does not match the deterministic fixture scope",
+    );
+  const indexes = Array.from({ length: result.parsed.psbt.inputCount }, (_, index) => index).filter(
+    (index) => !result.parsed.psbt.data.inputs[index].finalScriptWitness,
+  );
   if (indexes.some((index) => !expectedSignatureIsValid(result.parsed.psbt, index))) {
-    return failure(id, digest, "rejected", "finalize.signature_invalid", "An expected fixture signature is missing or invalid");
+    return failure(
+      id,
+      digest,
+      "rejected",
+      "finalize.signature_invalid",
+      "An expected fixture signature is missing or invalid",
+    );
   }
   try {
     for (const index of indexes) result.parsed.psbt.finalizeInput(index, p2wshFixtureFinalizer);
     const encoded = encodedPsbt(result.parsed.psbt);
-    if (!encoded) return failure(id, digest, "rejected", "psbt.too_large", "Serialized PSBT exceeds the response limit");
+    if (!encoded)
+      return failure(
+        id,
+        digest,
+        "rejected",
+        "psbt.too_large",
+        "Serialized PSBT exceeds the response limit",
+      );
     return success(id, digest, { psbt: encoded, finalizedInputs: indexes });
   } catch {
-    return failure(id, digest, "rejected", "finalize.failed", "The authorized PSBT could not be finalized");
+    return failure(
+      id,
+      digest,
+      "rejected",
+      "finalize.failed",
+      "The authorized PSBT could not be finalized",
+    );
   }
 }
 
 function handleFinalizeInputs(id, digest, payload, config) {
   const result = validateFixturePayload(payload, ["psbt", "network", "fixtureId", "inputIndexes"]);
   if (result.error) return failureForFixturePayload(id, digest, result);
-  if (result.fixtureId !== "bdk-finalize-regression") return failure(id, digest, "rejected", "policy.fixture_not_allowed", "Selected-input finalization is reserved for the regression fixture");
+  if (result.fixtureId !== "bdk-finalize-regression")
+    return failure(
+      id,
+      digest,
+      "rejected",
+      "policy.fixture_not_allowed",
+      "Selected-input finalization is reserved for the regression fixture",
+    );
   const authorizationError = authorizeFixture(result.parsed.psbt, result.fixtureId, config);
-  if (authorizationError) return failure(id, digest, "rejected", authorizationError.class, authorizationError.message);
+  if (authorizationError)
+    return failure(id, digest, "rejected", authorizationError.class, authorizationError.message);
   const indexes = requestedInputIndexes(payload.inputIndexes, result.parsed.psbt.inputCount);
-  if (!indexes) return failure(id, digest, "rejected", "protocol.invalid_payload", "inputIndexes must be unique, non-empty, in-range safe integers");
-  if (!validateSigningScope(result.parsed.psbt)) return failure(id, digest, "rejected", "policy.psbt_not_authorized", "PSBT does not match the deterministic fixture scope");
+  if (!indexes)
+    return failure(
+      id,
+      digest,
+      "rejected",
+      "protocol.invalid_payload",
+      "inputIndexes must be unique, non-empty, in-range safe integers",
+    );
+  if (!validateSigningScope(result.parsed.psbt))
+    return failure(
+      id,
+      digest,
+      "rejected",
+      "policy.psbt_not_authorized",
+      "PSBT does not match the deterministic fixture scope",
+    );
   if (indexes.some((index) => result.parsed.psbt.data.inputs[index].finalScriptWitness)) {
-    return failure(id, digest, "rejected", "finalize.input_already_finalized", "A requested input is already finalized");
+    return failure(
+      id,
+      digest,
+      "rejected",
+      "finalize.input_already_finalized",
+      "A requested input is already finalized",
+    );
   }
   if (indexes.some((index) => !expectedSignatureIsValid(result.parsed.psbt, index))) {
-    return failure(id, digest, "rejected", "finalize.signature_invalid", "An expected fixture signature is missing or invalid");
+    return failure(
+      id,
+      digest,
+      "rejected",
+      "finalize.signature_invalid",
+      "An expected fixture signature is missing or invalid",
+    );
   }
   try {
     for (const index of indexes) result.parsed.psbt.finalizeInput(index, p2wshFixtureFinalizer);
-    const remainingPartialInputs = result.parsed.psbt.data.inputs.filter((input) => (input.partialSig?.length ?? 0) > 0).length;
+    const remainingPartialInputs = result.parsed.psbt.data.inputs.filter(
+      (input) => (input.partialSig?.length ?? 0) > 0,
+    ).length;
     const encoded = encodedPsbt(result.parsed.psbt);
-    if (!encoded) return failure(id, digest, "rejected", "psbt.too_large", "Serialized PSBT exceeds the response limit");
+    if (!encoded)
+      return failure(
+        id,
+        digest,
+        "rejected",
+        "psbt.too_large",
+        "Serialized PSBT exceeds the response limit",
+      );
     return success(id, digest, { psbt: encoded, finalizedInputs: indexes, remainingPartialInputs });
   } catch {
-    return failure(id, digest, "rejected", "finalize.failed", "The requested authorized inputs could not be finalized");
+    return failure(
+      id,
+      digest,
+      "rejected",
+      "finalize.failed",
+      "The requested authorized inputs could not be finalized",
+    );
   }
 }
 
@@ -485,16 +701,37 @@ function handleFinalizeInputs(id, digest, payload, config) {
  */
 export function handleValue(value, digest = artifactDigest(), config = MISSING_FIXTURE_CONFIG) {
   const id = fallbackId(value);
-  if (!validRequest(value)) return failure(id, digest, "rejected", "protocol.invalid_request", "Request does not match the adapter protocol");
+  if (!validRequest(value))
+    return failure(
+      id,
+      digest,
+      "rejected",
+      "protocol.invalid_request",
+      "Request does not match the adapter protocol",
+    );
   switch (value.operation) {
-    case "hello": return handleHello(value.id, digest, value.payload);
-    case "roundtrip": return handleRoundtrip(value.id, digest, value.payload);
-    case "inspect": return handleInspect(value.id, digest, value.payload);
-    case "sign": return handleSign(value.id, digest, value.payload, config);
-    case "combine": return handleCombine(value.id, digest, value.payload);
-    case "finalize": return handleFinalize(value.id, digest, value.payload, config);
-    case "finalize-inputs": return handleFinalizeInputs(value.id, digest, value.payload, config);
-    default: return failure(value.id, digest, "unsupported", "operation.unsupported", "Operation is not implemented by the bitcoinjs-lib adapter");
+    case "hello":
+      return handleHello(value.id, digest, value.payload);
+    case "roundtrip":
+      return handleRoundtrip(value.id, digest, value.payload);
+    case "inspect":
+      return handleInspect(value.id, digest, value.payload);
+    case "sign":
+      return handleSign(value.id, digest, value.payload, config);
+    case "combine":
+      return handleCombine(value.id, digest, value.payload);
+    case "finalize":
+      return handleFinalize(value.id, digest, value.payload, config);
+    case "finalize-inputs":
+      return handleFinalizeInputs(value.id, digest, value.payload, config);
+    default:
+      return failure(
+        value.id,
+        digest,
+        "unsupported",
+        "operation.unsupported",
+        "Operation is not implemented by the bitcoinjs-lib adapter",
+      );
   }
 }
 
@@ -514,7 +751,8 @@ export async function runJsonLines(options = {}) {
   const input = options.input ?? process.stdin;
   const output = options.output ?? process.stdout;
   const digest = options.digest ?? artifactDigest();
-  const config = options.config ?? parseFixtureCommitments(process.env.PSBT_LAB_FIXTURE_COMMITMENTS);
+  const config =
+    options.config ?? parseFixtureCommitments(process.env.PSBT_LAB_FIXTURE_COMMITMENTS);
   /** @type {Buffer[]} */
   let fragments = [];
   let lineBytes = 0;
@@ -528,7 +766,13 @@ export async function runJsonLines(options = {}) {
       const length = end - start;
       if (discarding) {
         if (newline !== -1) {
-          const oversized = failure("invalid-1", digest, "rejected", "protocol.line_too_large", "Request line exceeds the 4 MiB limit");
+          const oversized = failure(
+            "invalid-1",
+            digest,
+            "rejected",
+            "protocol.line_too_large",
+            "Request line exceeds the 4 MiB limit",
+          );
           await writeJsonLine(output, oversized);
           discarding = false;
         }
@@ -538,7 +782,13 @@ export async function runJsonLines(options = {}) {
         if (newline === -1) {
           discarding = true;
         } else {
-          const oversized = failure("invalid-1", digest, "rejected", "protocol.line_too_large", "Request line exceeds the 4 MiB limit");
+          const oversized = failure(
+            "invalid-1",
+            digest,
+            "rejected",
+            "protocol.line_too_large",
+            "Request line exceeds the 4 MiB limit",
+          );
           await writeJsonLine(output, oversized);
         }
       } else {
@@ -552,7 +802,13 @@ export async function runJsonLines(options = {}) {
           try {
             parsed = JSON.parse(line.toString("utf8"));
           } catch {
-            const invalid = failure("invalid-1", digest, "rejected", "protocol.invalid_json", "Request line is not valid JSON");
+            const invalid = failure(
+              "invalid-1",
+              digest,
+              "rejected",
+              "protocol.invalid_json",
+              "Request line is not valid JSON",
+            );
             await writeJsonLine(output, invalid);
             parsed = undefined;
           }
@@ -563,14 +819,26 @@ export async function runJsonLines(options = {}) {
     }
   }
   if (discarding) {
-    const oversized = failure("invalid-1", digest, "rejected", "protocol.line_too_large", "Request line exceeds the 4 MiB limit");
+    const oversized = failure(
+      "invalid-1",
+      digest,
+      "rejected",
+      "protocol.line_too_large",
+      "Request line exceeds the 4 MiB limit",
+    );
     await writeJsonLine(output, oversized);
   } else if (lineBytes > 0) {
     let parsed;
     try {
       parsed = JSON.parse(Buffer.concat(fragments, lineBytes).toString("utf8"));
     } catch {
-      const invalid = failure("invalid-1", digest, "rejected", "protocol.invalid_json", "Request line is not valid JSON");
+      const invalid = failure(
+        "invalid-1",
+        digest,
+        "rejected",
+        "protocol.invalid_json",
+        "Request line is not valid JSON",
+      );
       await writeJsonLine(output, invalid);
       parsed = undefined;
     }
@@ -579,5 +847,5 @@ export async function runJsonLines(options = {}) {
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
-  runJsonLines().catch(() => process.exitCode = 1);
+  runJsonLines().catch(() => (process.exitCode = 1));
 }

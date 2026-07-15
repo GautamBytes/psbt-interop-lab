@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use bitcoin::key::PrivateKey;
 use bitcoin::opcodes::all::OP_CHECKSIG;
-use bitcoin::psbt::Psbt;
+use bitcoin::psbt::{Psbt, SigningKeys};
 use bitcoin::script::Builder;
 use bitcoin::secp256k1::Secp256k1;
 use bitcoin::{PublicKey, Witness};
@@ -365,13 +365,18 @@ fn roundtrip(request: &Request, digest: &str) -> Value {
 }
 
 fn sign(request: &Request, digest: &str, commitments: &FixtureCommitments) -> Value {
-    let (encoded, fixture_id) =
-        match validate_fixture_payload(request, &["psbt", "network", "fixtureId"]) {
-            Ok(values) => values,
-            Err((class, message)) => {
-                return failure(&request.id, digest, "rejected", class, message);
-            }
-        };
+    let has_input_indexes = request.payload.contains_key("inputIndexes");
+    let expected_fields = if has_input_indexes {
+        &["psbt", "network", "fixtureId", "inputIndexes"][..]
+    } else {
+        &["psbt", "network", "fixtureId"][..]
+    };
+    let (encoded, fixture_id) = match validate_fixture_payload(request, expected_fields) {
+        Ok(values) => values,
+        Err((class, message)) => {
+            return failure(&request.id, digest, "rejected", class, message);
+        }
+    };
     let (_, mut psbt) = match parse_psbt(encoded) {
         Ok(value) => value,
         Err(message) => {
@@ -383,6 +388,22 @@ fn sign(request: &Request, digest: &str, commitments: &FixtureCommitments) -> Va
                 &message,
             );
         }
+    };
+    let input_indexes = if has_input_indexes {
+        match requested_input_indexes(&request.payload, psbt.inputs.len()) {
+            Ok(indexes) => Some(indexes),
+            Err(message) => {
+                return failure(
+                    &request.id,
+                    digest,
+                    "rejected",
+                    "protocol.invalid_payload",
+                    message,
+                );
+            }
+        }
+    } else {
+        None
     };
     if let Some(response) = commitment_failure(request, digest, commitments, fixture_id, &psbt) {
         return response;
@@ -412,6 +433,69 @@ fn sign(request: &Request, digest: &str, commitments: &FixtureCommitments) -> Va
     let secp = Secp256k1::new();
     let mut keys = BTreeMap::new();
     keys.insert(public_key, private_key);
+    if let Some(input_indexes) = input_indexes {
+        let selected: BTreeSet<usize> = input_indexes.iter().copied().collect();
+        let mut skipped_derivations = Vec::new();
+        for (index, input) in psbt.inputs.iter_mut().enumerate() {
+            if !selected.contains(&index) {
+                skipped_derivations.push((index, std::mem::take(&mut input.bip32_derivation)));
+            }
+        }
+
+        let signing_result = psbt.sign(&keys, &secp);
+        for (index, derivation) in skipped_derivations {
+            psbt.inputs[index].bip32_derivation = derivation;
+        }
+
+        let (signing_keys, signing_errors) = match signing_result {
+            Ok(signing_keys) => (signing_keys, BTreeMap::new()),
+            Err((signing_keys, signing_errors)) => (signing_keys, signing_errors),
+        };
+        let signed_inputs = signing_keys
+            .iter()
+            .filter(|(index, signing_keys)| {
+                selected.contains(index)
+                    && match signing_keys {
+                        SigningKeys::Ecdsa(keys) => !keys.is_empty(),
+                        SigningKeys::Schnorr(keys) => !keys.is_empty(),
+                    }
+            })
+            .count();
+        let failed_inputs = signing_errors
+            .keys()
+            .filter(|index| selected.contains(*index))
+            .count();
+
+        if failed_inputs > 0 {
+            return failure(
+                &request.id,
+                digest,
+                "rejected",
+                "signing.failed",
+                &format!(
+                    "Signing completed {signed_inputs} input(s) but {failed_inputs} input(s) failed"
+                ),
+            );
+        }
+        if signed_inputs != input_indexes.len() {
+            return failure(
+                &request.id,
+                digest,
+                "rejected",
+                "signing.no_matching_key",
+                "The fixture key did not sign every selected input",
+            );
+        }
+        return success(
+            &request.id,
+            digest,
+            json!({
+                "psbt": encoded_psbt(&psbt),
+                "signedInputs": signed_inputs
+            }),
+        );
+    }
+
     match psbt.sign(&keys, &secp) {
         Ok(signing_keys) if !signing_keys.is_empty() => success(
             &request.id,

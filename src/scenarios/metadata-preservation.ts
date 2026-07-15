@@ -5,6 +5,7 @@ import type { ScenarioExecutionContext } from "./context.js";
 import type { ScenarioAssertionEvidence, ScenarioDefinition } from "./definition.js";
 
 const PARSERS = ["rust-bitcoin", "btcsuite-go", "bitcoinjs-lib", "bdkpython"] as const;
+const PROPRIETARY_IDENTIFIER = Buffer.from("psbt-lab", "ascii");
 
 function mapEnd(bytes: Buffer, mapOffset: number): { separator: number; nextOffset: number } {
   let offset = mapOffset;
@@ -28,7 +29,7 @@ function proprietaryEntry(subtype: number, value: string): Buffer {
   }
   const key = Buffer.concat([
     Buffer.from([0xfc, 0x08]),
-    Buffer.from("psbt-lab", "ascii"),
+    PROPRIETARY_IDENTIFIER,
     Buffer.from([subtype]),
   ]);
   const encodedValue = Buffer.from(value, "utf8");
@@ -41,6 +42,63 @@ function proprietaryEntry(subtype: number, value: string): Buffer {
     Buffer.from([encodedValue.byteLength]),
     encodedValue,
   ]);
+}
+
+function expectedSubtype(kind: "global" | "input" | "output", index: number): number {
+  return kind === "global" ? 1 : kind === "input" ? 0x10 + index : 0x80 + index;
+}
+
+function hasExpectedProprietaryEntry(
+  entries: ReturnType<typeof parsePsbtDocument>["maps"][number]["entries"],
+  kind: "global" | "input" | "output",
+  index: number,
+): boolean {
+  const subtype = expectedSubtype(kind, index);
+  return entries.some(
+    (entry) =>
+      entry.keyType === 0xfc &&
+      entry.keyData.equals(
+        Buffer.concat([
+          Buffer.from([PROPRIETARY_IDENTIFIER.byteLength]),
+          PROPRIETARY_IDENTIFIER,
+          Buffer.from([subtype]),
+        ]),
+      ) &&
+      entry.value.equals(Buffer.from(`psbt-lab:${kind}:${index}`, "utf8")),
+  );
+}
+
+export function verifyInjectedProprietaryFields(
+  encoded: string,
+  fixture: PsbtFixture,
+): ScenarioAssertionEvidence {
+  const document = parsePsbtDocument(encoded);
+  const expectedMaps = [
+    { kind: "global" as const, index: 0 },
+    ...Array.from({ length: fixture.inputCount }, (_, index) => ({
+      kind: "input" as const,
+      index,
+    })),
+    ...Array.from({ length: fixture.outputCount }, (_, index) => ({
+      kind: "output" as const,
+      index,
+    })),
+  ];
+  const missing = expectedMaps.filter(({ kind, index }) => {
+    const map = document.maps.find((candidate) => {
+      if (candidate.location.kind !== kind) return false;
+      return candidate.location.kind === "global" || candidate.location.index === index;
+    });
+    return !map || !hasExpectedProprietaryEntry(map.entries, kind, index);
+  });
+  return {
+    name: "valid-proprietary-field-in-every-map",
+    passed: missing.length === 0,
+    summary:
+      missing.length === 0
+        ? `Verified ${expectedMaps.length} BIP174 proprietary fields across every PSBT map.`
+        : `Missing or invalid proprietary fields in: ${missing.map(({ kind, index }) => (kind === "global" ? kind : `${kind}[${index}]`)).join(", ")}`,
+  };
 }
 
 export function enrichPsbtWithProprietaryFields(fixture: PsbtFixture): string {
@@ -95,6 +153,7 @@ export function createMetadataPreservationScenario(
     async run(context) {
       const assertions: ScenarioAssertionEvidence[] = [];
       const enriched = enrichPsbtWithProprietaryFields(fixture);
+      assertions.push(verifyInjectedProprietaryFields(enriched, fixture));
       await context.checkpoint("proprietary-metadata-preservation", "metadata-enriched", enriched);
       let current = enriched;
       for (const adapter of PARSERS) {

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { EventEmitter } from "node:events";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -14,7 +14,9 @@ import { handleValue, MAX_LINE_BYTES, PROTOCOL } from "../adapter.mjs";
 const TEST_PRIVATE_KEY = Buffer.concat([Buffer.alloc(31), Buffer.from([1])]);
 const TEST_PUBLIC_KEY = Buffer.from(ecc.pointFromScalar(TEST_PRIVATE_KEY, true));
 const TEST_WITNESS_SCRIPT = bitcoin.script.compile([TEST_PUBLIC_KEY, bitcoin.opcodes.OP_CHECKSIG]);
-const TEST_SCRIPT_PUBKEY = bitcoin.payments.p2wsh({ redeem: { output: TEST_WITNESS_SCRIPT } }).output;
+const TEST_SCRIPT_PUBKEY = bitcoin.payments.p2wsh({
+  redeem: { output: TEST_WITNESS_SCRIPT },
+}).output;
 const DIGEST = `sha256:${"a".repeat(64)}`;
 const IMPLEMENTATION_KEYS = ["artifactDigest", "name", "sourceRevision", "version"];
 const RESPONSE_KEYS = ["id", "implementation", "output", "protocol", "status"];
@@ -116,7 +118,10 @@ test("rejects noncanonical base64, oversized PSBTs, malformed PSBTs, and PSBTv2"
     `${valid}\n`,
     Buffer.from("not a psbt").toString("base64"),
     Buffer.alloc(MAX_LINE_BYTES + 1).toString("base64"),
-    Buffer.concat([Buffer.from("70736274ff", "hex"), Buffer.from([1, 0xfb, 4, 2, 0, 0, 0, 0])]).toString("base64"),
+    Buffer.concat([
+      Buffer.from("70736274ff", "hex"),
+      Buffer.from([1, 0xfb, 4, 2, 0, 0, 0, 0]),
+    ]).toString("base64"),
   ];
   for (const psbt of cases) {
     const result = response(request("roundtrip", { psbt }));
@@ -158,7 +163,13 @@ test("rejects unauthorized fixture signing before accessing signing material", (
     { ...signingPayload(psbt), network: "bitcoin" },
     { ...signingPayload(psbt), fixtureId: "unknown" },
     { ...signingPayload(psbt), keyWif: "caller-controlled" },
-    { ...signingPayload(psbt), psbt: new bitcoin.Psbt().addInput({ hash: Buffer.alloc(32), index: 0 }).addOutput({ script: TEST_SCRIPT_PUBKEY, value: 1n }).toBase64() },
+    {
+      ...signingPayload(psbt),
+      psbt: new bitcoin.Psbt()
+        .addInput({ hash: Buffer.alloc(32), index: 0 })
+        .addOutput({ script: TEST_SCRIPT_PUBKEY, value: 1n })
+        .toBase64(),
+    },
   ];
   for (const payload of cases) {
     const result = response(request("sign", payload));
@@ -224,10 +235,12 @@ test("rejects a different unsigned transaction claiming an allowed fixture id", 
 
 test("does not accept caller-provided fixture commitments", () => {
   const psbt = fixturePsbt();
-  const result = response(request("sign", {
-    ...signingPayload(psbt),
-    fixtureCommitment: fixtureCommitment(psbt),
-  }));
+  const result = response(
+    request("sign", {
+      ...signingPayload(psbt),
+      fixtureCommitment: fixtureCommitment(psbt),
+    }),
+  );
 
   assert.equal(result.status, "rejected");
   assert.equal(result.error.class, "protocol.invalid_payload");
@@ -240,7 +253,9 @@ test("signs and finalizes the authorized deterministic P2WSH fixture", () => {
   assert.equal(signed.status, "ok");
   assert.equal(signed.output.signedInputs, 1);
 
-  const finalized = response(request("finalize", signingPayload(bitcoin.Psbt.fromBase64(signed.output.psbt))));
+  const finalized = response(
+    request("finalize", signingPayload(bitcoin.Psbt.fromBase64(signed.output.psbt))),
+  );
   assert.equal(finalized.status, "ok");
   assert.deepEqual(finalized.output.finalizedInputs, [0]);
   const finalizedPsbt = bitcoin.Psbt.fromBase64(finalized.output.psbt);
@@ -272,34 +287,45 @@ test("finalizes remaining inputs after one input was already finalized", () => {
   const initial = fixturePsbt(2);
   const signed = response(request("sign", signingPayload(initial, "bdk-finalize-regression")));
   assert.equal(signed.status, "ok");
-  const first = response(request("finalize-inputs", {
-    ...signingPayload(bitcoin.Psbt.fromBase64(signed.output.psbt), "bdk-finalize-regression"),
-    inputIndexes: [0],
-  }));
+  const first = response(
+    request("finalize-inputs", {
+      ...signingPayload(bitcoin.Psbt.fromBase64(signed.output.psbt), "bdk-finalize-regression"),
+      inputIndexes: [0],
+    }),
+  );
   assert.equal(first.status, "ok");
 
-  const completed = response(request(
-    "finalize",
-    signingPayload(bitcoin.Psbt.fromBase64(first.output.psbt), "bdk-finalize-regression"),
-  ));
+  const completed = response(
+    request(
+      "finalize",
+      signingPayload(bitcoin.Psbt.fromBase64(first.output.psbt), "bdk-finalize-regression"),
+    ),
+  );
 
   assert.equal(completed.status, "ok");
   assert.deepEqual(completed.output.finalizedInputs, [1]);
   const transaction = bitcoin.Psbt.fromBase64(completed.output.psbt).extractTransaction();
   assert.equal(transaction.ins.length, 2);
-  assert.equal(transaction.ins.every((input) => input.witness.length === 2), true);
+  assert.equal(
+    transaction.ins.every((input) => input.witness.length === 2),
+    true,
+  );
   assertSchemaShape(completed);
 });
 
 test("combines compatible PSBTs and rejects inconsistent candidates", () => {
   const initial = fixturePsbt();
   const signed = response(request("sign", signingPayload(initial)));
-  const combined = response(request("combine", { psbts: [initial.toBase64(), signed.output.psbt] }));
+  const combined = response(
+    request("combine", { psbts: [initial.toBase64(), signed.output.psbt] }),
+  );
   assert.equal(combined.status, "ok");
   assert.equal(combined.output.combinedCount, 2);
   assert.equal(bitcoin.Psbt.fromBase64(combined.output.psbt).data.inputs[0].partialSig.length, 1);
 
-  const mismatched = response(request("combine", { psbts: [initial.toBase64(), fixturePsbt(2).toBase64()] }));
+  const mismatched = response(
+    request("combine", { psbts: [initial.toBase64(), fixturePsbt(2).toBase64()] }),
+  );
   assert.equal(mismatched.status, "rejected");
   assert.equal(mismatched.error.class, "combine.failed");
   assertSchemaShape(combined);
@@ -337,7 +363,11 @@ test("reports unsupported operations with the stable class", () => {
 });
 
 test("JSONL entrypoint rejects invalid JSON and a line above the cap", async () => {
-  const child = spawn(process.execPath, [fileURLToPath(new URL("../adapter.mjs", import.meta.url))], { stdio: ["pipe", "pipe", "pipe"] });
+  const child = spawn(
+    process.execPath,
+    [fileURLToPath(new URL("../adapter.mjs", import.meta.url))],
+    { stdio: ["pipe", "pipe", "pipe"] },
+  );
   child.stdin.end(`${"{not json"}\n${"x".repeat(MAX_LINE_BYTES + 1)}\n`);
   const output = [];
   for await (const chunk of child.stdout) output.push(chunk);
@@ -354,9 +384,9 @@ test("JSONL entrypoint rejects invalid JSON and a line above the cap", async () 
 
 test("awaits stdout drain before writing the next JSONL response", async () => {
   assert.equal(typeof adapter.runJsonLines, "function");
-  const input = [Buffer.from(
-    `${JSON.stringify(request("hello"))}\n${JSON.stringify(request("hello"))}\n`,
-  )];
+  const input = [
+    Buffer.from(`${JSON.stringify(request("hello"))}\n${JSON.stringify(request("hello"))}\n`),
+  ];
   /** @type {EventEmitter & { write: (chunk: string) => boolean }} */
   const writer = /** @type {any} */ (new EventEmitter());
   const lines = [];
@@ -375,7 +405,10 @@ test("awaits stdout drain before writing the next JSONL response", async () => {
   await adapter.runJsonLines({ input, output: writer, digest: DIGEST, config: fixtureConfig() });
 
   assert.equal(lines.length, 2);
-  assert.equal(lines.every((line) => JSON.parse(line).status === "ok"), true);
+  assert.equal(
+    lines.every((line) => JSON.parse(line).status === "ok"),
+    true,
+  );
 });
 
 test("implementation digest is a real SHA256-shaped deterministic identity", () => {
