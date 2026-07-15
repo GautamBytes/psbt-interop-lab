@@ -10,6 +10,8 @@ import { verifyReplay } from "../../src/runner/replay.js";
 
 const execFileAsync = promisify(execFile);
 const MAX_MANIFEST_BYTES = 4 * 1024 * 1024;
+const READY_SENTINEL = "PSBT_REPLAY_READY\n";
+const STARTUP_TIMEOUT_MILLISECONDS = 5_000;
 const roots: string[] = [];
 
 interface ChildResult {
@@ -17,7 +19,12 @@ interface ChildResult {
   signal: NodeJS.Signals | null;
   stdout: string;
   stderr: string;
+  ready: boolean;
   timedOut: boolean;
+}
+
+function isChildLive(child: ReturnType<typeof spawn>): boolean {
+  return child.exitCode === null && child.signalCode === null;
 }
 
 async function temporaryRoot(): Promise<string> {
@@ -39,7 +46,7 @@ function emptyManifest(): string {
 async function runReplayChild(
   script: string,
   root: string,
-  timeoutMilliseconds = 1_000,
+  operationTimeoutMilliseconds = 1_000,
 ): Promise<ChildResult> {
   const child = spawn(
     process.execPath,
@@ -53,44 +60,84 @@ async function runReplayChild(
   child.stderr.setEncoding("utf8");
   let stdout = "";
   let stderr = "";
+  let ready = false;
   let timedOut = false;
   let spawnError: Error | undefined;
-  child.stdout.on("data", (chunk: string) => {
+  let resolveReadiness: (() => void) | undefined;
+  const readiness = new Promise<void>((resolveReadinessPromise) => {
+    resolveReadiness = resolveReadinessPromise;
+  });
+  const onStdout = (chunk: string) => {
     stdout += chunk;
-  });
-  child.stderr.on("data", (chunk: string) => {
+  };
+  const onStderr = (chunk: string) => {
     stderr += chunk;
-  });
-  child.once("error", (error) => {
+    if (!ready && stderr.includes(READY_SENTINEL)) {
+      ready = true;
+      resolveReadiness?.();
+    }
+  };
+  const onError = (error: Error) => {
     spawnError = error;
-  });
-  const timeout = setTimeout(() => {
-    timedOut = true;
-    child.kill("SIGKILL");
-  }, timeoutMilliseconds);
+  };
+  child.stdout.on("data", onStdout);
+  child.stderr.on("data", onStderr);
+  child.once("error", onError);
 
   let code: number | null = null;
   let signal: NodeJS.Signals | null = null;
-  try {
-    await new Promise<void>((resolveClose) =>
-      child.once("close", (exitCode, exitSignal) => {
-        code = exitCode;
-        signal = exitSignal;
-        resolveClose();
-      }),
-    );
-  } finally {
-    clearTimeout(timeout);
-    if (child.exitCode === null && child.signalCode === null) {
+  const close = new Promise<void>((resolveClose) =>
+    child.once("close", (exitCode, exitSignal) => {
+      code = exitCode;
+      signal = exitSignal;
+      resolveClose();
+    }),
+  );
+  let operationWatchdog: ReturnType<typeof setTimeout> | undefined;
+  const startupWatchdog = setTimeout(() => {
+    if (isChildLive(child)) {
       child.kill("SIGKILL");
     }
+  }, STARTUP_TIMEOUT_MILLISECONDS);
+  child.once("exit", () => {
+    clearTimeout(startupWatchdog);
+    if (operationWatchdog) {
+      clearTimeout(operationWatchdog);
+    }
+  });
+
+  try {
+    const reachedOperation = await Promise.race([
+      readiness.then(() => true),
+      close.then(() => false),
+    ]);
+    if (reachedOperation && isChildLive(child)) {
+      clearTimeout(startupWatchdog);
+      operationWatchdog = setTimeout(() => {
+        if (isChildLive(child) && child.kill("SIGKILL")) {
+          timedOut = true;
+        }
+      }, operationTimeoutMilliseconds);
+    }
+    await close;
+  } finally {
+    clearTimeout(startupWatchdog);
+    if (operationWatchdog) {
+      clearTimeout(operationWatchdog);
+    }
+    if (isChildLive(child)) {
+      child.kill("SIGKILL");
+    }
+    child.stdout.off("data", onStdout);
+    child.stderr.off("data", onStderr);
+    child.off("error", onError);
     child.stdout.destroy();
     child.stderr.destroy();
   }
   if (spawnError) {
     throw spawnError;
   }
-  return { code, signal, stdout, stderr, timedOut };
+  return { code, signal, stdout, stderr, ready, timedOut };
 }
 
 afterEach(async () => {
@@ -108,6 +155,7 @@ describe("verifyReplay descriptor reads", () => {
       const script = `
         import { constants } from "node:fs";
         import { open } from "node:fs/promises";
+        process.stderr.write(${JSON.stringify(READY_SENTINEL)});
         await open(${JSON.stringify(fifoPath)}, constants.O_RDONLY);
       `;
 
@@ -116,9 +164,11 @@ describe("verifyReplay descriptor reads", () => {
       expect(result).toMatchObject({
         code: null,
         signal: "SIGKILL",
+        ready: true,
         timedOut: true,
       });
     },
+    10_000,
   );
 
   test.skipIf(process.platform === "win32")(
@@ -131,6 +181,7 @@ describe("verifyReplay descriptor reads", () => {
       const replayModule = pathToFileURL(resolve("src/runner/replay.ts")).href;
       const script = `
         import { verifyReplay } from ${JSON.stringify(replayModule)};
+        process.stderr.write(${JSON.stringify(READY_SENTINEL)});
         const result = await verifyReplay(process.env.REPLAY_ROOT).then(
           () => ({ ok: true }),
           (error) => ({ ok: false, message: error instanceof Error ? error.message : String(error) }),
@@ -139,12 +190,14 @@ describe("verifyReplay descriptor reads", () => {
       `;
       const result = await runReplayChild(script, root);
 
+      expect(result.ready, result.stderr).toBe(true);
       expect(result.timedOut, result.stderr).toBe(false);
       expect(JSON.parse(result.stdout)).toEqual({
         ok: false,
         message: "Replay checkpoint must be a regular file",
       });
     },
+    10_000,
   );
 
   test("rejects a manifest that grows beyond its initial descriptor size", async () => {
