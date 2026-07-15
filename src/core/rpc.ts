@@ -139,7 +139,9 @@ export class CoreRpc {
       throw new CoreRpcTransportError(`Bitcoin Core RPC ${method} returned an invalid envelope`);
     }
     if (decoded.id !== id) {
-      throw new CoreRpcTransportError(`Bitcoin Core RPC ${method} returned a mismatched response id`);
+      throw new CoreRpcTransportError(
+        `Bitcoin Core RPC ${method} returned a mismatched response id`,
+      );
     }
     if (decoded.error) {
       throw new CoreRpcError(method, decoded.error.code, decoded.error.message);
