@@ -5,6 +5,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"testing"
+
+	adapter "github.com/psbt-interop-lab/btcsuite-go-adapter"
 )
 
 func TestReadBoundedLineAcceptsMaximumLineAndStripsNewline(t *testing.T) {
@@ -24,7 +26,11 @@ func TestReadBoundedLineRejectsOversizedLine(t *testing.T) {
 }
 
 func TestProcessLineReturnsSchemaShapedInvalidJSONResponse(t *testing.T) {
-	response := processLine([]byte(`{"protocol":`), "sha256:"+string(bytes.Repeat([]byte("a"), 64)))
+	response := processLine(
+		[]byte(`{"protocol":`),
+		"sha256:"+string(bytes.Repeat([]byte("a"), 64)),
+		adapter.NewHandler(adapter.Config{}),
+	)
 	var value map[string]any
 	if err := json.Unmarshal(response, &value); err != nil {
 		t.Fatal(err)

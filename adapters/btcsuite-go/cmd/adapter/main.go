@@ -12,10 +12,11 @@ import (
 	adapter "github.com/psbt-interop-lab/btcsuite-go-adapter"
 )
 
-const maxLineBytes = 4 * 1024 * 1024
+const maxLineBytes = adapter.MaxLineBytes
 
 func main() {
 	digest := artifactDigest()
+	handler := adapter.NewHandlerFromEnvironment(os.Getenv("PSBT_LAB_FIXTURE_COMMITMENTS"))
 	reader := bufio.NewReader(os.Stdin)
 	writer := bufio.NewWriter(os.Stdout)
 	defer writer.Flush()
@@ -27,7 +28,7 @@ func main() {
 		if !ok {
 			return
 		}
-		_, _ = writer.Write(processLine(line, digest))
+		_, _ = writer.Write(processLine(line, digest, handler))
 		_, _ = writer.Write([]byte{'\n'})
 		if err := writer.Flush(); err != nil {
 			return
@@ -35,8 +36,8 @@ func main() {
 	}
 }
 
-func processLine(line []byte, digest string) []byte {
-	response := adapter.HandleJSON(line, digest)
+func processLine(line []byte, digest string, handler *adapter.Handler) []byte {
+	response := handler.HandleJSON(line, digest)
 	encoded, err := json.Marshal(response)
 	if err != nil {
 		return []byte(`{"protocol":"psbt-lab.adapter/0.2","id":"invalid-1","status":"crashed","implementation":{"name":"btcsuite-go","version":"v1.2.0","artifactDigest":"sha256:0000000000000000000000000000000000000000000000000000000000000000"},"error":{"class":"adapter.response_encode_failed","message":"Response encoding failed","retryable":false}}`)

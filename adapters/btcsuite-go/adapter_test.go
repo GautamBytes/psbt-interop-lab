@@ -4,7 +4,10 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/btcsuite/btcd/btcutil"
@@ -29,10 +32,41 @@ func TestHelloAdvertisesOnlyImplementedCapabilities(t *testing.T) {
 		"roles":        []any{"parser", "signer", "finalizer"},
 		"psbtVersions": []any{float64(0)},
 		"scriptTypes":  []any{"p2wsh"},
+		"features":     []any{"fixture-commitment-sha256"},
 	}
 	if !jsonEqual(response.Output, want) {
 		t.Fatalf("hello output = %#v, want %#v", response.Output, want)
 	}
+}
+
+func TestExplicitlyAcceptsPSBTV0AndRejectsOtherGlobalVersions(t *testing.T) {
+	accepted := request(t, "roundtrip", map[string]any{"psbt": fixturePSBT(t, 1)})
+	if accepted.Status != "ok" {
+		t.Fatalf("PSBTv0 status = %q", accepted.Status)
+	}
+	for _, version := range []uint32{1, 2} {
+		t.Run("version", func(t *testing.T) {
+			response := request(t, "roundtrip", map[string]any{"psbt": globalVersionPSBT(version)})
+			assertFailureClass(t, response, "rejected", "psbt.parse_failed")
+		})
+	}
+}
+
+func TestLineSafePSBTLimitBoundsSuccessfulResponse(t *testing.T) {
+	encoded := paddedFixturePSBT(t, maxPSBTBytes)
+	response := request(t, "roundtrip", map[string]any{"psbt": encoded})
+	if response.Status != "ok" {
+		t.Fatalf("line-safe PSBT status = %q: %#v", response.Status, response.Error)
+	}
+	raw, err := json.Marshal(response)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(raw) > MaxLineBytes {
+		t.Fatalf("response length = %d, cap = %d", len(raw), MaxLineBytes)
+	}
+	over := request(t, "roundtrip", map[string]any{"psbt": paddedFixturePSBT(t, maxPSBTBytes+1)})
+	assertFailureClass(t, over, "rejected", "psbt.parse_failed")
 }
 
 func TestRoundtripPreservesCanonicalPSBTV0(t *testing.T) {
@@ -87,6 +121,51 @@ func TestRejectsUnauthorizedSigning(t *testing.T) {
 				t.Fatalf("unsafe or missing error = %#v", response.Error)
 			}
 		})
+	}
+}
+
+func TestFixtureCommitmentsAuthorizeExactUnsignedTransactionOnly(t *testing.T) {
+	encoded := fixturePSBT(t, 1)
+	regression := fixturePSBT(t, 2)
+	handler := testHandler(t, map[string]string{
+		"happy-path":              fixtureCommitment(t, encoded),
+		"bdk-finalize-regression": fixtureCommitment(t, regression),
+	})
+	accepted := requestWithHandler(t, handler, "sign", signingPayload(encoded, "happy-path"))
+	if accepted.Status != "ok" {
+		t.Fatalf("configured commitment was rejected: %#v", accepted)
+	}
+
+	mismatchedHappyPath := sameScriptDifferentPSBT(t, encoded)
+	for _, operation := range []string{"sign", "finalize"} {
+		response := requestWithHandler(t, handler, operation, signingPayload(mismatchedHappyPath, "happy-path"))
+		assertFailureClass(t, response, "rejected", "policy.fixture_commitment_mismatch")
+	}
+	mismatchedRegression := requestWithHandler(t, handler, "finalize-inputs", map[string]any{
+		"psbt": sameScriptDifferentPSBT(t, regression), "network": "regtest", "fixtureId": "bdk-finalize-regression", "inputIndexes": []any{0},
+	})
+	assertFailureClass(t, mismatchedRegression, "rejected", "policy.fixture_commitment_mismatch")
+}
+
+func TestFixtureCommitmentConfigurationRejectsMissingAndInvalidValues(t *testing.T) {
+	encoded := fixturePSBT(t, 1)
+	payload := signingPayload(encoded, "happy-path")
+	missing := requestWithHandler(t, testHandler(t, nil), "sign", payload)
+	assertFailureClass(t, missing, "rejected", "policy.fixture_commitment_missing")
+	invalid := requestWithHandler(t, testHandler(t, map[string]string{"happy-path": "sha256:INVALID"}), "sign", payload)
+	assertFailureClass(t, invalid, "rejected", "policy.fixture_commitment_invalid")
+	tooLarge := NewHandlerFromEnvironment(strings.Repeat("x", maxFixtureCommitmentsBytes+1))
+	overflow := requestWithHandler(t, tooLarge, "sign", payload)
+	assertFailureClass(t, overflow, "rejected", "policy.fixture_commitment_invalid")
+	nullConfig := requestWithHandler(t, NewHandlerFromEnvironment("null"), "sign", payload)
+	assertFailureClass(t, nullConfig, "rejected", "policy.fixture_commitment_invalid")
+	validConfig, err := json.Marshal(map[string]string{"happy-path": fixtureCommitment(t, encoded)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	accepted := requestWithHandler(t, NewHandlerFromEnvironment(string(validConfig)), "sign", payload)
+	if accepted.Status != "ok" {
+		t.Fatalf("environment commitment was rejected: %#v", accepted)
 	}
 }
 
@@ -177,11 +256,29 @@ func TestResponseHasProtocolSchemaBasics(t *testing.T) {
 
 func request(t *testing.T, operation string, payload map[string]any) Response {
 	t.Helper()
+	return requestWithHandler(t, defaultTestHandler(t), operation, payload)
+}
+
+func requestWithHandler(t *testing.T, handler *Handler, operation string, payload map[string]any) Response {
+	t.Helper()
 	raw, err := json.Marshal(map[string]any{"protocol": protocol, "id": "test-1", "operation": operation, "payload": payload})
 	if err != nil {
 		t.Fatal(err)
 	}
-	return HandleJSON(raw, testDigest)
+	return handler.HandleJSON(raw, testDigest)
+}
+
+func defaultTestHandler(t *testing.T) *Handler {
+	t.Helper()
+	return testHandler(t, map[string]string{
+		"happy-path":              fixtureCommitment(t, fixturePSBT(t, 1)),
+		"bdk-finalize-regression": fixtureCommitment(t, fixturePSBT(t, 2)),
+	})
+}
+
+func testHandler(t *testing.T, commitments map[string]string) *Handler {
+	t.Helper()
+	return NewHandler(Config{FixtureCommitments: commitments})
 }
 
 func signingPayload(encoded, fixtureID string) map[string]any {
@@ -270,6 +367,53 @@ func decodePacket(t *testing.T, encoded string) *psbt.Packet {
 		t.Fatal(err)
 	}
 	return packet
+}
+
+func fixtureCommitment(t *testing.T, encoded string) string {
+	t.Helper()
+	packet := decodePacket(t, encoded)
+	var serialized bytes.Buffer
+	if err := packet.UnsignedTx.Serialize(&serialized); err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(serialized.Bytes())
+	return "sha256:" + fmt.Sprintf("%x", sum)
+}
+
+func sameScriptDifferentPSBT(t *testing.T, encoded string) string {
+	t.Helper()
+	packet := decodePacket(t, encoded)
+	packet.UnsignedTx.TxOut[0].Value++
+	return encodePacket(t, packet)
+}
+
+func globalVersionPSBT(version uint32) string {
+	raw := []byte{'p', 's', 'b', 't', 0xff, 1, 0xfb, 4, 0, 0, 0, 0, 0}
+	binary.LittleEndian.PutUint32(raw[8:12], version)
+	return base64.StdEncoding.EncodeToString(raw)
+}
+
+func paddedFixturePSBT(t *testing.T, targetSize int) string {
+	t.Helper()
+	packet := decodePacket(t, fixturePSBT(t, 1))
+	packet.Unknowns = []*psbt.Unknown{{Key: []byte{0xfc}, Value: []byte{}}}
+	for range 4 {
+		encoded := encodePacket(t, packet)
+		raw, err := base64.StdEncoding.DecodeString(encoded)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(raw) == targetSize {
+			return encoded
+		}
+		padding := targetSize - len(raw) + len(packet.Unknowns[0].Value)
+		if padding < 0 {
+			t.Fatal("target PSBT is smaller than fixture")
+		}
+		packet.Unknowns[0].Value = make([]byte, padding)
+	}
+	t.Fatal("could not construct target-sized PSBT")
+	return ""
 }
 
 func jsonEqual(actual, expected any) bool {

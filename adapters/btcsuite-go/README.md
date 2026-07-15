@@ -14,6 +14,12 @@ The library's general P2WSH finalizer supports multisig scripts, while the lab
 fixture is `wsh(pk(test-key))`; the adapter therefore constructs only that
 already-authorized fixture witness during finalization.
 
+Signing and finalization require `PSBT_LAB_FIXTURE_COMMITMENTS` at startup. It
+is a JSON object whose keys are fixture IDs and whose values are lowercase
+`sha256:<64 hex>` digests of the exact unsigned transaction serialization, for
+example `{"happy-path":"sha256:..."}`. The adapter never accepts commitments
+from requests.
+
 ```sh
 go test ./...
 go run ./cmd/adapter

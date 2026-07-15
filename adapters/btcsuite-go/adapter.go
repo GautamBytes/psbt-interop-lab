@@ -3,9 +3,13 @@ package adapter
 import (
 	"bytes"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/base64"
+	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"strconv"
 
 	"github.com/btcsuite/btcd/btcutil"
@@ -15,10 +19,13 @@ import (
 )
 
 const (
-	protocol       = "psbt-lab.adapter/0.2"
-	maxPSBTBytes   = 4 * 1024 * 1024
-	maxSafeInteger = uint64(9_007_199_254_740_991)
-	testWIF        = "cMahea7zqjxrtgAbB7LSGbcQUr1uX1ojuat9jZodMN87JcbXMTcA"
+	protocol                   = "psbt-lab.adapter/0.2"
+	MaxLineBytes               = 4 * 1024 * 1024
+	responseLineReserve        = 4096
+	maxPSBTBytes               = ((MaxLineBytes - responseLineReserve) * 3) / 4
+	maxFixtureCommitmentsBytes = 4096
+	maxSafeInteger             = uint64(9_007_199_254_740_991)
+	testWIF                    = "cMahea7zqjxrtgAbB7LSGbcQUr1uX1ojuat9jZodMN87JcbXMTcA"
 )
 
 var allowedFixtures = map[string]struct{}{
@@ -55,11 +62,56 @@ type adapterRequest struct {
 	Payload   map[string]json.RawMessage `json:"payload"`
 }
 
+type Config struct {
+	FixtureCommitments map[string]string
+}
+
+type Handler struct {
+	fixtureCommitments map[string][sha256.Size]byte
+	configurationClass string
+}
+
+func NewHandler(config Config) *Handler {
+	handler := &Handler{fixtureCommitments: make(map[string][sha256.Size]byte)}
+	if len(config.FixtureCommitments) == 0 {
+		handler.configurationClass = "policy.fixture_commitment_missing"
+		return handler
+	}
+	for fixtureID, commitment := range config.FixtureCommitments {
+		decoded, ok := decodeCommitment(commitment)
+		if !safeID(fixtureID) || !ok {
+			handler.configurationClass = "policy.fixture_commitment_invalid"
+			handler.fixtureCommitments = nil
+			return handler
+		}
+		handler.fixtureCommitments[fixtureID] = decoded
+	}
+	return handler
+}
+
+func NewHandlerFromEnvironment(value string) *Handler {
+	if len(value) == 0 {
+		return NewHandler(Config{})
+	}
+	if len(value) > maxFixtureCommitmentsBytes {
+		return &Handler{configurationClass: "policy.fixture_commitment_invalid"}
+	}
+	var commitments map[string]string
+	if err := json.Unmarshal([]byte(value), &commitments); err != nil || commitments == nil {
+		return &Handler{configurationClass: "policy.fixture_commitment_invalid"}
+	}
+	return NewHandler(Config{FixtureCommitments: commitments})
+}
+
 func Handle(raw json.RawMessage, digest string) Response {
 	return HandleJSON(raw, digest)
 }
 
 func HandleJSON(raw []byte, digest string) Response {
+	return NewHandler(Config{}).HandleJSON(raw, digest)
+}
+
+func (handler *Handler) HandleJSON(raw []byte, digest string) Response {
 	fallback := fallbackID(raw)
 	var generic any
 	if err := json.Unmarshal(raw, &generic); err != nil {
@@ -90,17 +142,18 @@ func HandleJSON(raw []byte, digest string) Response {
 			"roles":        []string{"parser", "signer", "finalizer"},
 			"psbtVersions": []int{0},
 			"scriptTypes":  []string{"p2wsh"},
+			"features":     []string{"fixture-commitment-sha256"},
 		})
 	case "roundtrip":
 		return roundtrip(value, digest)
 	case "inspect":
 		return inspect(value, digest)
 	case "sign":
-		return sign(value, digest)
+		return handler.sign(value, digest)
 	case "finalize":
-		return finalize(value, digest)
+		return handler.finalize(value, digest)
 	case "finalize-inputs":
-		return finalizeInputs(value, digest)
+		return handler.finalizeInputs(value, digest)
 	default:
 		return failure(value.ID, digest, "unsupported", "operation.unsupported", "Operation is not supported by this adapter")
 	}
@@ -153,19 +206,18 @@ func inspect(value adapterRequest, digest string) Response {
 	})
 }
 
-func sign(value adapterRequest, digest string) Response {
+func (handler *Handler) sign(value adapterRequest, digest string) Response {
 	encoded, fixtureID, failureResponse := fixturePayload(value, digest, "psbt", "network", "fixtureId")
 	if failureResponse != nil {
 		return *failureResponse
 	}
-	_ = fixtureID
 	_, packet, err := parsePSBT(encoded)
 	if err != nil {
 		return failure(value.ID, digest, "rejected", "psbt.parse_failed", "PSBT could not be parsed")
 	}
-	key, publicKey, witnessScript, funding, err := authorizeFixture(packet)
-	if err != nil {
-		return failure(value.ID, digest, "rejected", "policy.psbt_not_authorized", "PSBT is outside the authorized fixture scope")
+	key, publicKey, witnessScript, funding, class := handler.authorizeFixture(packet, fixtureID)
+	if class != "" {
+		return failure(value.ID, digest, "rejected", class, authorizationMessage(class))
 	}
 	updater, err := psbt.NewUpdater(packet)
 	if err != nil {
@@ -195,8 +247,8 @@ func sign(value adapterRequest, digest string) Response {
 	return success(value.ID, digest, map[string]any{"psbt": encodedResult, "signedInputs": signed})
 }
 
-func finalize(value adapterRequest, digest string) Response {
-	encoded, _, failureResponse := fixturePayload(value, digest, "psbt", "network", "fixtureId")
+func (handler *Handler) finalize(value adapterRequest, digest string) Response {
+	encoded, fixtureID, failureResponse := fixturePayload(value, digest, "psbt", "network", "fixtureId")
 	if failureResponse != nil {
 		return *failureResponse
 	}
@@ -204,9 +256,9 @@ func finalize(value adapterRequest, digest string) Response {
 	if err != nil {
 		return failure(value.ID, digest, "rejected", "psbt.parse_failed", "PSBT could not be parsed")
 	}
-	_, publicKey, _, _, err := authorizeFixture(packet)
-	if err != nil {
-		return failure(value.ID, digest, "rejected", "policy.psbt_not_authorized", "PSBT is outside the authorized fixture scope")
+	_, publicKey, _, _, class := handler.authorizeFixture(packet, fixtureID)
+	if class != "" {
+		return failure(value.ID, digest, "rejected", class, authorizationMessage(class))
 	}
 	indexes := make([]int, 0, len(packet.Inputs))
 	for index, input := range packet.Inputs {
@@ -217,7 +269,7 @@ func finalize(value adapterRequest, digest string) Response {
 	return finalizePacket(value.ID, digest, packet, publicKey, indexes)
 }
 
-func finalizeInputs(value adapterRequest, digest string) Response {
+func (handler *Handler) finalizeInputs(value adapterRequest, digest string) Response {
 	encoded, fixtureID, failureResponse := fixturePayload(value, digest, "psbt", "network", "fixtureId", "inputIndexes")
 	if failureResponse != nil {
 		return *failureResponse
@@ -233,9 +285,9 @@ func finalizeInputs(value adapterRequest, digest string) Response {
 	if err != nil {
 		return invalidPayload(value.ID, digest, "inputIndexes must be non-empty unique in-range safe integers")
 	}
-	_, publicKey, _, _, err := authorizeFixture(packet)
-	if err != nil {
-		return failure(value.ID, digest, "rejected", "policy.psbt_not_authorized", "PSBT is outside the authorized fixture scope")
+	_, publicKey, _, _, class := handler.authorizeFixture(packet, fixtureID)
+	if class != "" {
+		return failure(value.ID, digest, "rejected", class, authorizationMessage(class))
 	}
 	return finalizePacket(value.ID, digest, packet, publicKey, indexes)
 }
@@ -342,6 +394,10 @@ func parsePSBT(encoded string) ([]byte, *psbt.Packet, error) {
 	if err != nil || len(raw) > maxPSBTBytes || base64.StdEncoding.EncodeToString(raw) != encoded {
 		return nil, nil, fmt.Errorf("invalid PSBT encoding")
 	}
+	version, err := psbtGlobalVersion(raw)
+	if err != nil || version != 0 {
+		return nil, nil, fmt.Errorf("unsupported PSBT version")
+	}
 	reader := bytes.NewReader(raw)
 	packet, err := psbt.NewFromRawBytes(reader, false)
 	if err != nil || reader.Len() != 0 {
@@ -363,10 +419,50 @@ func serializePSBT(packet *psbt.Packet) ([]byte, error) {
 	if err := packet.Serialize(&serialized); err != nil {
 		return nil, err
 	}
-	if serialized.Len() > maxPSBTBytes {
+	if serialized.Len() > maxPSBTBytes || base64.StdEncoding.EncodedLen(serialized.Len()) > base64.StdEncoding.EncodedLen(maxPSBTBytes) {
 		return nil, fmt.Errorf("serialized PSBT exceeds limit")
 	}
 	return serialized.Bytes(), nil
+}
+
+func psbtGlobalVersion(raw []byte) (uint32, error) {
+	if len(raw) < 6 || !bytes.Equal(raw[:5], []byte{'p', 's', 'b', 't', 0xff}) {
+		return 0, fmt.Errorf("invalid PSBT magic")
+	}
+	reader := bytes.NewReader(raw[5:])
+	var version uint32
+	seenVersion := false
+	for {
+		keyLength, err := wire.ReadVarInt(reader, 0)
+		if err != nil {
+			return 0, err
+		}
+		if keyLength == 0 {
+			return version, nil
+		}
+		if keyLength > psbt.MaxPsbtKeyLength || keyLength > uint64(reader.Len()) {
+			return 0, fmt.Errorf("invalid PSBT global key")
+		}
+		key := make([]byte, keyLength)
+		if _, err := io.ReadFull(reader, key); err != nil {
+			return 0, err
+		}
+		valueLength, err := wire.ReadVarInt(reader, 0)
+		if err != nil || valueLength > uint64(reader.Len()) {
+			return 0, fmt.Errorf("invalid PSBT global value")
+		}
+		value := make([]byte, valueLength)
+		if _, err := io.ReadFull(reader, value); err != nil {
+			return 0, err
+		}
+		if len(key) == 1 && key[0] == 0xfb {
+			if seenVersion || len(value) != 4 {
+				return 0, fmt.Errorf("invalid PSBT version")
+			}
+			seenVersion = true
+			version = binary.LittleEndian.Uint32(value)
+		}
+	}
 }
 
 func serializeWitness(witness wire.TxWitness) ([]byte, error) {
@@ -382,18 +478,21 @@ func serializeWitness(witness wire.TxWitness) ([]byte, error) {
 	return serialized.Bytes(), nil
 }
 
-func authorizeFixture(packet *psbt.Packet) (*btcutil.WIF, []byte, []byte, []*wire.TxOut, error) {
+func (handler *Handler) authorizeFixture(packet *psbt.Packet, fixtureID string) (*btcutil.WIF, []byte, []byte, []*wire.TxOut, string) {
+	if class := handler.commitmentClass(fixtureID, packet); class != "" {
+		return nil, nil, nil, nil, class
+	}
 	if packet == nil || packet.UnsignedTx == nil || len(packet.Inputs) == 0 || len(packet.Inputs) != len(packet.UnsignedTx.TxIn) {
-		return nil, nil, nil, nil, fmt.Errorf("missing inputs")
+		return nil, nil, nil, nil, "policy.psbt_not_authorized"
 	}
 	key, err := btcutil.DecodeWIF(testWIF)
 	if err != nil {
-		return nil, nil, nil, nil, err
+		return nil, nil, nil, nil, "policy.psbt_not_authorized"
 	}
 	publicKey := key.PrivKey.PubKey().SerializeCompressed()
 	witnessScript, err := txscript.NewScriptBuilder().AddData(publicKey).AddOp(txscript.OP_CHECKSIG).Script()
 	if err != nil {
-		return nil, nil, nil, nil, err
+		return nil, nil, nil, nil, "policy.psbt_not_authorized"
 	}
 	expectedPkScript := p2wshScript(witnessScript)
 	funding := make([]*wire.TxOut, len(packet.Inputs))
@@ -402,19 +501,19 @@ func authorizeFixture(packet *psbt.Packet) (*btcutil.WIF, []byte, []byte, []*wir
 		var full *wire.TxOut
 		if input.NonWitnessUtxo != nil {
 			if input.NonWitnessUtxo.TxHash() != previous.Hash || int(previous.Index) >= len(input.NonWitnessUtxo.TxOut) {
-				return nil, nil, nil, nil, fmt.Errorf("inconsistent non-witness UTXO")
+				return nil, nil, nil, nil, "policy.psbt_not_authorized"
 			}
 			full = input.NonWitnessUtxo.TxOut[previous.Index]
 		}
 		if input.WitnessUtxo != nil && full != nil && (input.WitnessUtxo.Value != full.Value || !bytes.Equal(input.WitnessUtxo.PkScript, full.PkScript)) {
-			return nil, nil, nil, nil, fmt.Errorf("inconsistent witness UTXO")
+			return nil, nil, nil, nil, "policy.psbt_not_authorized"
 		}
 		if input.FinalScriptSig != nil || input.FinalScriptWitness != nil {
 			if input.FinalScriptSig != nil || !hasExpectedFinalWitness(input.FinalScriptWitness, witnessScript) {
-				return nil, nil, nil, nil, fmt.Errorf("unexpected finalized witness")
+				return nil, nil, nil, nil, "policy.psbt_not_authorized"
 			}
 		} else if input.WitnessScript == nil || !bytes.Equal(input.WitnessScript, witnessScript) {
-			return nil, nil, nil, nil, fmt.Errorf("unexpected witness script")
+			return nil, nil, nil, nil, "policy.psbt_not_authorized"
 		}
 		if input.WitnessUtxo != nil {
 			funding[index] = input.WitnessUtxo
@@ -422,10 +521,66 @@ func authorizeFixture(packet *psbt.Packet) (*btcutil.WIF, []byte, []byte, []*wir
 			funding[index] = full
 		}
 		if funding[index] == nil || !bytes.Equal(funding[index].PkScript, expectedPkScript) {
-			return nil, nil, nil, nil, fmt.Errorf("unexpected funding output")
+			return nil, nil, nil, nil, "policy.psbt_not_authorized"
 		}
 	}
-	return key, publicKey, witnessScript, funding, nil
+	return key, publicKey, witnessScript, funding, ""
+}
+
+func (handler *Handler) commitmentClass(fixtureID string, packet *psbt.Packet) string {
+	if handler == nil || handler.configurationClass != "" {
+		if handler != nil && handler.configurationClass != "" {
+			return handler.configurationClass
+		}
+		return "policy.fixture_commitment_missing"
+	}
+	expected, ok := handler.fixtureCommitments[fixtureID]
+	if !ok {
+		return "policy.fixture_commitment_missing"
+	}
+	if packet == nil || packet.UnsignedTx == nil {
+		return "policy.psbt_not_authorized"
+	}
+	var serialized bytes.Buffer
+	if err := packet.UnsignedTx.Serialize(&serialized); err != nil {
+		return "policy.psbt_not_authorized"
+	}
+	actual := sha256.Sum256(serialized.Bytes())
+	if subtle.ConstantTimeCompare(actual[:], expected[:]) != 1 {
+		return "policy.fixture_commitment_mismatch"
+	}
+	return ""
+}
+
+func authorizationMessage(class string) string {
+	switch class {
+	case "policy.fixture_commitment_missing":
+		return "No configured fixture commitment authorizes this operation"
+	case "policy.fixture_commitment_invalid":
+		return "Configured fixture commitments are invalid"
+	case "policy.fixture_commitment_mismatch":
+		return "PSBT does not match the configured fixture commitment"
+	default:
+		return "PSBT is outside the authorized fixture scope"
+	}
+}
+
+func decodeCommitment(value string) ([sha256.Size]byte, bool) {
+	var commitment [sha256.Size]byte
+	if len(value) != len("sha256:")+sha256.Size*2 || value[:len("sha256:")] != "sha256:" {
+		return commitment, false
+	}
+	for _, character := range value[len("sha256:"):] {
+		if !(character >= '0' && character <= '9') && !(character >= 'a' && character <= 'f') {
+			return commitment, false
+		}
+	}
+	decoded, err := hex.DecodeString(value[len("sha256:"):])
+	if err != nil || len(decoded) != len(commitment) {
+		return commitment, false
+	}
+	copy(commitment[:], decoded)
+	return commitment, true
 }
 
 func hasExpectedFinalWitness(serialized, witnessScript []byte) bool {
