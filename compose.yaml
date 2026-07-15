@@ -1,0 +1,62 @@
+name: psbt-interop-lab
+
+services:
+  core:
+    image: psbt-interop-lab/core:31.1
+    build:
+      context: .
+      dockerfile: docker/core/Dockerfile
+    ports:
+      - "127.0.0.1:${PSBT_LAB_RPC_PORT:-18443}:18443"
+    networks:
+      - lab
+    volumes:
+      - core-data:/home/bitcoin/.bitcoin
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "bitcoin-cli",
+          "-regtest",
+          "-rpcconnect=127.0.0.1",
+          "-rpcuser=psbtlab",
+          "-rpcpassword=psbtlab-regtest-only",
+          "getblockchaininfo",
+        ]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  rust-adapter:
+    image: psbt-interop-lab/rust-bitcoin:0.1.0
+    build:
+      context: adapters/rust-bitcoin
+    network_mode: none
+    read_only: true
+    cap_drop:
+      - ALL
+    pids_limit: 64
+    mem_limit: 256m
+    security_opt:
+      - no-new-privileges:true
+
+  bdk-adapter:
+    image: psbt-interop-lab/bdkpython:2.3.1
+    platform: linux/amd64
+    build:
+      context: adapters/bdkpython-2.3.1
+    network_mode: none
+    read_only: true
+    cap_drop:
+      - ALL
+    pids_limit: 64
+    mem_limit: 256m
+    security_opt:
+      - no-new-privileges:true
+
+networks:
+  lab:
+    driver: bridge
+
+volumes:
+  core-data:

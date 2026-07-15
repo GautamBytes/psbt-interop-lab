@@ -1,0 +1,7 @@
+node_modules/
+dist/
+artifacts/
+coverage/
+.DS_Store
+adapters/rust-bitcoin/target/
+*.log

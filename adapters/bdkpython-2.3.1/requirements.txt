@@ -1,0 +1,1 @@
+bdkpython @ https://files.pythonhosted.org/packages/87/10/e4696ee690dfad84f7049da0ec4aec50fe1be9ad01031d26d5808b1df03a/bdkpython-2.3.1-cp313-cp313-manylinux_2_28_x86_64.whl --hash=sha256:ba6553eae92f2328cff268ed654d39da04516ebbf8ef9a84d46f99e70ecd2c85
