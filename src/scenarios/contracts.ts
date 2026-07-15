@@ -29,6 +29,29 @@ export const RUST_ADAPTER_CONTRACT = {
   roles: ["parser", "signer", "finalizer"],
   psbtVersions: [0],
   scriptTypes: ["p2wsh"],
+  features: ["fixture-commitment-sha256"],
+} as const satisfies ExpectedAdapterContract;
+
+export const GO_ADAPTER_CONTRACT = {
+  name: "btcsuite-go",
+  version: "v1.2.0",
+  sourceRevision: "github.com/btcsuite/btcd/btcutil/psbt@v1.2.0",
+  operations: ["hello", "inspect", "roundtrip", "sign", "finalize", "finalize-inputs"],
+  roles: ["parser", "signer", "finalizer"],
+  psbtVersions: [0],
+  scriptTypes: ["p2wsh"],
+  features: ["fixture-commitment-sha256"],
+} as const satisfies ExpectedAdapterContract;
+
+export const BITCOINJS_ADAPTER_CONTRACT = {
+  name: "bitcoinjs-lib",
+  version: "1.0.0",
+  sourceRevision: "bitcoinjs-lib-7.0.1+tiny-secp256k1-2.2.4",
+  operations: ["hello", "inspect", "roundtrip", "sign", "combine", "finalize", "finalize-inputs"],
+  roles: ["parser", "signer", "combiner", "finalizer"],
+  psbtVersions: [0],
+  scriptTypes: ["p2wsh"],
+  features: ["fixture-commitment-sha256"],
 } as const satisfies ExpectedAdapterContract;
 
 export const BDK_ADAPTER_CONTRACT = {

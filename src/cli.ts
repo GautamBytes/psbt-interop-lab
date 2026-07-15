@@ -65,6 +65,8 @@ async function doctor(): Promise<DoctorCheck[]> {
   for (const image of [
     "psbt-interop-lab/core:31.1",
     "psbt-interop-lab/rust-bitcoin:0.1.0",
+    "psbt-interop-lab/btcsuite-go:1.2.0",
+    "psbt-interop-lab/bitcoinjs-lib:7.0.1",
     "psbt-interop-lab/bdkpython:2.3.1",
   ]) {
     const check = await dockerCheck(
@@ -83,11 +85,23 @@ async function doctor(): Promise<DoctorCheck[]> {
 async function prepareRuntime(options: RunOptions): Promise<void> {
   if (options.build) {
     process.stderr.write("Building pinned Core and adapter images...\n");
-    await runCommand("docker", ["compose", "build", "core", "rust-adapter", "bdk-adapter"], {
-      cwd: PROJECT_DIRECTORY,
-      timeoutMs: 10 * 60_000,
-      maxOutputBytes: 8 * 1024 * 1024,
-    });
+    await runCommand(
+      "docker",
+      [
+        "compose",
+        "build",
+        "core",
+        "rust-adapter",
+        "go-adapter",
+        "bitcoinjs-adapter",
+        "bdk-adapter",
+      ],
+      {
+        cwd: PROJECT_DIRECTORY,
+        timeoutMs: 10 * 60_000,
+        maxOutputBytes: 8 * 1024 * 1024,
+      },
+    );
   }
   if (options.startCore) {
     process.stderr.write("Starting isolated Bitcoin Core regtest...\n");

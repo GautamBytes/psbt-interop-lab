@@ -7,6 +7,8 @@ import type {
 import {
   assertAdapterHello,
   assertByteIdenticalRoundtrip,
+  BITCOINJS_ADAPTER_CONTRACT,
+  GO_ADAPTER_CONTRACT,
   RUST_ADAPTER_CONTRACT,
 } from "../../src/scenarios/contracts.js";
 
@@ -39,6 +41,7 @@ function hello(
     roles: [...RUST_ADAPTER_CONTRACT.roles],
     psbtVersions: [0],
     scriptTypes: [...RUST_ADAPTER_CONTRACT.scriptTypes],
+    features: [...RUST_ADAPTER_CONTRACT.features],
   },
 ): AdapterResponse {
   return success(output, { ...IMPLEMENTATION, ...implementation });
@@ -75,6 +78,7 @@ describe("adapter contracts", () => {
         roles: [...RUST_ADAPTER_CONTRACT.roles],
         psbtVersions: [0],
         scriptTypes: [...RUST_ADAPTER_CONTRACT.scriptTypes],
+        features: [...RUST_ADAPTER_CONTRACT.features],
       },
     );
     expect(() => assertAdapterHello(response, RUST_ADAPTER_CONTRACT)).toThrow(/operation sign/i);
@@ -88,6 +92,7 @@ describe("adapter contracts", () => {
         roles: [...RUST_ADAPTER_CONTRACT.roles],
         psbtVersions: [2],
         scriptTypes: [...RUST_ADAPTER_CONTRACT.scriptTypes],
+        features: [...RUST_ADAPTER_CONTRACT.features],
       },
     );
     expect(() => assertAdapterHello(response, RUST_ADAPTER_CONTRACT)).toThrow(/PSBTv0/i);
@@ -104,6 +109,7 @@ describe("adapter contracts", () => {
         roles: [...RUST_ADAPTER_CONTRACT.roles],
         psbtVersions: [...RUST_ADAPTER_CONTRACT.psbtVersions],
         scriptTypes: [...RUST_ADAPTER_CONTRACT.scriptTypes],
+        features: [...RUST_ADAPTER_CONTRACT.features],
         [key]: [...value],
       },
     );
@@ -123,7 +129,52 @@ describe("adapter contracts", () => {
         roles: [...RUST_ADAPTER_CONTRACT.roles],
         psbtVersions: [...RUST_ADAPTER_CONTRACT.psbtVersions],
         scriptTypes: [...RUST_ADAPTER_CONTRACT.scriptTypes],
+        features: [...RUST_ADAPTER_CONTRACT.features],
       },
     });
   });
+
+  test("rejects an adapter without the fixture commitment feature", () => {
+    const response = hello(
+      {},
+      {
+        operations: [...RUST_ADAPTER_CONTRACT.operations],
+        roles: [...RUST_ADAPTER_CONTRACT.roles],
+        psbtVersions: [...RUST_ADAPTER_CONTRACT.psbtVersions],
+        scriptTypes: [...RUST_ADAPTER_CONTRACT.scriptTypes],
+        features: [],
+      },
+    );
+
+    expect(() => assertAdapterHello(response, RUST_ADAPTER_CONTRACT)).toThrow(
+      /feature fixture-commitment-sha256/i,
+    );
+  });
+
+  test.each([GO_ADAPTER_CONTRACT, BITCOINJS_ADAPTER_CONTRACT])(
+    "accepts the declared $name adapter contract",
+    (contract) => {
+      const implementation: AdapterImplementation = {
+        name: contract.name,
+        version: contract.version,
+        artifactDigest: `sha256:${"b".repeat(64)}`,
+        sourceRevision: contract.sourceRevision,
+      };
+      const response = success(
+        {
+          operations: [...contract.operations],
+          roles: [...contract.roles],
+          psbtVersions: [...contract.psbtVersions],
+          scriptTypes: [...contract.scriptTypes],
+          features: [...contract.features],
+        },
+        implementation,
+      );
+
+      expect(assertAdapterHello(response, contract)).toEqual({
+        implementation,
+        capabilities: response.status === "ok" ? response.output : undefined,
+      });
+    },
+  );
 });

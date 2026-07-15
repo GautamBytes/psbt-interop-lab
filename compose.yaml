@@ -49,6 +49,32 @@ services:
     security_opt:
       - no-new-privileges:true
 
+  go-adapter:
+    image: psbt-interop-lab/btcsuite-go:1.2.0
+    build:
+      context: adapters/btcsuite-go
+    network_mode: none
+    read_only: true
+    cap_drop:
+      - ALL
+    pids_limit: 64
+    mem_limit: 256m
+    security_opt:
+      - no-new-privileges:true
+
+  bitcoinjs-adapter:
+    image: psbt-interop-lab/bitcoinjs-lib:7.0.1
+    build:
+      context: adapters/bitcoinjs-lib
+    network_mode: none
+    read_only: true
+    cap_drop:
+      - ALL
+    pids_limit: 64
+    mem_limit: 256m
+    security_opt:
+      - no-new-privileges:true
+
   bdk-adapter:
     image: psbt-interop-lab/bdkpython:2.3.1
     platform: linux/amd64
