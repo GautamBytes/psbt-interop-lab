@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { parsePsbtDocument } from "../psbt/document.js";
 import { extractWireFacts } from "../psbt/wire-facts.js";
 import {
@@ -21,6 +22,20 @@ const EXPECTED_WITNESS_SCRIPTS = {
   "p2wsh-single-key": SINGLE_KEY_WITNESS_SCRIPT,
   "p2wsh-2-of-3": MULTISIG_WITNESS_SCRIPT,
 } as const satisfies Partial<Record<FixtureDescriptorId, string>>;
+const EXPECTED_SCRIPT_PUBKEYS = {
+  p2wpkh: `0014${createHash("ripemd160")
+    .update(createHash("sha256").update(Buffer.from(FIXTURE_PUBLIC_KEYS.scalar1, "hex")).digest())
+    .digest("hex")}`,
+  "p2wsh-single-key": `0020${createHash("sha256")
+    .update(Buffer.from(SINGLE_KEY_WITNESS_SCRIPT, "hex"))
+    .digest("hex")}`,
+  "p2wsh-2-of-3": `0020${createHash("sha256")
+    .update(Buffer.from(MULTISIG_WITNESS_SCRIPT, "hex"))
+    .digest("hex")}`,
+  // BIP341 TapTweak output key for the scalar-1 x-only internal key.
+  "p2tr-keypath": "5120da4710964f7852695de2da025290e24af6d8c281de5a0b902b7135fd9fd74d21",
+} as const satisfies Record<FixtureDescriptorId, string>;
+let scanLockTail = Promise.resolve();
 export const BITCOIN_CORE_VERSION = 310100;
 
 export interface RpcCaller {
@@ -79,6 +94,7 @@ interface NetworkInfo {
   version: number;
   subversion: string;
   connections: number;
+  networkActive: boolean;
 }
 
 interface DescriptorInfo {
@@ -156,7 +172,8 @@ function parseNetworkInfo(value: unknown): NetworkInfo {
     !Number.isSafeInteger(object["version"]) ||
     typeof object["subversion"] !== "string" ||
     !Number.isSafeInteger(object["connections"]) ||
-    (object["connections"] as number) < 0
+    (object["connections"] as number) < 0 ||
+    typeof object["networkactive"] !== "boolean"
   ) {
     throw new Error("getnetworkinfo returned invalid version metadata");
   }
@@ -164,6 +181,7 @@ function parseNetworkInfo(value: unknown): NetworkInfo {
     version: object["version"] as number,
     subversion: object["subversion"],
     connections: object["connections"] as number,
+    networkActive: object["networkactive"],
   };
 }
 
@@ -212,7 +230,10 @@ function parseValidatedScriptPubKey(
   ) {
     throw new Error(`validateaddress returned invalid script metadata for ${id}`);
   }
-  return scriptPubKey.toLowerCase();
+  if (scriptPubKey.toLowerCase() !== EXPECTED_SCRIPT_PUBKEYS[id]) {
+    throw new Error(`validateaddress does not match local descriptor script commitment for ${id}`);
+  }
+  return EXPECTED_SCRIPT_PUBKEYS[id];
 }
 
 function parseScan(value: unknown): ScanResult {
@@ -323,12 +344,23 @@ async function scanFixtureUtxos(
   descriptor: string,
   blocks: number,
 ): Promise<FixtureOutpoint[]> {
-  const result = parseScan(
-    await rpc.call("scantxoutset", {
-      action: "start",
-      scanobjects: [descriptor],
-    }),
-  );
+  const previousScan = scanLockTail;
+  let releaseScan: (() => void) | undefined;
+  scanLockTail = new Promise<void>((resolve) => {
+    releaseScan = resolve;
+  });
+  await previousScan;
+  let result: ScanResult;
+  try {
+    result = parseScan(
+      await rpc.call("scantxoutset", {
+        action: "start",
+        scanobjects: [descriptor],
+      }),
+    );
+  } finally {
+    releaseScan?.();
+  }
   const selected = result.unspents
     .filter((utxo) => utxo.height <= blocks - COINBASE_MATURITY_BLOCKS)
     .map((utxo) => ({
@@ -482,7 +514,7 @@ function unsignedTransactionSha256(encoded: string, id: FixtureId): `sha256:${st
   ) {
     throw new Error(`Fixture ${id} lacks one valid PSBTv0 unsigned transaction`);
   }
-  return `sha256:${unsignedTransaction.valueSha256}`;
+  return `sha256:${createHash("sha256").update(unsignedTransaction.value).digest("hex")}`;
 }
 
 function assertDecodedFixture(
@@ -665,6 +697,9 @@ export async function prepareFixtures(rpc: RpcCaller): Promise<PreparedFixtures>
   }
   if (network.connections !== 0) {
     throw new Error("PSBT Interop Lab requires Bitcoin Core to have zero peer connections");
+  }
+  if (network.networkActive !== false) {
+    throw new Error("PSBT Interop Lab requires Bitcoin Core networking to be disabled");
   }
 
   const descriptors = await canonicalizeDescriptors(rpc);

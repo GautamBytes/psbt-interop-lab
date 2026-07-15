@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { describe, expect, test } from "vitest";
 import { FIXTURE_DESCRIPTORS, FIXTURE_PUBLIC_KEYS } from "../../src/core/fixture-profiles.js";
 import {
@@ -40,6 +41,8 @@ const FIXTURE_SCRIPT_PUBKEYS = {
   [FIXTURE_DESCRIPTORS["p2tr-keypath"]]:
     "5120da4710964f7852695de2da025290e24af6d8c281de5a0b902b7135fd9fd74d21",
 } as const;
+const BIP370_VALID_PSBT_V2 =
+  "cHNidP8BAgQCAAAAAQQBAQEFAQIB+wQCAAAAAAEOIAsK2SFBnByHGXNdctxzn56p4GONH+TB7vD5lECEgV/IAQ8EAAAAAAABAwgACK8vAAAAAAEEFgAUxDD2TEdW2jENvRoIVXLvKZkmJywAAQMIi73rCwAAAAABBBYAFE3Rk6yWSlasG54cyoRU/i9HT4UTAA==";
 
 function fixtureScriptPubKey(descriptor: string): string {
   const scriptPubKey = FIXTURE_SCRIPT_PUBKEYS[descriptor as keyof typeof FIXTURE_SCRIPT_PUBKEYS];
@@ -47,23 +50,39 @@ function fixtureScriptPubKey(descriptor: string): string {
   return scriptPubKey;
 }
 
-interface CreatedPsbt {
+interface FakeUnsignedTransaction {
   inputs: Array<{ txid: string; vout: number }>;
-  outputSats: number;
-  outputScriptPubKey: string;
-  descriptors: string[];
+  outputs: Array<{ amountSats: number; scriptPubKey: string }>;
+  bytes: Buffer;
 }
 
 interface FakeRpcOptions {
   chain?: string;
   connections?: number;
+  networkActive?: boolean;
   malformedScan?: boolean;
   malformedUpdatedPsbt?: boolean;
   emptyUtxos?: boolean;
   guardConcurrentScans?: boolean;
+  scanFailures?: number;
   wrongWitnessUtxoScript?: boolean;
   wrongOutputScript?: boolean;
   wrongWitnessScript?: "single-key" | "multisig";
+  mutateCoreScriptFor?: keyof typeof FIXTURE_DESCRIPTORS;
+  mutateInputScript?: {
+    descriptorId: keyof typeof FIXTURE_DESCRIPTORS;
+    inputCount?: number;
+    inputIndex?: number;
+    txid?: string;
+  };
+  mutateOutputScript?: {
+    descriptorId: keyof typeof FIXTURE_DESCRIPTORS;
+    inputCount?: number;
+    inputTxid?: string;
+  };
+  unsignedTxLocktime?: number;
+  createdPsbtV2?: boolean;
+  updatedPsbtV2?: boolean;
 }
 
 function paramObject(
@@ -94,6 +113,127 @@ function encodeUint64(value: number): Buffer {
   return encoded;
 }
 
+function readCompactSize(buffer: Buffer, offset: number): { value: number; nextOffset: number } {
+  const value = buffer[offset];
+  if (value === undefined || value >= 253) throw new Error("Unsupported test compact size");
+  return { value, nextOffset: offset + 1 };
+}
+
+function psbtEntry(keyType: number, value: Buffer): Buffer {
+  const key = Buffer.from([keyType]);
+  return Buffer.concat([
+    encodeCompactSize(key.length),
+    key,
+    encodeCompactSize(value.length),
+    value,
+  ]);
+}
+
+function psbtMap(entries: readonly Buffer[]): Buffer {
+  return Buffer.concat([...entries, Buffer.from([0])]);
+}
+
+function serializedTxOut(amountSats: number, scriptPubKey: string): Buffer {
+  const script = Buffer.from(scriptPubKey, "hex");
+  return Buffer.concat([encodeUint64(amountSats), encodeCompactSize(script.length), script]);
+}
+
+function parseTxOut(value: Buffer): { amountSats: number; scriptPubKey: string } {
+  if (value.length < 9) throw new Error("Invalid fake witness UTXO");
+  const amount = value.readBigUInt64LE(0);
+  const scriptLength = readCompactSize(value, 8);
+  const scriptEnd = scriptLength.nextOffset + scriptLength.value;
+  if (amount > BigInt(Number.MAX_SAFE_INTEGER) || scriptEnd !== value.length) {
+    throw new Error("Invalid fake witness UTXO");
+  }
+  return {
+    amountSats: Number(amount),
+    scriptPubKey: value.subarray(scriptLength.nextOffset, scriptEnd).toString("hex"),
+  };
+}
+
+function parseUnsignedTransaction(psbt: string): FakeUnsignedTransaction {
+  const document = parsePsbtDocument(psbt);
+  const globalMap = document.maps.find((map) => map.location.kind === "global");
+  const unsignedTransactions = globalMap?.entries.filter(
+    (entry) => entry.keyType === 0 && entry.keyData.length === 0,
+  );
+  if (document.psbtVersion !== 0 || unsignedTransactions?.length !== 1) {
+    throw new Error("Fake RPC expected one PSBTv0 unsigned transaction");
+  }
+  const bytes = unsignedTransactions[0]?.value;
+  if (!bytes) throw new Error("Fake RPC lacks an unsigned transaction");
+  let offset = 4;
+  const inputCount = readCompactSize(bytes, offset);
+  offset = inputCount.nextOffset;
+  const inputs = [];
+  for (let index = 0; index < inputCount.value; index += 1) {
+    const txidBytes = bytes.subarray(offset, offset + 32);
+    if (txidBytes.length !== 32) throw new Error("Truncated fake transaction input");
+    offset += 32;
+    const vout = bytes.readUInt32LE(offset);
+    offset += 4;
+    const scriptLength = readCompactSize(bytes, offset);
+    offset = scriptLength.nextOffset + scriptLength.value;
+    offset += 4;
+    inputs.push({ txid: Buffer.from(txidBytes).reverse().toString("hex"), vout });
+  }
+  const outputCount = readCompactSize(bytes, offset);
+  offset = outputCount.nextOffset;
+  const outputs = [];
+  for (let index = 0; index < outputCount.value; index += 1) {
+    const amount = bytes.readBigUInt64LE(offset);
+    offset += 8;
+    const scriptLength = readCompactSize(bytes, offset);
+    const scriptEnd = scriptLength.nextOffset + scriptLength.value;
+    if (amount > BigInt(Number.MAX_SAFE_INTEGER) || scriptEnd > bytes.length) {
+      throw new Error("Invalid fake transaction output");
+    }
+    outputs.push({
+      amountSats: Number(amount),
+      scriptPubKey: bytes.subarray(scriptLength.nextOffset, scriptEnd).toString("hex"),
+    });
+    offset = scriptEnd;
+  }
+  if (offset + 4 !== bytes.length) throw new Error("Invalid fake unsigned transaction length");
+  return { inputs, outputs, bytes };
+}
+
+function addInputMetadata(psbt: string, additions: readonly (readonly Buffer[])[]): string {
+  const document = parsePsbtDocument(psbt);
+  let inputIndex = 0;
+  const encodedMaps = document.maps.map((map) => {
+    const existing = map.entries.map((entry) => {
+      const key = entry.completeKey;
+      return Buffer.concat([
+        encodeCompactSize(key.length),
+        key,
+        encodeCompactSize(entry.value.length),
+        entry.value,
+      ]);
+    });
+    if (map.location.kind !== "input") return psbtMap(existing);
+    const added = additions[inputIndex];
+    inputIndex += 1;
+    if (!added) throw new Error("Missing fake PSBT input metadata");
+    return psbtMap([...existing, ...added]);
+  });
+  if (inputIndex !== additions.length) throw new Error("Extra fake PSBT input metadata");
+  return Buffer.concat([Buffer.from("70736274ff", "hex"), ...encodedMaps]).toString("base64");
+}
+
+function inputEntryValue(psbt: string, inputIndex: number, keyType: number): Buffer | undefined {
+  const map = parsePsbtDocument(psbt).maps.find(
+    (candidate) => candidate.location.kind === "input" && candidate.location.index === inputIndex,
+  );
+  const entries = map?.entries.filter(
+    (entry) => entry.keyType === keyType && entry.keyData.length === 0,
+  );
+  if (!entries || entries.length === 0) return undefined;
+  if (entries.length !== 1) throw new Error("Duplicate fake PSBT input metadata");
+  return entries[0]?.value;
+}
+
 function mutateHex(value: string): string {
   return `${value.slice(0, -2)}${value.endsWith("00") ? "01" : "00"}`;
 }
@@ -105,13 +245,23 @@ function semanticUnsignedTxSha256(psbt: string): string {
     (entry) => entry.keyType === 0 && entry.keyData.byteLength === 0,
   );
   if (!unsignedTransaction) throw new Error("Test PSBT has no global unsigned transaction");
-  return `sha256:${unsignedTransaction.valueSha256}`;
+  return `sha256:${createHash("sha256").update(unsignedTransaction.value).digest("hex")}`;
+}
+
+function semanticTransactionId(psbt: string): string {
+  const transaction = parseUnsignedTransaction(psbt).bytes;
+  return Buffer.from(
+    createHash("sha256").update(createHash("sha256").update(transaction).digest()).digest(),
+  )
+    .reverse()
+    .toString("hex");
 }
 
 function makePsbt(
   inputs: Array<{ txid: string; vout: number }>,
   outputSats: number,
   outputScriptPubKey: string,
+  locktime = 0,
 ): string {
   const outputScript = Buffer.from(outputScriptPubKey, "hex");
   const unsignedTransaction = Buffer.concat([
@@ -127,16 +277,13 @@ function makePsbt(
     encodeUint64(outputSats),
     encodeCompactSize(outputScript.byteLength),
     outputScript,
-    Buffer.alloc(4),
+    encodeUint32(locktime),
   ]);
   return Buffer.concat([
     Buffer.from("70736274ff", "hex"),
-    Buffer.from([1, 0]),
-    encodeCompactSize(unsignedTransaction.length),
-    unsignedTransaction,
-    Buffer.from([0]),
-    ...inputs.map(() => Buffer.from([0])),
-    Buffer.from([0]),
+    psbtMap([psbtEntry(0x00, unsignedTransaction)]),
+    ...inputs.map(() => psbtMap([])),
+    psbtMap([]),
   ]).toString("base64");
 }
 
@@ -151,7 +298,15 @@ function createFixtureRpc(options: FakeRpcOptions = {}): {
   let generatedCounter = 1;
   let activeScans = 0;
   let maxConcurrentScans = 0;
+  let remainingScanFailures = options.scanFailures ?? 0;
   const addresses = FIXTURE_ADDRESSES;
+  const coreScriptPubKey = (descriptor: string): string => {
+    const scriptPubKey = fixtureScriptPubKey(descriptor);
+    const descriptorId = Object.entries(FIXTURE_DESCRIPTORS).find(
+      ([, candidate]) => candidate === descriptor,
+    )?.[0];
+    return descriptorId === options.mutateCoreScriptFor ? mutateHex(scriptPubKey) : scriptPubKey;
+  };
   const unspents = {
     [FIXTURE_DESCRIPTORS.p2wpkh]: [
       { txid: TXIDS.wpkh2, vout: 0, amount: "50.00000000", height: 6 },
@@ -179,8 +334,6 @@ function createFixtureRpc(options: FakeRpcOptions = {}): {
     for (const entry of entries)
       descriptorForOutpoint.set(`${entry.txid}:${entry.vout}`, descriptor);
   }
-  const created = new Map<string, CreatedPsbt>();
-
   const rpc: RpcCaller = {
     async call<T>(method: string, params?: Record<string, unknown> | unknown[]): Promise<T> {
       calls.push({ method, params });
@@ -190,6 +343,7 @@ function createFixtureRpc(options: FakeRpcOptions = {}): {
           version: 310100,
           subversion: "/Satoshi:31.1.0/",
           connections: options.connections ?? 0,
+          networkactive: options.networkActive ?? false,
         } as T;
       }
       if (method === "getdescriptorinfo") {
@@ -208,12 +362,12 @@ function createFixtureRpc(options: FakeRpcOptions = {}): {
         const address = paramObject(params)["address"];
         const descriptor = Object.entries(addresses).find(
           ([, candidate]) => candidate === address,
-        )?.[0] as keyof typeof FIXTURE_SCRIPT_PUBKEYS | undefined;
+        )?.[0];
         if (!descriptor || typeof address !== "string") throw new Error("Unknown address");
         return {
           isvalid: true,
           address,
-          scriptPubKey: FIXTURE_SCRIPT_PUBKEYS[descriptor],
+          scriptPubKey: coreScriptPubKey(descriptor),
           iswitness: true,
           witness_version: descriptor === FIXTURE_DESCRIPTORS["p2tr-keypath"] ? 1 : 0,
         } as T;
@@ -225,6 +379,10 @@ function createFixtureRpc(options: FakeRpcOptions = {}): {
           await Promise.resolve();
           if (options.guardConcurrentScans && activeScans > 1) {
             throw new Error("scantxoutset scan already in progress");
+          }
+          if (remainingScanFailures > 0) {
+            remainingScanFailures -= 1;
+            return { success: false, unspents: [] } as T;
           }
           if (options.malformedScan) return { success: false, unspents: [] } as T;
           const scanobjects = paramObject(params)["scanobjects"];
@@ -301,88 +459,149 @@ function createFixtureRpc(options: FakeRpcOptions = {}): {
           throw new Error("Invalid fixture output");
         }
         const outputSats = Number(BigInt(outputAmount.replace(".", "").padEnd(8, "0")));
-        const outputScriptPubKey = fixtureScriptPubKey(outputDescriptor);
-        const psbt = makePsbt(fixtureInputs, outputSats, outputScriptPubKey);
-        created.set(psbt, {
-          inputs: fixtureInputs,
+        const outputDescriptorId = Object.entries(FIXTURE_DESCRIPTORS).find(
+          ([, candidate]) => candidate === outputDescriptor,
+        )?.[0];
+        const outputMutation = options.mutateOutputScript;
+        const shouldMutateOutputScript =
+          outputMutation !== undefined &&
+          outputDescriptorId === outputMutation.descriptorId &&
+          (outputMutation.inputCount === undefined ||
+            outputMutation.inputCount === fixtureInputs.length) &&
+          (outputMutation.inputTxid === undefined ||
+            fixtureInputs.some((input) => input.txid === outputMutation.inputTxid));
+        const expectedOutputScript = coreScriptPubKey(outputDescriptor);
+        const outputScriptPubKey =
+          options.wrongOutputScript || shouldMutateOutputScript
+            ? mutateHex(expectedOutputScript)
+            : expectedOutputScript;
+        if (options.createdPsbtV2) return BIP370_VALID_PSBT_V2 as T;
+        return makePsbt(
+          fixtureInputs,
           outputSats,
           outputScriptPubKey,
-          descriptors: [],
-        });
-        return psbt as T;
+          options.unsignedTxLocktime,
+        ) as T;
       }
       if (method === "utxoupdatepsbt") {
         const request = paramObject(params);
         const psbt = request["psbt"];
         const descriptors = request["descriptors"];
-        if (typeof psbt !== "string" || !Array.isArray(descriptors) || !created.has(psbt)) {
+        if (typeof psbt !== "string" || !Array.isArray(descriptors)) {
           throw new Error("Invalid utxoupdatepsbt request");
         }
-        const fixture = created.get(psbt);
-        if (!fixture || descriptors.some((descriptor) => typeof descriptor !== "string")) {
+        if (descriptors.some((descriptor) => typeof descriptor !== "string")) {
           throw new Error("Invalid fixture descriptors");
         }
-        fixture.descriptors = [...descriptors] as string[];
-        return (options.malformedUpdatedPsbt ? "not-a-psbt" : psbt) as T;
+        if (options.updatedPsbtV2) return BIP370_VALID_PSBT_V2 as T;
+        const transaction = parseUnsignedTransaction(psbt);
+        const inputMetadata = transaction.inputs.map((input, inputIndex) => {
+          const descriptor = descriptorForOutpoint.get(`${input.txid}:${input.vout}`);
+          if (!descriptor || !descriptors.includes(descriptor)) {
+            throw new Error("Missing fixture descriptor for PSBT input");
+          }
+          const descriptorId = Object.entries(FIXTURE_DESCRIPTORS).find(
+            ([, candidate]) => candidate === descriptor,
+          )?.[0];
+          const inputMutation = options.mutateInputScript;
+          const shouldMutateInputScript =
+            inputMutation !== undefined &&
+            descriptorId === inputMutation.descriptorId &&
+            (inputMutation.inputCount === undefined ||
+              inputMutation.inputCount === transaction.inputs.length) &&
+            (inputMutation.inputIndex === undefined || inputMutation.inputIndex === inputIndex) &&
+            (inputMutation.txid === undefined || inputMutation.txid === input.txid);
+          const inputScriptPubKey = coreScriptPubKey(descriptor);
+          const witnessScript =
+            descriptor === FIXTURE_DESCRIPTORS["p2wsh-single-key"]
+              ? SINGLE_KEY_WITNESS_SCRIPT
+              : descriptor === FIXTURE_DESCRIPTORS["p2wsh-2-of-3"]
+                ? MULTISIG_WITNESS_SCRIPT
+                : undefined;
+          const shouldMutateWitnessScript =
+            (options.wrongWitnessScript === "single-key" &&
+              descriptor === FIXTURE_DESCRIPTORS["p2wsh-single-key"]) ||
+            (options.wrongWitnessScript === "multisig" &&
+              descriptor === FIXTURE_DESCRIPTORS["p2wsh-2-of-3"]);
+          return [
+            psbtEntry(
+              0x01,
+              serializedTxOut(
+                COINBASE_SATS,
+                options.wrongWitnessUtxoScript || shouldMutateInputScript
+                  ? mutateHex(inputScriptPubKey)
+                  : inputScriptPubKey,
+              ),
+            ),
+            ...(witnessScript
+              ? [
+                  psbtEntry(
+                    0x05,
+                    Buffer.from(
+                      shouldMutateWitnessScript ? mutateHex(witnessScript) : witnessScript,
+                      "hex",
+                    ),
+                  ),
+                ]
+              : []),
+            ...(descriptor === FIXTURE_DESCRIPTORS["p2tr-keypath"]
+              ? [psbtEntry(0x17, Buffer.from(FIXTURE_PUBLIC_KEYS.scalar1.slice(2), "hex"))]
+              : []),
+          ];
+        });
+        return (
+          options.malformedUpdatedPsbt ? "not-a-psbt" : addInputMetadata(psbt, inputMetadata)
+        ) as T;
       }
       if (method === "decodepsbt") {
         const psbt = paramObject(params)["psbt"];
         if (typeof psbt !== "string") throw new Error("Invalid decodepsbt request");
-        const fixture = created.get(psbt);
-        if (!fixture) throw new Error("Unknown PSBT");
-        const inputSats = fixture.inputs.length * COINBASE_SATS;
+        const transaction = parseUnsignedTransaction(psbt);
+        const decodedInputs = transaction.inputs.map((_input, index) => {
+          const witnessUtxo = inputEntryValue(psbt, index, 0x01);
+          if (!witnessUtxo) throw new Error("Fake PSBT input lacks witness UTXO");
+          const decodedWitnessUtxo = parseTxOut(witnessUtxo);
+          const witnessScript = inputEntryValue(psbt, index, 0x05);
+          const taprootInternalKey = inputEntryValue(psbt, index, 0x17);
+          return {
+            witness_utxo: {
+              amount: satsToBtcString(decodedWitnessUtxo.amountSats),
+              scriptPubKey: { hex: decodedWitnessUtxo.scriptPubKey },
+            },
+            ...(witnessScript ? { witness_script: { hex: witnessScript.toString("hex") } } : {}),
+            ...(taprootInternalKey
+              ? { taproot_internal_key: taprootInternalKey.toString("hex") }
+              : {}),
+          };
+        });
+        const output = transaction.outputs[0];
+        if (!output || transaction.outputs.length !== 1) {
+          throw new Error("Fake PSBT must contain one output");
+        }
+        const inputSats = decodedInputs.reduce(
+          (sum, input) => sum + btcToSats(input.witness_utxo.amount),
+          0,
+        );
+        const txid = Buffer.from(
+          createHash("sha256")
+            .update(createHash("sha256").update(transaction.bytes).digest())
+            .digest(),
+        )
+          .reverse()
+          .toString("hex");
         return {
           tx: {
-            txid: "ab".repeat(32),
-            vin: fixture.inputs,
+            txid,
+            vin: transaction.inputs,
             vout: [
               {
-                value: satsToBtcString(fixture.outputSats),
-                scriptPubKey: {
-                  hex: options.wrongOutputScript
-                    ? mutateHex(fixture.outputScriptPubKey)
-                    : fixture.outputScriptPubKey,
-                },
+                value: satsToBtcString(output.amountSats),
+                scriptPubKey: { hex: output.scriptPubKey },
               },
             ],
           },
-          inputs: fixture.inputs.map((input) => {
-            const descriptor = descriptorForOutpoint.get(`${input.txid}:${input.vout}`);
-            if (!descriptor) throw new Error("Unknown fixture outpoint");
-            const inputScriptPubKey = fixtureScriptPubKey(descriptor);
-            const witnessScript =
-              descriptor === FIXTURE_DESCRIPTORS["p2wsh-single-key"]
-                ? SINGLE_KEY_WITNESS_SCRIPT
-                : descriptor === FIXTURE_DESCRIPTORS["p2wsh-2-of-3"]
-                  ? MULTISIG_WITNESS_SCRIPT
-                  : undefined;
-            const shouldMutateWitnessScript =
-              (options.wrongWitnessScript === "single-key" &&
-                descriptor === FIXTURE_DESCRIPTORS["p2wsh-single-key"]) ||
-              (options.wrongWitnessScript === "multisig" &&
-                descriptor === FIXTURE_DESCRIPTORS["p2wsh-2-of-3"]);
-            return {
-              witness_utxo: {
-                amount: "50.00000000",
-                scriptPubKey: {
-                  hex: options.wrongWitnessUtxoScript
-                    ? mutateHex(inputScriptPubKey)
-                    : inputScriptPubKey,
-                },
-              },
-              ...(witnessScript
-                ? {
-                    witness_script: {
-                      hex: shouldMutateWitnessScript ? mutateHex(witnessScript) : witnessScript,
-                    },
-                  }
-                : {}),
-              ...(descriptor.startsWith("tr(")
-                ? { taproot_internal_key: FIXTURE_PUBLIC_KEYS.scalar1.slice(2) }
-                : {}),
-            };
-          }),
-          fee: satsToBtcString(inputSats - fixture.outputSats),
+          inputs: decodedInputs,
+          fee: satsToBtcString(inputSats - output.amountSats),
         } as T;
       }
       throw new Error(`Unexpected RPC ${method}`);
@@ -426,7 +645,12 @@ describe("prepareFixtures", () => {
       async call<T>(method: string): Promise<T> {
         if (method === "getblockchaininfo") return { chain: "regtest", blocks: 103 } as T;
         if (method === "getnetworkinfo") {
-          return { version: 310000, subversion: "/Satoshi:31.0.0/", connections: 0 } as T;
+          return {
+            version: 310000,
+            subversion: "/Satoshi:31.0.0/",
+            connections: 0,
+            networkactive: false,
+          } as T;
         }
         throw new Error(`Unexpected RPC ${method}`);
       },
@@ -442,11 +666,39 @@ describe("prepareFixtures", () => {
     expect(calls.map((call) => call.method)).toEqual(["getblockchaininfo", "getnetworkinfo"]);
   });
 
+  test("refuses a Core node with networking enabled before touching descriptors or funds", async () => {
+    const { rpc, calls } = createFixtureRpc({ networkActive: true });
+
+    await expect(prepareFixtures(rpc)).rejects.toThrow(/networking.*disabled/i);
+    expect(calls.map((call) => call.method)).toEqual(["getblockchaininfo", "getnetworkinfo"]);
+  });
+
   test("serializes scantxoutset starts because Core permits only one active scan", async () => {
     const { rpc, maxConcurrentScans } = createFixtureRpc({ guardConcurrentScans: true });
 
     await prepareFixtures(rpc);
 
+    expect(maxConcurrentScans()).toBe(1);
+  });
+
+  test("serializes scantxoutset across concurrent prepareFixtures calls", async () => {
+    const { rpc, maxConcurrentScans } = createFixtureRpc({ guardConcurrentScans: true });
+
+    const prepared = await Promise.all([prepareFixtures(rpc), prepareFixtures(rpc)]);
+
+    expect(prepared).toHaveLength(2);
+    expect(maxConcurrentScans()).toBe(1);
+  });
+
+  test("releases the global scan lock after an RPC error", async () => {
+    const { rpc, maxConcurrentScans } = createFixtureRpc({
+      guardConcurrentScans: true,
+      scanFailures: 1,
+    });
+
+    const results = await Promise.allSettled([prepareFixtures(rpc), prepareFixtures(rpc)]);
+
+    expect(results.map((result) => result.status).sort()).toEqual(["fulfilled", "rejected"]);
     expect(maxConcurrentScans()).toBe(1);
   });
 
@@ -467,6 +719,18 @@ describe("prepareFixtures", () => {
     );
   });
 
+  test("rejects a PSBTv2 createpsbt response", async () => {
+    await expect(prepareFixtures(createFixtureRpc({ createdPsbtV2: true }).rpc)).rejects.toThrow(
+      /unexpected PSBT structure/i,
+    );
+  });
+
+  test("rejects a PSBTv2 utxoupdatepsbt response", async () => {
+    await expect(prepareFixtures(createFixtureRpc({ updatedPsbtV2: true }).rpc)).rejects.toThrow(
+      /unexpected PSBT structure/i,
+    );
+  });
+
   test("obtains every expected descriptor script from validateaddress", async () => {
     const { rpc, calls } = createFixtureRpc();
 
@@ -479,6 +743,15 @@ describe("prepareFixtures", () => {
     ).toEqual(Object.values(FIXTURE_ADDRESSES));
   });
 
+  test.each(["p2wpkh", "p2wsh-single-key", "p2wsh-2-of-3", "p2tr-keypath"] as const)(
+    "rejects an internally consistent %s Core script that differs from the local commitment",
+    async (mutateCoreScriptFor) => {
+      await expect(prepareFixtures(createFixtureRpc({ mutateCoreScriptFor }).rpc)).rejects.toThrow(
+        /local descriptor script commitment/i,
+      );
+    },
+  );
+
   test("commits to the exact PSBTv0 global unsigned transaction bytes", async () => {
     const fixtures = await prepareFixtures(createFixtureRpc().rpc);
 
@@ -490,6 +763,32 @@ describe("prepareFixtures", () => {
       expect(fixture.unsignedTxSha256).toMatch(/^sha256:[0-9a-f]{64}$/);
       expect(fixture.unsignedTxSha256).toBe(semanticUnsignedTxSha256(fixture.initialPsbt));
     }
+  });
+
+  test("changes the unsigned transaction commitment when an exact transaction byte changes", async () => {
+    const normal = await prepareFixtures(createFixtureRpc().rpc);
+    const mutated = await prepareFixtures(createFixtureRpc({ unsignedTxLocktime: 1 }).rpc);
+
+    expect(mutated.happy.unsignedTxSha256).not.toBe(normal.happy.unsignedTxSha256);
+  });
+
+  test("serializes signer metadata into the fake PSBT input maps", async () => {
+    const fixtures = await prepareFixtures(createFixtureRpc().rpc);
+    const inputKeyTypes = (psbt: string) =>
+      parsePsbtDocument(psbt)
+        .maps.filter((map) => map.location.kind === "input")
+        .map((map) => map.entries.map((entry) => entry.keyType));
+
+    expect(inputKeyTypes(fixtures.profiles.p2wpkh.initialPsbt)).toEqual([[0x01]]);
+    expect(inputKeyTypes(fixtures.profiles["p2wsh-single-key"].initialPsbt)).toEqual([
+      [0x01, 0x05],
+    ]);
+    expect(inputKeyTypes(fixtures.profiles["p2wsh-2-of-3"].initialPsbt)).toEqual([[0x01, 0x05]]);
+    expect(inputKeyTypes(fixtures.profiles["p2tr-keypath"].initialPsbt)).toEqual([[0x01, 0x17]]);
+    expect(inputKeyTypes(fixtures.profiles["mixed-p2wpkh-p2tr"].initialPsbt)).toEqual([
+      [0x01],
+      [0x01, 0x17],
+    ]);
   });
 
   test("builds deterministic multi-profile fixtures with exact fees and signing descriptors", async () => {
@@ -515,8 +814,10 @@ describe("prepareFixtures", () => {
       feeSats: 25_000,
       inputDescriptors: [FIXTURE_DESCRIPTORS.p2wpkh, FIXTURE_DESCRIPTORS["p2tr-keypath"]],
       psbtVersion: 0,
-      transactionId: "ab".repeat(32),
     });
+    expect(fixtures.profiles["mixed-p2wpkh-p2tr"].transactionId).toBe(
+      semanticTransactionId(fixtures.profiles["mixed-p2wpkh-p2tr"].initialPsbt),
+    );
     expect(fixtures.profiles["p2wpkh"]).toMatchObject({
       feeSats: 11_000,
       inputCount: 1,
@@ -585,6 +886,31 @@ describe("prepareFixtures", () => {
     ],
   ] as const)("rejects a wrong %s", async (_label, options, expectedError) => {
     await expect(prepareFixtures(createFixtureRpc(options).rpc)).rejects.toThrow(expectedError);
+  });
+
+  test.each([
+    ["P2WPKH", { descriptorId: "p2wpkh", txid: TXIDS.wpkh1 }],
+    ["single-key P2WSH", { descriptorId: "p2wsh-single-key", txid: TXIDS.single4 }],
+    ["multisig P2WSH", { descriptorId: "p2wsh-2-of-3", txid: TXIDS.multisig }],
+    ["Taproot", { descriptorId: "p2tr-keypath", txid: TXIDS.tr1 }],
+    ["mixed P2WPKH", { descriptorId: "p2wpkh", inputCount: 2, inputIndex: 0 }],
+    ["mixed Taproot", { descriptorId: "p2tr-keypath", inputCount: 2, inputIndex: 1 }],
+  ] as const)("rejects a %s input script mutation", async (_label, mutateInputScript) => {
+    await expect(prepareFixtures(createFixtureRpc({ mutateInputScript }).rpc)).rejects.toThrow(
+      /witness UTXO script/i,
+    );
+  });
+
+  test.each([
+    ["P2WPKH", { descriptorId: "p2wpkh", inputTxid: TXIDS.wpkh1 }],
+    ["single-key P2WSH", { descriptorId: "p2wsh-single-key", inputTxid: TXIDS.single4 }],
+    ["multisig P2WSH", { descriptorId: "p2wsh-2-of-3", inputTxid: TXIDS.multisig }],
+    ["Taproot", { descriptorId: "p2tr-keypath", inputTxid: TXIDS.tr1 }],
+    ["mixed", { descriptorId: "p2wpkh", inputCount: 2 }],
+  ] as const)("rejects a %s profile output script mutation", async (_label, mutateOutputScript) => {
+    await expect(prepareFixtures(createFixtureRpc({ mutateOutputScript }).rpc)).rejects.toThrow(
+      /output script/i,
+    );
   });
 
   test("rejects malformed scan and PSBT RPC responses", async () => {
