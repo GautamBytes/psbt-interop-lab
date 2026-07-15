@@ -14,6 +14,10 @@ import {
 } from "../../src/scenarios/context.js";
 import { runScenarioCatalog } from "../../src/scenarios/engine.js";
 import { createHappyPathScenario } from "../../src/scenarios/happy-path.js";
+import {
+  createParallelCombineScenario,
+  createRoundtripChainScenario,
+} from "../../src/scenarios/interop-matrix.js";
 
 const magic = Buffer.from("70736274ff", "hex");
 const fixturePublicKey = Buffer.from(
@@ -189,6 +193,22 @@ const goNegotiated: NegotiatedAdapter = {
   capabilities: {
     operations: ["hello", "inspect", "roundtrip", "sign", "finalize", "finalize-inputs"],
     roles: ["parser", "signer", "finalizer"],
+    psbtVersions: [0],
+    scriptTypes: ["p2wsh"],
+    features: ["fixture-commitment-sha256"],
+  },
+};
+const bitcoinjsImplementation: AdapterImplementation = {
+  name: "bitcoinjs-lib",
+  version: "1.0.0",
+  artifactDigest: `sha256:${"f".repeat(64)}`,
+  sourceRevision: "bitcoinjs-lib-7.0.1+tiny-secp256k1-2.2.4",
+};
+const bitcoinjsNegotiated: NegotiatedAdapter = {
+  implementation: bitcoinjsImplementation,
+  capabilities: {
+    operations: ["hello", "inspect", "roundtrip", "sign", "combine", "finalize", "finalize-inputs"],
+    roles: ["parser", "signer", "combiner", "finalizer"],
     psbtVersions: [0],
     scriptTypes: ["p2wsh"],
     features: ["fixture-commitment-sha256"],
@@ -413,5 +433,104 @@ describe("BDK regression scenario", () => {
 
     expect(result).toMatchObject({ id: "bdk-regression-btcsuite-go", outcome: "passed" });
     expect(go.requests.map(({ operation }) => operation)).toEqual(["sign", "finalize-inputs"]);
+  });
+});
+
+describe("active implementation matrix scenarios", () => {
+  test("roundtrips through four implementations before signing", async () => {
+    const initial = encodedPsbt([[]]);
+    const signed = encodedPsbt([[signedInput()]]);
+    const requestOrder: string[] = [];
+    const makeRoundtripper = (implementation: AdapterImplementation) =>
+      adapter((request) => {
+        requestOrder.push(`${implementation.name}:${request.operation}`);
+        return success(request, implementation, {
+          psbt:
+            implementation.name === "bitcoinjs-lib" && request.operation === "sign"
+              ? signed
+              : initial,
+        });
+      });
+    const rust = makeRoundtripper(rustImplementation);
+    const go = makeRoundtripper(goImplementation);
+    const bitcoinjs = makeRoundtripper(bitcoinjsImplementation);
+    const bdk = makeRoundtripper(bdkImplementation);
+    const context = executionContext(
+      new Map([
+        ["rust-bitcoin", rust],
+        ["btcsuite-go", go],
+        ["bitcoinjs-lib", bitcoinjs],
+        ["bdkpython", bdk],
+      ]),
+    );
+
+    const [result] = await runScenarioCatalog(
+      [createRoundtripChainScenario(fixture("happy-path", initial, 1))],
+      context,
+      new Map([
+        ["rust-bitcoin", rustNegotiated],
+        ["btcsuite-go", goNegotiated],
+        ["bitcoinjs-lib", bitcoinjsNegotiated],
+        ["bdkpython", bdkNegotiated],
+      ]),
+    );
+
+    expect(result).toMatchObject({ id: "four-library-roundtrip-chain", outcome: "passed" });
+    expect(requestOrder).toEqual([
+      "bdkpython:roundtrip",
+      "rust-bitcoin:roundtrip",
+      "btcsuite-go:roundtrip",
+      "bitcoinjs-lib:roundtrip",
+      "bitcoinjs-lib:sign",
+    ]);
+  });
+
+  test("combines independently signed copies and rejects a false-green empty combine", async () => {
+    const initial = encodedPsbt([[]]);
+    const signed = encodedPsbt([[signedInput()]]);
+    const rust = adapter((request) => success(request, rustImplementation, { psbt: signed }));
+    const go = adapter((request) => success(request, goImplementation, { psbt: signed }));
+    const bitcoinjs = adapter((request) =>
+      success(request, bitcoinjsImplementation, {
+        psbt: request.operation === "combine" ? signed : initial,
+      }),
+    );
+    const context = executionContext(
+      new Map([
+        ["rust-bitcoin", rust],
+        ["btcsuite-go", go],
+        ["bitcoinjs-lib", bitcoinjs],
+      ]),
+    );
+    const negotiated = new Map([
+      ["rust-bitcoin", rustNegotiated],
+      ["btcsuite-go", goNegotiated],
+      ["bitcoinjs-lib", bitcoinjsNegotiated],
+    ]);
+
+    const [passed] = await runScenarioCatalog(
+      [createParallelCombineScenario(fixture("happy-path", initial, 1))],
+      context,
+      negotiated,
+    );
+    expect(passed).toMatchObject({ id: "parallel-sign-and-combine", outcome: "passed" });
+    expect(bitcoinjs.requests[0]?.payload).toEqual({ psbts: [signed, signed] });
+
+    const emptyCombiner = adapter((request) =>
+      success(request, bitcoinjsImplementation, { psbt: initial }),
+    );
+    const failedContext = executionContext(
+      new Map([
+        ["rust-bitcoin", rust],
+        ["btcsuite-go", go],
+        ["bitcoinjs-lib", emptyCombiner],
+      ]),
+    );
+    const [failed] = await runScenarioCatalog(
+      [createParallelCombineScenario(fixture("happy-path", initial, 1))],
+      failedContext,
+      negotiated,
+    );
+    expect(failed).toMatchObject({ outcome: "failed" });
   });
 });

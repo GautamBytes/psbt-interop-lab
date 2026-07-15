@@ -17,6 +17,7 @@ import {
 } from "./contracts.js";
 import { runScenarioCatalog } from "./engine.js";
 import { classifyHappyPath, createHappyPathScenario } from "./happy-path.js";
+import { createParallelCombineScenario, createRoundtripChainScenario } from "./interop-matrix.js";
 
 export { classifyHappyPath, classifyRegression };
 export type PolicyResult = CorePolicyResult;
@@ -186,6 +187,8 @@ export async function runProof(options: ProofOptions): Promise<ProofResult> {
           id: "p2wsh-sign-bitcoinjs-lib",
           title: "Core to bitcoinjs-lib signing handoff",
         }),
+        createRoundtripChainScenario(fixtures.happy),
+        createParallelCombineScenario(fixtures.happy),
         createBdkRegressionScenario(fixtures.regression),
         createBdkRegressionScenario(fixtures.regression, {
           adapter: "btcsuite-go",
