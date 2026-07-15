@@ -9,10 +9,11 @@ import {
   formatDoctorChecks,
   formatProofSummary,
   formatReplaySummary,
+  formatScenarioCatalog,
 } from "./cli-output.js";
 import { CoreRpc } from "./core/rpc.js";
 import { verifyReplay } from "./runner/replay.js";
-import { runProof } from "./scenarios/proof.js";
+import { PROOF_SCENARIOS, runProof } from "./scenarios/proof.js";
 import { runCommand } from "./system/command.js";
 
 const VERSION = "0.0.1";
@@ -113,6 +114,40 @@ async function prepareRuntime(options: RunOptions): Promise<void> {
   }
 }
 
+function addRuntimeOptions(command: Command): Command {
+  return command
+    .option(
+      "--artifacts <directory>",
+      "Artifact root directory",
+      resolve(PROJECT_DIRECTORY, "artifacts"),
+    )
+    .option("--rpc-url <url>", "Loopback Bitcoin Core RPC URL", DEFAULT_RPC_URL)
+    .option("--no-build", "Use existing Docker images without rebuilding")
+    .option("--no-start-core", "Use an already-running Core instance");
+}
+
+async function executeProof(options: RunOptions): Promise<void> {
+  if (options.suite !== "proof") {
+    throw new Error(`Unknown suite ${options.suite}; the available suite is proof`);
+  }
+  await prepareRuntime(options);
+  const rpc = new CoreRpc({
+    url: options.rpcUrl,
+    username: process.env["PSBT_LAB_RPC_USER"] ?? DEFAULT_RPC_USER,
+    password: process.env["PSBT_LAB_RPC_PASSWORD"] ?? DEFAULT_RPC_PASSWORD,
+    timeoutMs: 60_000,
+  });
+  const result = await runProof({
+    rpc,
+    artifactRoot: resolve(options.artifacts),
+    projectDirectory: PROJECT_DIRECTORY,
+  });
+  process.stdout.write(`${formatProofSummary(result)}\n`);
+  if (result.manifest.outcome !== "passed") {
+    process.exitCode = 1;
+  }
+}
+
 export function createProgram(): Command {
   const program = new Command()
     .name("psbt-lab")
@@ -137,38 +172,31 @@ export function createProgram(): Command {
     });
 
   program
-    .command("run")
-    .description("Run an interoperability suite and write replayable artifacts")
-    .option("--suite <name>", "Suite to run", "proof")
-    .option(
-      "--artifacts <directory>",
-      "Artifact root directory",
-      resolve(PROJECT_DIRECTORY, "artifacts"),
-    )
-    .option("--rpc-url <url>", "Loopback Bitcoin Core RPC URL", DEFAULT_RPC_URL)
-    .option("--no-build", "Use existing Docker images without rebuilding")
-    .option("--no-start-core", "Use an already-running Core instance")
-    .action(async (options: RunOptions) => {
-      if (options.suite !== "proof") {
-        throw new Error(`Unknown suite ${options.suite}; the available suite is proof`);
-      }
-      await prepareRuntime(options);
-      const rpc = new CoreRpc({
-        url: options.rpcUrl,
-        username: process.env["PSBT_LAB_RPC_USER"] ?? DEFAULT_RPC_USER,
-        password: process.env["PSBT_LAB_RPC_PASSWORD"] ?? DEFAULT_RPC_PASSWORD,
-        timeoutMs: 60_000,
-      });
-      const result = await runProof({
-        rpc,
-        artifactRoot: resolve(options.artifacts),
-        projectDirectory: PROJECT_DIRECTORY,
-      });
-      process.stdout.write(`${formatProofSummary(result)}\n`);
-      if (result.manifest.outcome !== "passed") {
-        process.exitCode = 1;
-      }
+    .command("list")
+    .description("List the executable interoperability scenarios")
+    .option("--json", "Print machine-readable output")
+    .action((options: { json?: boolean }) => {
+      process.stdout.write(
+        options.json
+          ? `${JSON.stringify(PROOF_SCENARIOS, null, 2)}\n`
+          : `${formatScenarioCatalog(PROOF_SCENARIOS)}\n`,
+      );
     });
+
+  addRuntimeOptions(
+    program
+      .command("run")
+      .description("Run an interoperability suite and write replayable artifacts")
+      .option("--suite <name>", "Suite to run", "proof"),
+  ).action(executeProof);
+
+  addRuntimeOptions(
+    program
+      .command("matrix")
+      .description("Run the complete active implementation compatibility matrix"),
+  ).action(async (options: Omit<RunOptions, "suite">) => {
+    await executeProof({ ...options, suite: "proof" });
+  });
 
   program
     .command("replay <artifact-directory>")

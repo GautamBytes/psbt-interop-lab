@@ -45,6 +45,65 @@ export interface ProofResult {
   manifest: RunManifest;
 }
 
+export interface ProofScenarioSummary {
+  readonly id: string;
+  readonly title: string;
+  readonly category: string;
+}
+
+export const PROOF_SCENARIOS: readonly ProofScenarioSummary[] = [
+  {
+    id: "happy-path",
+    title: "Core to rust-bitcoin signing handoff",
+    category: "cross-library-signing",
+  },
+  {
+    id: "p2wsh-sign-btcsuite-go",
+    title: "Core to btcsuite signing handoff",
+    category: "cross-library-signing",
+  },
+  {
+    id: "p2wsh-sign-bitcoinjs-lib",
+    title: "Core to bitcoinjs-lib signing handoff",
+    category: "cross-library-signing",
+  },
+  {
+    id: "four-library-roundtrip-chain",
+    title: "Four-library roundtrip and signing chain",
+    category: "multi-library-handoff",
+  },
+  {
+    id: "parallel-sign-and-combine",
+    title: "Parallel rust-bitcoin and btcsuite signing",
+    category: "parallel-signing",
+  },
+  {
+    id: "invalid-and-unsupported-inputs",
+    title: "Invalid and unsupported PSBT rejection matrix",
+    category: "invalid-inputs",
+  },
+  {
+    id: "proprietary-metadata-preservation",
+    title: "Unknown and proprietary field preservation",
+    category: "metadata-preservation",
+  },
+  {
+    id: "bdk-finalize-regression",
+    title: "BDK mixed-input finalization regression",
+    category: "historical-regression",
+  },
+  {
+    id: "bdk-regression-btcsuite-go",
+    title: "BDK regression through btcsuite finalization",
+    category: "historical-regression",
+  },
+  {
+    id: "bdk-regression-bitcoinjs-lib",
+    title: "BDK regression through bitcoinjs-lib finalization",
+    category: "historical-regression",
+  },
+];
+
 interface FixtureCommitment {
   readonly id: string;
   readonly unsignedTxSha256: `sha256:${string}`;
@@ -161,10 +220,10 @@ function negotiatedMap(adapters: readonly NegotiatedAdapter[]): Map<string, Nego
   return new Map(adapters.map((adapter) => [adapter.implementation.name, adapter]));
 }
 
-function defaultCatalog(
+export function createProofCatalog(
   fixtures: PreparedFixtures,
 ): readonly ScenarioDefinition<ScenarioExecutionContext>[] {
-  return [
+  const definitions = [
     createHappyPathScenario(fixtures.happy),
     createHappyPathScenario(fixtures.happy, {
       adapter: "btcsuite-go",
@@ -192,13 +251,25 @@ function defaultCatalog(
       title: "BDK regression through bitcoinjs-lib finalization",
     }),
   ];
+  for (const [index, definition] of definitions.entries()) {
+    const declared = PROOF_SCENARIOS[index];
+    if (
+      !declared ||
+      definition.id !== declared.id ||
+      definition.title !== declared.title ||
+      definition.category !== declared.category
+    ) {
+      throw new Error(`Proof scenario catalog metadata mismatch at index ${index}`);
+    }
+  }
+  return definitions;
 }
 
 const DEFAULT_DEPENDENCIES: ProofDependencies = {
   createArtifacts: ArtifactRun.create,
   prepareFixtures,
   createAdapter: createDockerAdapter,
-  createCatalog: defaultCatalog,
+  createCatalog: createProofCatalog,
 };
 
 export async function runProofWithDependencies(

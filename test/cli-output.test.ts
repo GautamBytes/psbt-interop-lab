@@ -4,6 +4,7 @@ import {
   formatDoctorChecks,
   formatProofSummary,
   formatReplaySummary,
+  formatScenarioCatalog,
 } from "../src/cli-output.js";
 
 describe("CLI output", () => {
@@ -99,5 +100,19 @@ describe("CLI output", () => {
 
     expect(formatDoctorChecks(checks)).toBe("FAIL  Docker: unavailable");
     expect(doctorHasBlockingFailure(checks)).toBe(true);
+  });
+
+  test("prints a readable scenario catalog", () => {
+    const output = formatScenarioCatalog([
+      {
+        id: "parallel-sign-and-combine",
+        title: "Parallel signing",
+        category: "parallel-signing",
+      },
+    ]);
+
+    expect(output).toContain("CATEGORY");
+    expect(output).toContain("parallel-sign-and-combine");
+    expect(output).toContain("Parallel signing");
   });
 });

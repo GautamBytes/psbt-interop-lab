@@ -1,5 +1,5 @@
 import type { ReplaySummary } from "./runner/replay.js";
-import type { ProofResult } from "./scenarios/proof.js";
+import type { ProofResult, ProofScenarioSummary } from "./scenarios/proof.js";
 
 export interface DoctorCheck {
   name: string;
@@ -61,6 +61,21 @@ export function formatReplaySummary(summary: ReplaySummary): string {
   ];
   for (const scenario of summary.scenarios) {
     lines.push(`${scenarioStatus(scenario.outcome)}  ${scenario.id}: ${scenario.summary}`);
+  }
+  return lines.join("\n");
+}
+
+export function formatScenarioCatalog(scenarios: readonly ProofScenarioSummary[]): string {
+  const categoryWidth = Math.max(
+    "CATEGORY".length,
+    ...scenarios.map((scenario) => scenario.category.length),
+  );
+  const lines = [`${"CATEGORY".padEnd(categoryWidth)}  SCENARIO`];
+  for (const scenario of scenarios) {
+    lines.push(
+      `${scenario.category.padEnd(categoryWidth)}  ${scenario.id}`,
+      `${"".padEnd(categoryWidth)}  ${scenario.title}`,
+    );
   }
   return lines.join("\n");
 }

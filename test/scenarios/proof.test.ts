@@ -13,7 +13,9 @@ import type { ScenarioDefinition } from "../../src/scenarios/definition.js";
 import {
   classifyHappyPath,
   classifyRegression,
+  createProofCatalog,
   dockerAdapterProcessOptions,
+  PROOF_SCENARIOS,
   type ProofDependencies,
   type ProofRuntimeAdapter,
   type ProofRuntimeArtifacts,
@@ -226,6 +228,16 @@ function proofHarness(failScenario = false): {
 }
 
 describe("proof runtime", () => {
+  test("keeps the public scenario listing synchronized with the executable catalog", () => {
+    expect(
+      createProofCatalog(preparedFixtures()).map(({ id, title, category }) => ({
+        id,
+        title,
+        category,
+      })),
+    ).toEqual(PROOF_SCENARIOS);
+  });
+
   test("passes commitments through environment values without placing them in Docker arguments", () => {
     const commitment = JSON.stringify({ "happy-path": `sha256:${"a".repeat(64)}` });
     const options = dockerAdapterProcessOptions("adapter:image", "/project", {
