@@ -1,4 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
+import type { RpcCaller } from "../../src/core/fixtures.js";
 import type { AdapterRequest, AdapterResponse } from "../../src/protocol/types.js";
 import {
   type AdapterRequestClient,
@@ -89,9 +90,12 @@ function fakeAdapter(
   };
 }
 
-function context(adapter: AdapterRequestClient = fakeAdapter()): ScenarioExecutionContext {
+function context(
+  adapter: AdapterRequestClient = fakeAdapter(),
+  rpc: RpcCaller = { call: vi.fn() },
+): ScenarioExecutionContext {
   return new ScenarioExecutionContext({
-    rpc: { call: vi.fn() },
+    rpc,
     artifacts: { checkpoint: vi.fn() },
     adapters: new Map([["rust-bitcoin", adapter]]),
     adapterTimeoutMs: 1_000,
@@ -172,5 +176,51 @@ describe("ScenarioExecutionContext", () => {
 
   test("rejects an unknown adapter before sending a request", async () => {
     await expect(context().request("missing", "hello", {})).rejects.toThrow(/not available/i);
+  });
+
+  test("finalizes with Core and policy-checks the extracted transaction", async () => {
+    const call = vi
+      .fn()
+      .mockResolvedValueOnce({ complete: true, hex: "02000000" })
+      .mockResolvedValueOnce([{ allowed: true, txid: "d".repeat(64) }]);
+    const value = context(fakeAdapter(), { call } as unknown as RpcCaller);
+
+    const finalized = await value.finalizeWithCore("encoded-psbt");
+    const policy = await value.policyCheck(finalized);
+
+    expect(finalized).toEqual({ complete: true, hex: "02000000" });
+    expect(policy).toEqual({ allowed: true, txid: "d".repeat(64) });
+    expect(call).toHaveBeenNthCalledWith(1, "finalizepsbt", {
+      psbt: "encoded-psbt",
+      extract: true,
+    });
+    expect(call).toHaveBeenNthCalledWith(2, "testmempoolaccept", { rawtxs: ["02000000"] });
+  });
+
+  test("does not ask Core policy about an incomplete PSBT", async () => {
+    const call = vi.fn();
+    const value = context(fakeAdapter(), { call } as unknown as RpcCaller);
+
+    await expect(value.policyCheck({ complete: false })).resolves.toEqual({
+      allowed: false,
+      rejectReason: "PSBT was not complete",
+    });
+    expect(call).not.toHaveBeenCalled();
+  });
+
+  test("rejects malformed Core finalization and policy responses", async () => {
+    const invalidFinalize = context(fakeAdapter(), {
+      call: vi.fn().mockResolvedValue({ complete: "yes" }),
+    } as unknown as RpcCaller);
+    await expect(invalidFinalize.finalizeWithCore("encoded-psbt")).rejects.toThrow(
+      /completion status/i,
+    );
+
+    const invalidPolicy = context(fakeAdapter(), {
+      call: vi.fn().mockResolvedValue([]),
+    } as unknown as RpcCaller);
+    await expect(invalidPolicy.policyCheck({ complete: true, hex: "02000000" })).rejects.toThrow(
+      /result count/i,
+    );
   });
 });

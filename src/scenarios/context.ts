@@ -27,6 +27,55 @@ export interface ScenarioExecutionContextOptions {
   readonly adapterTimeoutMs: number;
 }
 
+export interface CoreFinalizeResult {
+  readonly complete: boolean;
+  readonly hex?: string;
+}
+
+export interface CorePolicyResult {
+  readonly allowed: boolean;
+  readonly txid?: string;
+  readonly rejectReason?: string;
+}
+
+function asObject(value: unknown, label: string): Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(`${label} returned an invalid object`);
+  }
+  return value as Record<string, unknown>;
+}
+
+function parseFinalizeResult(value: unknown): CoreFinalizeResult {
+  const object = asObject(value, "finalizepsbt");
+  if (typeof object["complete"] !== "boolean") {
+    throw new Error("finalizepsbt omitted its completion status");
+  }
+  if (object["hex"] !== undefined && typeof object["hex"] !== "string") {
+    throw new Error("finalizepsbt returned invalid transaction hex");
+  }
+  return {
+    complete: object["complete"],
+    ...(typeof object["hex"] === "string" ? { hex: object["hex"] } : {}),
+  };
+}
+
+function parsePolicyResult(value: unknown): CorePolicyResult {
+  if (!Array.isArray(value) || value.length !== 1) {
+    throw new Error("testmempoolaccept returned an unexpected result count");
+  }
+  const object = asObject(value[0], "testmempoolaccept");
+  if (typeof object["allowed"] !== "boolean") {
+    throw new Error("testmempoolaccept omitted its policy decision");
+  }
+  return {
+    allowed: object["allowed"],
+    ...(typeof object["txid"] === "string" ? { txid: object["txid"] } : {}),
+    ...(typeof object["reject-reason"] === "string"
+      ? { rejectReason: object["reject-reason"] }
+      : {}),
+  };
+}
+
 export class ScenarioExecutionContext {
   readonly #rpc: RpcCaller;
   readonly #artifacts: CheckpointWriter;
@@ -143,5 +192,23 @@ export class ScenarioExecutionContext {
     const checkpoint = await this.#artifacts.checkpoint(scenario, stage, psbt);
     this.#checkpoints.push(checkpoint);
     return checkpoint;
+  }
+
+  async finalizeWithCore(psbt: string): Promise<CoreFinalizeResult> {
+    return parseFinalizeResult(
+      await this.#rpc.call("finalizepsbt", {
+        psbt,
+        extract: true,
+      }),
+    );
+  }
+
+  async policyCheck(finalized: CoreFinalizeResult): Promise<CorePolicyResult> {
+    if (!finalized.complete || !finalized.hex) {
+      return { allowed: false, rejectReason: "PSBT was not complete" };
+    }
+    return parsePolicyResult(
+      await this.#rpc.call("testmempoolaccept", { rawtxs: [finalized.hex] }),
+    );
   }
 }
