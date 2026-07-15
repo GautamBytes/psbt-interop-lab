@@ -1,6 +1,8 @@
 import { describe, expect, test } from "vitest";
 import { validateAdapterRequest, validateAdapterResponse } from "../../src/protocol/schema.js";
 
+const VALID_DIGEST = `sha256:${"a".repeat(64)}`;
+
 describe("adapter protocol schemas", () => {
   test("accepts a hello request", () => {
     expect(
@@ -45,7 +47,7 @@ describe("adapter protocol schemas", () => {
         implementation: {
           name: "fake",
           version: "1.0.0",
-          artifactDigest: "sha256:deadbeef",
+          artifactDigest: VALID_DIGEST,
         },
         output: {},
       }),
@@ -60,10 +62,26 @@ describe("adapter protocol schemas", () => {
       implementation: {
         name: "fake",
         version: "1.0.0",
-        artifactDigest: "sha256:deadbeef",
+        artifactDigest: VALID_DIGEST,
       },
     });
 
+    expect(result.ok).toBe(false);
+  });
+
+  test.each([
+    "sha256:deadbeef",
+    `sha256:${"A".repeat(64)}`,
+    `sha256:${"a".repeat(63)}`,
+    `sha256:${"a".repeat(65)}`,
+  ])("rejects noncanonical implementation digest %s", (artifactDigest) => {
+    const result = validateAdapterResponse({
+      protocol: "psbt-lab.adapter/0.1",
+      id: "hello-1",
+      status: "ok",
+      implementation: { name: "fake", version: "1.0.0", artifactDigest },
+      output: {},
+    });
     expect(result.ok).toBe(false);
   });
 });

@@ -35,7 +35,7 @@ const implementationSchema = {
     version: { type: "string", minLength: 1, maxLength: 128 },
     artifactDigest: {
       type: "string",
-      pattern: "^sha256:[0-9a-fA-F]{6,128}$",
+      pattern: "^sha256:[0-9a-f]{64}$",
     },
     sourceRevision: { type: "string", minLength: 1, maxLength: 256 },
   },

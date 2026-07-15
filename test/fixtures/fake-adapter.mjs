@@ -26,7 +26,7 @@ for await (const line of lines) {
       implementation: {
         name: "fake",
         version: "1.0.0",
-        artifactDigest: "sha256:deadbeef",
+        artifactDigest: `sha256:${"a".repeat(64)}`,
       },
       output: { echoed: request.operation },
     })}\n`,

@@ -12,6 +12,12 @@ import {
 } from "../protocol/types.js";
 import { ArtifactRun, type RunManifest, type ScenarioRecord } from "../runner/artifacts.js";
 import { generateMarkdownReport, redactValue } from "../runner/report.js";
+import {
+  assertAdapterHello,
+  assertByteIdenticalRoundtrip,
+  BDK_ADAPTER_CONTRACT,
+  RUST_ADAPTER_CONTRACT,
+} from "./contracts.js";
 
 const RUST_IMAGE = "psbt-interop-lab/rust-bitcoin:0.1.0";
 const BDK_IMAGE = "psbt-interop-lab/bdkpython:2.3.1";
@@ -187,15 +193,6 @@ function outputString(response: AdapterResponse, key: string): string {
   return value;
 }
 
-function outputBoolean(response: AdapterResponse, key: string): boolean {
-  const success = requireSuccess(response, key);
-  const value = success.output[key];
-  if (typeof value !== "boolean") {
-    throw new Error(`${success.implementation.name} omitted boolean output ${key}`);
-  }
-  return value;
-}
-
 async function policyCheck(rpc: CoreRpc, finalized: FinalizeResult): Promise<PolicyResult> {
   if (!finalized.complete || !finalized.hex) {
     return { allowed: false, rejectReason: "PSBT was not complete" };
@@ -229,20 +226,19 @@ export async function runProof(options: ProofOptions): Promise<ProofResult> {
   };
 
   try {
-    const rustHello = requireSuccess(await request(rust, "hello", {}), "hello");
-    const bdkHello = requireSuccess(await request(bdk, "hello", {}), "hello");
+    const rustHello = assertAdapterHello(await request(rust, "hello", {}), RUST_ADAPTER_CONTRACT);
+    const bdkHello = assertAdapterHello(await request(bdk, "hello", {}), BDK_ADAPTER_CONTRACT);
 
     checkpoints.push(
       await artifacts.checkpoint("happy-path", "core-created", fixtures.happy.initialPsbt),
     );
-    const happyRoundtrip = await request(rust, "roundtrip", {
-      psbt: fixtures.happy.initialPsbt,
-    });
-    if (!outputBoolean(happyRoundtrip, "byteIdentical")) {
-      throw new Error("rust-bitcoin changed the Core-created PSBT during roundtrip");
-    }
+    const happyRoundtripPsbt = assertByteIdenticalRoundtrip(
+      await request(rust, "roundtrip", { psbt: fixtures.happy.initialPsbt }),
+      fixtures.happy.initialPsbt,
+      "rust-bitcoin",
+    );
     const signedHappy = await request(rust, "sign", {
-      psbt: outputString(happyRoundtrip, "psbt"),
+      psbt: happyRoundtripPsbt,
       network: "regtest",
       fixtureId: "happy-path",
     });
@@ -264,14 +260,13 @@ export async function runProof(options: ProofOptions): Promise<ProofResult> {
         fixtures.regression.initialPsbt,
       ),
     );
-    const bdkRoundtrip = await request(bdk, "roundtrip", {
-      psbt: fixtures.regression.initialPsbt,
-    });
-    if (!outputBoolean(bdkRoundtrip, "byteIdentical")) {
-      throw new Error("BDK Python changed the Core-created PSBT during roundtrip");
-    }
+    const bdkRoundtripPsbt = assertByteIdenticalRoundtrip(
+      await request(bdk, "roundtrip", { psbt: fixtures.regression.initialPsbt }),
+      fixtures.regression.initialPsbt,
+      "BDK Python",
+    );
     const signedRegression = await request(rust, "sign", {
-      psbt: outputString(bdkRoundtrip, "psbt"),
+      psbt: bdkRoundtripPsbt,
       network: "regtest",
       fixtureId: "bdk-finalize-regression",
     });

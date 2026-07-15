@@ -9,7 +9,7 @@ const expectedBdkFailure: AdapterResponse = {
   implementation: {
     name: "bdkpython",
     version: "2.3.1",
-    artifactDigest: "sha256:deadbeef",
+    artifactDigest: `sha256:${"a".repeat(64)}`,
   },
   error: {
     class: "finalize.missing_witness_script",
