@@ -87,6 +87,17 @@ describe("ArtifactRun", () => {
     });
   });
 
+  test("writes the static HTML report with private file permissions", async () => {
+    const root = await temporaryRoot();
+    const run = await ArtifactRun.create(root, "run-html");
+
+    await run.writeReportHtml("<!doctype html><title>PSBT Interop Lab</title>");
+
+    const path = join(run.directory, "report.html");
+    expect(await readFile(path, "utf8")).toContain("PSBT Interop Lab");
+    expect((await stat(path)).mode & 0o777).toBe(0o600);
+  });
+
   test("replay detects a modified checkpoint", async () => {
     const root = await temporaryRoot();
     const run = await ArtifactRun.create(root, "run-3");

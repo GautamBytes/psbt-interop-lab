@@ -5,7 +5,7 @@ import type { CoreRpc } from "../core/rpc.js";
 import { AdapterProcess, type AdapterProcessOptions } from "../protocol/adapter-process.js";
 import type { NegotiatedAdapter } from "../protocol/types.js";
 import { ArtifactRun, type RunManifest } from "../runner/artifacts.js";
-import { generateMarkdownReport, redactValue } from "../runner/report.js";
+import { generateHtmlReport, generateMarkdownReport, redactValue } from "../runner/report.js";
 import { classifyRegression, createBdkRegressionScenario } from "./bdk-regression.js";
 import { type CorePolicyResult, ScenarioExecutionContext } from "./context.js";
 import {
@@ -66,6 +66,7 @@ export interface ProofRuntimeArtifacts {
   writeManifest: ArtifactRun["writeManifest"];
   writeReportJson: ArtifactRun["writeReportJson"];
   writeReportMarkdown: ArtifactRun["writeReportMarkdown"];
+  writeReportHtml: ArtifactRun["writeReportHtml"];
 }
 
 export interface ProofDependencies {
@@ -284,6 +285,7 @@ export async function runProofWithDependencies(
       }),
     );
     await artifacts.writeReportMarkdown(generateMarkdownReport(manifest));
+    await artifacts.writeReportHtml(generateHtmlReport(manifest));
     return { artifactDirectory: artifacts.directory, manifest };
   } finally {
     await Promise.all([rust.close(), go.close(), bitcoinjs.close(), bdk.close()]);

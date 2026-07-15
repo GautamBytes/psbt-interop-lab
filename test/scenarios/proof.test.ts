@@ -181,6 +181,7 @@ function proofHarness(failScenario = false): {
     writeManifest: vi.fn(),
     writeReportJson: vi.fn(),
     writeReportMarkdown: vi.fn(),
+    writeReportHtml: vi.fn(),
   };
   const adapters: ProofRuntimeAdapter[] = [];
   const created: Array<{ image: string; options: { env?: Readonly<Record<string, string>> } }> = [];

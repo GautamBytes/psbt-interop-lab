@@ -126,4 +126,8 @@ export class ArtifactRun {
   async writeReportMarkdown(value: string): Promise<void> {
     await atomicWrite(join(this.directory, "report.md"), `${value.trimEnd()}\n`);
   }
+
+  async writeReportHtml(value: string): Promise<void> {
+    await atomicWrite(join(this.directory, "report.html"), `${value.trimEnd()}\n`);
+  }
 }
