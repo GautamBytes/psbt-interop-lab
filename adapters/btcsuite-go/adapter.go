@@ -24,6 +24,10 @@ const (
 	responseLineReserve        = 4096
 	maxPSBTBytes               = ((MaxLineBytes - responseLineReserve) * 3) / 4
 	maxFixtureCommitmentsBytes = 4096
+	maxPSBTInputs              = 1024
+	maxPSBTOutputs             = 1024
+	maxPSBTMapEntries          = 1024
+	maxPSBTMaps                = 1 + maxPSBTInputs + maxPSBTOutputs
 	maxSafeInteger             = uint64(9_007_199_254_740_991)
 	testWIF                    = "cMahea7zqjxrtgAbB7LSGbcQUr1uX1ojuat9jZodMN87JcbXMTcA"
 )
@@ -219,6 +223,9 @@ func (handler *Handler) sign(value adapterRequest, digest string) Response {
 	if class != "" {
 		return failure(value.ID, digest, "rejected", class, authorizationMessage(class))
 	}
+	if !verifyFixtureSignatures(packet, publicKey, witnessScript, funding) {
+		return failure(value.ID, digest, "rejected", "signing.signature_invalid", "An existing fixture signature is invalid")
+	}
 	updater, err := psbt.NewUpdater(packet)
 	if err != nil {
 		return failure(value.ID, digest, "rejected", "psbt.parse_failed", "PSBT could not be prepared for signing")
@@ -240,6 +247,9 @@ func (handler *Handler) sign(value adapterRequest, digest string) Response {
 		}
 		signed++
 	}
+	if !verifyFixtureSignatures(packet, publicKey, witnessScript, funding) {
+		return failure(value.ID, digest, "rejected", "signing.failed", "Fixture signing failed")
+	}
 	encodedResult, err := encodePSBT(packet)
 	if err != nil {
 		return failure(value.ID, digest, "crashed", "adapter.serialize_failed", "PSBT could not be serialized")
@@ -256,7 +266,7 @@ func (handler *Handler) finalize(value adapterRequest, digest string) Response {
 	if err != nil {
 		return failure(value.ID, digest, "rejected", "psbt.parse_failed", "PSBT could not be parsed")
 	}
-	_, publicKey, _, _, class := handler.authorizeFixture(packet, fixtureID)
+	_, publicKey, witnessScript, funding, class := handler.authorizeFixture(packet, fixtureID)
 	if class != "" {
 		return failure(value.ID, digest, "rejected", class, authorizationMessage(class))
 	}
@@ -266,7 +276,7 @@ func (handler *Handler) finalize(value adapterRequest, digest string) Response {
 			indexes = append(indexes, index)
 		}
 	}
-	return finalizePacket(value.ID, digest, packet, publicKey, indexes)
+	return finalizePacket(value.ID, digest, packet, publicKey, witnessScript, funding, indexes)
 }
 
 func (handler *Handler) finalizeInputs(value adapterRequest, digest string) Response {
@@ -285,14 +295,17 @@ func (handler *Handler) finalizeInputs(value adapterRequest, digest string) Resp
 	if err != nil {
 		return invalidPayload(value.ID, digest, "inputIndexes must be non-empty unique in-range safe integers")
 	}
-	_, publicKey, _, _, class := handler.authorizeFixture(packet, fixtureID)
+	_, publicKey, witnessScript, funding, class := handler.authorizeFixture(packet, fixtureID)
 	if class != "" {
 		return failure(value.ID, digest, "rejected", class, authorizationMessage(class))
 	}
-	return finalizePacket(value.ID, digest, packet, publicKey, indexes)
+	return finalizePacket(value.ID, digest, packet, publicKey, witnessScript, funding, indexes)
 }
 
-func finalizePacket(id, digest string, packet *psbt.Packet, publicKey []byte, indexes []int) Response {
+func finalizePacket(id, digest string, packet *psbt.Packet, publicKey, witnessScript []byte, funding []*wire.TxOut, indexes []int) Response {
+	if !verifyFixtureSignatures(packet, publicKey, witnessScript, funding) {
+		return failure(id, digest, "rejected", "finalize.signature_invalid", "An expected fixture signature is invalid")
+	}
 	for _, index := range indexes {
 		input := &packet.Inputs[index]
 		if input.FinalScriptSig != nil || input.FinalScriptWitness != nil {
@@ -321,6 +334,9 @@ func finalizePacket(id, digest string, packet *psbt.Packet, publicKey []byte, in
 		input.RedeemScript = nil
 		input.WitnessScript = nil
 		input.Bip32Derivation = nil
+	}
+	if !verifyFixtureSignatures(packet, publicKey, witnessScript, funding) {
+		return failure(id, digest, "rejected", "finalize.signature_invalid", "A finalized fixture witness is invalid")
 	}
 	encoded, err := encodePSBT(packet)
 	if err != nil {
@@ -395,12 +411,12 @@ func parsePSBT(encoded string) ([]byte, *psbt.Packet, error) {
 		return nil, nil, fmt.Errorf("invalid PSBT encoding")
 	}
 	version, err := psbtGlobalVersion(raw)
-	if err != nil || version != 0 {
+	if err != nil || version != 0 || !psbtMapsWithinLimits(raw) {
 		return nil, nil, fmt.Errorf("unsupported PSBT version")
 	}
 	reader := bytes.NewReader(raw)
 	packet, err := psbt.NewFromRawBytes(reader, false)
-	if err != nil || reader.Len() != 0 {
+	if err != nil || reader.Len() != 0 || len(packet.Inputs) > maxPSBTInputs || len(packet.Outputs) > maxPSBTOutputs {
 		return nil, nil, fmt.Errorf("invalid PSBT data")
 	}
 	return raw, packet, nil
@@ -465,6 +481,45 @@ func psbtGlobalVersion(raw []byte) (uint32, error) {
 	}
 }
 
+func psbtMapsWithinLimits(raw []byte) bool {
+	if len(raw) < 6 || !bytes.Equal(raw[:5], []byte{'p', 's', 'b', 't', 0xff}) {
+		return false
+	}
+	reader := bytes.NewReader(raw[5:])
+	maps := 0
+	for reader.Len() > 0 {
+		maps++
+		if maps > maxPSBTMaps {
+			return false
+		}
+		entries := 0
+		for {
+			keyLength, err := wire.ReadVarInt(reader, 0)
+			if err != nil {
+				return false
+			}
+			if keyLength == 0 {
+				break
+			}
+			entries++
+			if entries > maxPSBTMapEntries || keyLength > psbt.MaxPsbtKeyLength || keyLength > uint64(reader.Len()) {
+				return false
+			}
+			if _, err := reader.Seek(int64(keyLength), io.SeekCurrent); err != nil {
+				return false
+			}
+			valueLength, err := wire.ReadVarInt(reader, 0)
+			if err != nil || valueLength > uint64(reader.Len()) {
+				return false
+			}
+			if _, err := reader.Seek(int64(valueLength), io.SeekCurrent); err != nil {
+				return false
+			}
+		}
+	}
+	return maps > 0
+}
+
 func serializeWitness(witness wire.TxWitness) ([]byte, error) {
 	var serialized bytes.Buffer
 	if err := wire.WriteVarInt(&serialized, 0, uint64(len(witness))); err != nil {
@@ -498,14 +553,12 @@ func (handler *Handler) authorizeFixture(packet *psbt.Packet, fixtureID string) 
 	funding := make([]*wire.TxOut, len(packet.Inputs))
 	for index, input := range packet.Inputs {
 		previous := packet.UnsignedTx.TxIn[index].PreviousOutPoint
-		var full *wire.TxOut
-		if input.NonWitnessUtxo != nil {
-			if input.NonWitnessUtxo.TxHash() != previous.Hash || int(previous.Index) >= len(input.NonWitnessUtxo.TxOut) {
-				return nil, nil, nil, nil, "policy.psbt_not_authorized"
-			}
-			full = input.NonWitnessUtxo.TxOut[previous.Index]
+		if input.NonWitnessUtxo == nil || input.WitnessUtxo == nil ||
+			input.NonWitnessUtxo.TxHash() != previous.Hash || int(previous.Index) >= len(input.NonWitnessUtxo.TxOut) {
+			return nil, nil, nil, nil, "policy.psbt_not_authorized"
 		}
-		if input.WitnessUtxo != nil && full != nil && (input.WitnessUtxo.Value != full.Value || !bytes.Equal(input.WitnessUtxo.PkScript, full.PkScript)) {
+		full := input.NonWitnessUtxo.TxOut[previous.Index]
+		if input.WitnessUtxo.Value != full.Value || !bytes.Equal(input.WitnessUtxo.PkScript, full.PkScript) {
 			return nil, nil, nil, nil, "policy.psbt_not_authorized"
 		}
 		if input.FinalScriptSig != nil || input.FinalScriptWitness != nil {
@@ -515,11 +568,7 @@ func (handler *Handler) authorizeFixture(packet *psbt.Packet, fixtureID string) 
 		} else if input.WitnessScript == nil || !bytes.Equal(input.WitnessScript, witnessScript) {
 			return nil, nil, nil, nil, "policy.psbt_not_authorized"
 		}
-		if input.WitnessUtxo != nil {
-			funding[index] = input.WitnessUtxo
-		} else {
-			funding[index] = full
-		}
+		funding[index] = full
 		if funding[index] == nil || !bytes.Equal(funding[index].PkScript, expectedPkScript) {
 			return nil, nil, nil, nil, "policy.psbt_not_authorized"
 		}
@@ -584,17 +633,79 @@ func decodeCommitment(value string) ([sha256.Size]byte, bool) {
 }
 
 func hasExpectedFinalWitness(serialized, witnessScript []byte) bool {
+	witness, err := deserializeWitness(serialized)
+	return err == nil && len(witness) == 2 && len(witness[0]) > 0 && bytes.Equal(witness[1], witnessScript)
+}
+
+func deserializeWitness(serialized []byte) (wire.TxWitness, error) {
 	reader := bytes.NewReader(serialized)
 	count, err := wire.ReadVarInt(reader, 0)
-	if err != nil || count != 2 {
+	if err != nil || count > uint64(len(serialized)) {
+		return nil, fmt.Errorf("invalid witness item count")
+	}
+	witness := make(wire.TxWitness, int(count))
+	for index := range witness {
+		witness[index], err = wire.ReadVarBytes(reader, 0, maxPSBTBytes, "witness item")
+		if err != nil {
+			return nil, err
+		}
+	}
+	if reader.Len() != 0 {
+		return nil, fmt.Errorf("trailing witness data")
+	}
+	return witness, nil
+}
+
+func verifyFixtureSignatures(packet *psbt.Packet, publicKey, witnessScript []byte, funding []*wire.TxOut) bool {
+	if packet == nil || packet.UnsignedTx == nil || len(packet.Inputs) != len(funding) {
 		return false
 	}
-	signature, err := wire.ReadVarBytes(reader, 0, maxPSBTBytes, "witness signature")
-	if err != nil || len(signature) == 0 {
-		return false
+	transaction := packet.UnsignedTx.Copy()
+	prevOuts := make(map[wire.OutPoint]*wire.TxOut, len(funding))
+	signed := make([]bool, len(packet.Inputs))
+	for index, input := range packet.Inputs {
+		previous := transaction.TxIn[index].PreviousOutPoint
+		prevOuts[previous] = funding[index]
+		if input.FinalScriptWitness != nil {
+			witness, err := deserializeWitness(input.FinalScriptWitness)
+			if err != nil || len(witness) != 2 || len(witness[0]) == 0 || !bytes.Equal(witness[1], witnessScript) {
+				return false
+			}
+			transaction.TxIn[index].Witness = witness
+			signed[index] = true
+			continue
+		}
+		if len(input.PartialSigs) == 0 {
+			continue
+		}
+		if len(input.PartialSigs) != 1 || !bytes.Equal(input.PartialSigs[0].PubKey, publicKey) || len(input.PartialSigs[0].Signature) == 0 {
+			return false
+		}
+		transaction.TxIn[index].Witness = wire.TxWitness{input.PartialSigs[0].Signature, witnessScript}
+		signed[index] = true
 	}
-	script, err := wire.ReadVarBytes(reader, 0, maxPSBTBytes, "witness script")
-	return err == nil && bytes.Equal(script, witnessScript) && reader.Len() == 0
+
+	fetcher := txscript.NewMultiPrevOutFetcher(prevOuts)
+	sigHashes := txscript.NewTxSigHashes(transaction, fetcher)
+	for index, shouldVerify := range signed {
+		if !shouldVerify {
+			continue
+		}
+		engine, err := txscript.NewEngine(
+			funding[index].PkScript,
+			transaction,
+			index,
+			txscript.StandardVerifyFlags,
+			nil,
+			sigHashes,
+			funding[index].Value,
+			fetcher,
+		)
+		if err != nil || engine.Execute() != nil {
+			return false
+		}
+	}
+	return true
 }
 
 func inputIndexes(raw json.RawMessage, inputCount int) ([]int, error) {

@@ -105,6 +105,38 @@ func TestRejectsNonCanonicalMalformedAndOversizedPSBT(t *testing.T) {
 	}
 }
 
+func TestPSBTCardinalityCaps(t *testing.T) {
+	const cardinalityCap = 1024
+
+	for name, encoded := range map[string]string{
+		"inputs":     cardinalityPSBT(t, cardinalityCap+1, 1, "", 0),
+		"outputs":    cardinalityPSBT(t, 1, cardinalityCap+1, "", 0),
+		"global map": cardinalityPSBT(t, 1, 1, "global", cardinalityCap),
+		"input map":  cardinalityPSBT(t, 1, 1, "input", cardinalityCap+1),
+		"output map": cardinalityPSBT(t, 1, 1, "output", cardinalityCap+1),
+	} {
+		t.Run(name+" overflow", func(t *testing.T) {
+			response := request(t, "roundtrip", map[string]any{"psbt": encoded})
+			assertFailureClass(t, response, "rejected", "psbt.parse_failed")
+		})
+	}
+
+	for name, encoded := range map[string]string{
+		"inputs":     cardinalityPSBT(t, cardinalityCap, 1, "", 0),
+		"outputs":    cardinalityPSBT(t, 1, cardinalityCap, "", 0),
+		"global map": cardinalityPSBT(t, 1, 1, "global", cardinalityCap-1),
+		"input map":  cardinalityPSBT(t, 1, 1, "input", cardinalityCap),
+		"output map": cardinalityPSBT(t, 1, 1, "output", cardinalityCap),
+	} {
+		t.Run(name+" at cap", func(t *testing.T) {
+			response := request(t, "roundtrip", map[string]any{"psbt": encoded})
+			if response.Status != "ok" {
+				t.Fatalf("response = %#v, want ok", response)
+			}
+		})
+	}
+}
+
 func TestRejectsUnauthorizedSigning(t *testing.T) {
 	encoded := fixturePSBT(t, 1)
 	for name, payload := range map[string]map[string]any{
@@ -145,6 +177,26 @@ func TestFixtureCommitmentsAuthorizeExactUnsignedTransactionOnly(t *testing.T) {
 		"psbt": sameScriptDifferentPSBT(t, regression), "network": "regtest", "fixtureId": "bdk-finalize-regression", "inputIndexes": []any{0},
 	})
 	assertFailureClass(t, mismatchedRegression, "rejected", "policy.fixture_commitment_mismatch")
+}
+
+func TestFixtureAuthorizationRequiresMatchingWitnessAndNonWitnessUTXOs(t *testing.T) {
+	for _, operation := range []string{"sign", "finalize"} {
+		t.Run(operation+" missing non-witness UTXO", func(t *testing.T) {
+			packet := decodePacket(t, fixturePSBT(t, 1))
+			packet.Inputs[0].NonWitnessUtxo = nil
+
+			response := request(t, operation, signingPayload(encodePacket(t, packet), "happy-path"))
+			assertFailureClass(t, response, "rejected", "policy.psbt_not_authorized")
+		})
+
+		t.Run(operation+" changed witness amount", func(t *testing.T) {
+			packet := decodePacket(t, fixturePSBT(t, 1))
+			packet.Inputs[0].WitnessUtxo.Value++
+
+			response := request(t, operation, signingPayload(encodePacket(t, packet), "happy-path"))
+			assertFailureClass(t, response, "rejected", "policy.psbt_not_authorized")
+		})
+	}
 }
 
 func TestFixtureCommitmentConfigurationRejectsMissingAndInvalidValues(t *testing.T) {
@@ -194,6 +246,66 @@ func TestSignsAndFinalizesFixtureInputs(t *testing.T) {
 	if !packet.IsComplete() {
 		t.Fatal("finalize did not produce a complete PSBT")
 	}
+}
+
+func TestFinalizeRejectsForgedPartialSignature(t *testing.T) {
+	signed := request(t, "sign", signingPayload(fixturePSBT(t, 1), "happy-path"))
+	if signed.Status != "ok" {
+		t.Fatalf("sign response = %#v", signed)
+	}
+	packet := decodePacket(t, signed.Output["psbt"].(string))
+	packet.Inputs[0].PartialSigs[0].Signature = forgedFixtureSignature(t, packet, 0)
+
+	response := request(t, "finalize", signingPayload(encodePacket(t, packet), "happy-path"))
+	assertFailureClass(t, response, "rejected", "finalize.signature_invalid")
+}
+
+func TestFinalizeRejectsForgedFinalWitness(t *testing.T) {
+	signed := request(t, "sign", signingPayload(fixturePSBT(t, 2), "bdk-finalize-regression"))
+	if signed.Status != "ok" {
+		t.Fatalf("sign response = %#v", signed)
+	}
+	partiallyFinalized := request(t, "finalize-inputs", map[string]any{
+		"psbt": signed.Output["psbt"], "network": "regtest", "fixtureId": "bdk-finalize-regression", "inputIndexes": []any{1},
+	})
+	if partiallyFinalized.Status != "ok" {
+		t.Fatalf("partial finalization response = %#v", partiallyFinalized)
+	}
+	packet := decodePacket(t, partiallyFinalized.Output["psbt"].(string))
+	forgedWitness, err := serializeWitness(wire.TxWitness{
+		forgedFixtureSignature(t, packet, 1),
+		witnessScript(t, fixtureKey(t)),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	packet.Inputs[1].FinalScriptWitness = forgedWitness
+
+	response := request(t, "finalize-inputs", map[string]any{
+		"psbt": encodePacket(t, packet), "network": "regtest", "fixtureId": "bdk-finalize-regression", "inputIndexes": []any{1, 0},
+	})
+	assertFailureClass(t, response, "rejected", "finalize.signature_invalid")
+}
+
+func TestFinalizeAcceptsScriptEngineValidMixedState(t *testing.T) {
+	signed := request(t, "sign", signingPayload(fixturePSBT(t, 2), "bdk-finalize-regression"))
+	if signed.Status != "ok" {
+		t.Fatalf("sign response = %#v", signed)
+	}
+	partiallyFinalized := request(t, "finalize-inputs", map[string]any{
+		"psbt": signed.Output["psbt"], "network": "regtest", "fixtureId": "bdk-finalize-regression", "inputIndexes": []any{1},
+	})
+	if partiallyFinalized.Status != "ok" {
+		t.Fatalf("partial finalization response = %#v", partiallyFinalized)
+	}
+
+	complete := request(t, "finalize-inputs", map[string]any{
+		"psbt": partiallyFinalized.Output["psbt"], "network": "regtest", "fixtureId": "bdk-finalize-regression", "inputIndexes": []any{1, 0},
+	})
+	if complete.Status != "ok" || complete.Output["complete"] != true {
+		t.Fatalf("mixed-state finalization response = %#v", complete)
+	}
+	assertFinalScriptsValid(t, decodePacket(t, complete.Output["psbt"].(string)))
 }
 
 func TestRejectsDuplicateAndOutOfRangeFinalizationIndexes(t *testing.T) {
@@ -387,6 +499,84 @@ func sameScriptDifferentPSBT(t *testing.T, encoded string) string {
 	return encodePacket(t, packet)
 }
 
+func forgedFixtureSignature(t *testing.T, packet *psbt.Packet, inputIndex int) []byte {
+	t.Helper()
+	transaction := packet.UnsignedTx.Copy()
+	transaction.LockTime++
+	prevOuts := make(map[wire.OutPoint]*wire.TxOut, len(packet.Inputs))
+	for index, input := range packet.Inputs {
+		previous := transaction.TxIn[index].PreviousOutPoint
+		prevOuts[previous] = input.NonWitnessUtxo.TxOut[previous.Index]
+	}
+	sigHashes := txscript.NewTxSigHashes(transaction, txscript.NewMultiPrevOutFetcher(prevOuts))
+	previous := transaction.TxIn[inputIndex].PreviousOutPoint
+	signature, err := txscript.RawTxInWitnessSignature(
+		transaction,
+		sigHashes,
+		inputIndex,
+		prevOuts[previous].Value,
+		witnessScript(t, fixtureKey(t)),
+		txscript.SigHashAll,
+		fixtureKey(t).PrivKey,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return signature
+}
+
+func assertFinalScriptsValid(t *testing.T, packet *psbt.Packet) {
+	t.Helper()
+	transaction := packet.UnsignedTx.Copy()
+	prevOuts := make(map[wire.OutPoint]*wire.TxOut, len(packet.Inputs))
+	for index, input := range packet.Inputs {
+		previous := transaction.TxIn[index].PreviousOutPoint
+		prevOuts[previous] = input.NonWitnessUtxo.TxOut[previous.Index]
+		transaction.TxIn[index].Witness = decodeWitness(t, input.FinalScriptWitness)
+	}
+	fetcher := txscript.NewMultiPrevOutFetcher(prevOuts)
+	sigHashes := txscript.NewTxSigHashes(transaction, fetcher)
+	for index, input := range transaction.TxIn {
+		previous := prevOuts[input.PreviousOutPoint]
+		engine, err := txscript.NewEngine(
+			previous.PkScript,
+			transaction,
+			index,
+			txscript.StandardVerifyFlags,
+			nil,
+			sigHashes,
+			previous.Value,
+			fetcher,
+		)
+		if err != nil {
+			t.Fatalf("input %d engine creation failed: %v", index, err)
+		}
+		if err := engine.Execute(); err != nil {
+			t.Fatalf("input %d script validation failed: %v", index, err)
+		}
+	}
+}
+
+func decodeWitness(t *testing.T, serialized []byte) wire.TxWitness {
+	t.Helper()
+	reader := bytes.NewReader(serialized)
+	count, err := wire.ReadVarInt(reader, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	witness := make(wire.TxWitness, count)
+	for index := range witness {
+		witness[index], err = wire.ReadVarBytes(reader, 0, maxPSBTBytes, "witness item")
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if reader.Len() != 0 {
+		t.Fatal("trailing final witness data")
+	}
+	return witness
+}
+
 func globalVersionPSBT(version uint32) string {
 	raw := []byte{'p', 's', 'b', 't', 0xff, 1, 0xfb, 4, 0, 0, 0, 0, 0}
 	binary.LittleEndian.PutUint32(raw[8:12], version)
@@ -414,6 +604,40 @@ func paddedFixturePSBT(t *testing.T, targetSize int) string {
 	}
 	t.Fatal("could not construct target-sized PSBT")
 	return ""
+}
+
+func cardinalityPSBT(t *testing.T, inputs, outputs int, unknownMap string, unknowns int) string {
+	t.Helper()
+	transaction := wire.NewMsgTx(2)
+	for index := range inputs {
+		transaction.AddTxIn(wire.NewTxIn(&wire.OutPoint{Index: uint32(index)}, nil, nil))
+	}
+	for range outputs {
+		transaction.AddTxOut(&wire.TxOut{Value: 1, PkScript: []byte{txscript.OP_TRUE}})
+	}
+	packet, err := psbt.NewFromUnsignedTx(transaction)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries := make([]*psbt.Unknown, unknowns)
+	for index := range entries {
+		key := make([]byte, 5)
+		key[0] = 0xfc
+		binary.LittleEndian.PutUint32(key[1:], uint32(index))
+		entries[index] = &psbt.Unknown{Key: key, Value: []byte{}}
+	}
+	switch unknownMap {
+	case "":
+	case "global":
+		packet.Unknowns = entries
+	case "input":
+		packet.Inputs[0].Unknowns = entries
+	case "output":
+		packet.Outputs[0].Unknowns = entries
+	default:
+		t.Fatalf("unknown map %q", unknownMap)
+	}
+	return encodePacket(t, packet)
 }
 
 func jsonEqual(actual, expected any) bool {
