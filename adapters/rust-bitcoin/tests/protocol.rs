@@ -1,3 +1,6 @@
+use std::io::Write;
+use std::process::{Command, Stdio};
+
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use bitcoin::absolute::LockTime;
 use bitcoin::bip32::{DerivationPath, Fingerprint};
@@ -109,6 +112,26 @@ fn reports_unsupported_operations_with_a_stable_error() {
 }
 
 #[test]
+fn malformed_json_response_uses_current_protocol() {
+    let mut child = Command::new(env!("CARGO_BIN_EXE_psbt-lab-rust-adapter"))
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("adapter executable starts");
+    let mut stdin = child.stdin.take().expect("adapter stdin");
+    stdin.write_all(b"{not-json}\n").expect("write request");
+    drop(stdin);
+
+    let output = child.wait_with_output().expect("adapter exits");
+    assert!(output.status.success());
+    let response: Value = serde_json::from_slice(&output.stdout).expect("JSON response");
+
+    assert_eq!(response["protocol"], "psbt-lab.adapter/0.2");
+    assert_eq!(response["status"], "rejected");
+    assert_eq!(response["error"]["class"], "protocol.invalid_json");
+}
+
+#[test]
 fn rejects_invalid_finalize_input_indexes() {
     for input_indexes in [
         json!([]),
@@ -138,6 +161,58 @@ fn rejects_invalid_finalize_input_indexes() {
 
 #[test]
 fn finalize_inputs_only_finalizes_requested_inputs() {
+    let signed_psbt = signed_two_input_fixture();
+    let response = handle_value(
+        request(
+            "finalize-inputs",
+            json!({
+                "psbt": signed_psbt,
+                "network": "regtest",
+                "fixtureId": "bdk-finalize-regression",
+                "inputIndexes": [1]
+            }),
+        ),
+        "sha256:deadbeef",
+    );
+    assert_eq!(response["status"], "ok", "{response}");
+    assert_eq!(response["output"]["finalizedInputs"], json!([1]));
+    let finalized = response_psbt(&response);
+
+    assert!(finalized.inputs[0].final_script_witness.is_none());
+    assert!(!finalized.inputs[0].partial_sigs.is_empty());
+    assert!(finalized.inputs[1].final_script_witness.is_some());
+    assert!(finalized.inputs[1].partial_sigs.is_empty());
+}
+
+#[test]
+fn finalize_inputs_finalizes_every_requested_input() {
+    let signed_psbt = signed_two_input_fixture();
+    let response = handle_value(
+        request(
+            "finalize-inputs",
+            json!({
+                "psbt": signed_psbt,
+                "network": "regtest",
+                "fixtureId": "bdk-finalize-regression",
+                "inputIndexes": [0, 1]
+            }),
+        ),
+        "sha256:deadbeef",
+    );
+    assert_eq!(response["status"], "ok", "{response}");
+    assert_eq!(response["output"]["finalizedInputs"], json!([0, 1]));
+    assert_eq!(response["output"]["remainingPartialInputs"], 0);
+    let finalized = response_psbt(&response);
+
+    assert!(
+        finalized
+            .inputs
+            .iter()
+            .all(|input| input.final_script_witness.is_some() && input.partial_sigs.is_empty())
+    );
+}
+
+fn signed_two_input_fixture() -> String {
     let key = PrivateKey::from_wif("cMahea7zqjxrtgAbB7LSGbcQUr1uX1ojuat9jZodMN87JcbXMTcA")
         .expect("fixture key");
     let public_key = key.public_key(&bitcoin::secp256k1::Secp256k1::new());
@@ -200,29 +275,15 @@ fn finalize_inputs_only_finalizes_requested_inputs() {
         "sha256:deadbeef",
     );
     assert_eq!(signed["status"], "ok");
+    signed["output"]["psbt"]
+        .as_str()
+        .expect("signed PSBT")
+        .to_owned()
+}
 
-    let response = handle_value(
-        request(
-            "finalize-inputs",
-            json!({
-                "psbt": signed["output"]["psbt"],
-                "network": "regtest",
-                "fixtureId": "bdk-finalize-regression",
-                "inputIndexes": [1]
-            }),
-        ),
-        "sha256:deadbeef",
-    );
-    assert_eq!(response["status"], "ok", "{response}");
-    assert_eq!(response["output"]["finalizedInputs"], json!([1]));
+fn response_psbt(response: &Value) -> Psbt {
     let encoded = response["output"]["psbt"].as_str().expect("encoded PSBT");
-    let finalized =
-        Psbt::deserialize(&STANDARD.decode(encoded).expect("base64 PSBT")).expect("valid PSBT");
-
-    assert!(finalized.inputs[0].final_script_witness.is_none());
-    assert!(!finalized.inputs[0].partial_sigs.is_empty());
-    assert!(finalized.inputs[1].final_script_witness.is_some());
-    assert!(finalized.inputs[1].partial_sigs.is_empty());
+    Psbt::deserialize(&STANDARD.decode(encoded).expect("base64 PSBT")).expect("valid PSBT")
 }
 
 #[test]

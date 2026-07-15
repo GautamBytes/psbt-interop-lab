@@ -1,7 +1,7 @@
 use std::fs;
 use std::io::{self, BufRead, Write};
 
-use psbt_lab_rust_adapter::handle_value;
+use psbt_lab_rust_adapter::{ADAPTER_PROTOCOL, handle_value};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
@@ -53,7 +53,7 @@ fn main() -> io::Result<()> {
         let response = match serde_json::from_slice::<Value>(&line) {
             Ok(value) => handle_value(value, &digest),
             Err(_) => json!({
-                "protocol": "psbt-lab.adapter/0.1",
+                "protocol": ADAPTER_PROTOCOL,
                 "id": "invalid-1",
                 "status": "rejected",
                 "implementation": {

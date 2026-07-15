@@ -10,7 +10,7 @@ use bitcoin::{PublicKey, Witness};
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
 
-const PROTOCOL: &str = "psbt-lab.adapter/0.2";
+pub const ADAPTER_PROTOCOL: &str = "psbt-lab.adapter/0.2";
 const MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
 const TEST_WIF: &str = "cMahea7zqjxrtgAbB7LSGbcQUr1uX1ojuat9jZodMN87JcbXMTcA";
 const ALLOWED_FIXTURES: [&str; 2] = ["happy-path", "bdk-finalize-regression"];
@@ -35,7 +35,7 @@ fn implementation(digest: &str) -> Value {
 
 fn success(id: &str, digest: &str, output: Value) -> Value {
     json!({
-        "protocol": PROTOCOL,
+        "protocol": ADAPTER_PROTOCOL,
         "id": id,
         "status": "ok",
         "implementation": implementation(digest),
@@ -45,7 +45,7 @@ fn success(id: &str, digest: &str, output: Value) -> Value {
 
 fn failure(id: &str, digest: &str, status: &str, class: &str, message: &str) -> Value {
     json!({
-        "protocol": PROTOCOL,
+        "protocol": ADAPTER_PROTOCOL,
         "id": id,
         "status": status,
         "implementation": implementation(digest),
@@ -454,7 +454,7 @@ pub fn handle_value(value: Value, digest: &str) -> Value {
             );
         }
     };
-    if request.protocol != PROTOCOL || !safe_id(&request.id) {
+    if request.protocol != ADAPTER_PROTOCOL || !safe_id(&request.id) {
         return failure(
             &fallback,
             digest,
