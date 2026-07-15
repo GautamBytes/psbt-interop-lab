@@ -46,10 +46,11 @@ strict JSON schemas, and matching request IDs.
 
 The runner compares canonical returned PSBT bytes independently of an adapter's `byteIdentical`
 claim. It also pins the adapter's self-reported name, implementation version, source revision,
-operations, and PSBTv0 support. Those fields, including the shaped self-reported artifact digest,
-are compatibility assertions; they do not attest which image or binary is running. Dockerfile base
-digests, downloaded checksums, lockfiles, and dependency hashes improve build reproducibility, not
-runtime attestation.
+operations, and PSBTv0 support. A malicious adapter can spoof those expected identity strings and
+supply any schema-valid self-reported digest; the runner does not compare a pinned content digest.
+These are compatibility assertions and do not attest which image or binary is running. Dockerfile
+base digests, downloaded checksums, lockfiles, and dependency hashes improve build reproducibility,
+not runtime attestation.
 
 ### Bitcoin Core isolation
 
@@ -64,6 +65,10 @@ container also has a read-only root, dropped capabilities, a 128-process limit, 
 and `no-new-privileges`; only its named regtest data volume remains writable, with a bounded temporary
 `/tmp` mount.
 
+Core validates returned PSBTs through finalization and policy checks. That does not prove BDK
+executed or that later adapter operations preserved the intended unsigned transaction. The residual
+false-PASS risk is low only under the trusted-image scope.
+
 ### Parsing and artifacts
 
 The TypeScript wire parser enforces canonical base64, PSBT magic, minimal CompactSize values,
@@ -71,17 +76,20 @@ unique complete keys, bounded map and entry counts, exact framing, and no traili
 structure and hashes rather than interpreting signing intent.
 
 Artifact writes use contained paths, private permissions, temporary files, `fsync`, and atomic
-rename. Replay rejects absolute paths, directory escapes, final-component symlinks, non-regular
-files, oversized files, malformed PSBTs, hash mismatches, and manifests above 1,000 checkpoints.
-Replay opens each final path with `O_NOFOLLOW`, then checks and reads through the same file descriptor;
-`O_NOFOLLOW` does not protect intermediate path components.
+rename. Replay rejects absolute and lexically escaping checkpoint paths, non-regular files,
+oversized files, malformed PSBTs, SHA256 mismatches, and manifests above 1,000 checkpoints.
+Intermediate symlinks remain trusted. Final-component `O_NOFOLLOW` protection applies only where
+Node exposes the flag; the descriptor is then used for the regular-file check and read.
 
-Replay verifies internal consistency between mutable checkpoint files, facts, and manifest hashes
-without rerunning adapters or recomputing scenario outcomes. An actor able to replace the artifact
-directory can rewrite all of those values consistently, so replay is not artifact authentication.
-Private modes protect against other local accounts under ordinary host permissions; they do not
-protect artifacts from the trusted host account. Reports redact raw PSBT-shaped strings and
-secret-like fields, but local checkpoints may still contain sensitive transaction metadata.
+Replay reparses each PSBT and verifies its SHA256 against the manifest and stored facts JSON
+`sha256`. It does not recompute other stored facts or recorded outcomes and does not rerun adapters.
+An actor able to replace the artifact directory can rewrite all values consistently, so replay is
+not artifact authentication.
+
+Raw PSBT, script, and UTXO material is excluded from reports. Implementation name, version, source
+revision, and self-reported digest metadata are intentionally recorded and protected only by local
+file permissions. Those permissions do not protect artifacts from the trusted host account, and
+local checkpoints may still contain sensitive transaction metadata.
 
 ### GitHub CI
 
@@ -90,7 +98,9 @@ pins action revisions, uses ephemeral GitHub-hosted runners, sets per-job timeou
 superseded work for the same workflow/ref. Pull-request code runs language build/test jobs, but the
 complete Docker proof condition allows only main-branch or manual runs. Untrusted build code still has
 runner network and compute access until its timeout; GitHub-host isolation and dependency services
-remain external trust.
+remain external trust. These controls mitigate credential, compute, and network abuse. Pull-request
+code can alter its own tests and build scripts, so a green run means revision self-consistency, not
+independent check integrity.
 
 ## Out Of Scope
 

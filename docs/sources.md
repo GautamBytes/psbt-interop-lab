@@ -60,6 +60,8 @@ Python requirement.
   The [`fsPromises.open`](https://nodejs.org/docs/latest-v22.x/api/fs.html#fspromisesopenpath-flags-mode)
   and [`FileHandle`](https://nodejs.org/docs/latest-v22.x/api/fs.html#class-filehandle) references
   define the descriptor-based open, stat, read, and close operations used by bounded replay reads.
+  The [file-open constants](https://nodejs.org/docs/latest-v22.x/api/fs.html#file-open-constants)
+  reference documents platform-dependent flag exposure, including `O_NOFOLLOW` where available.
 - [TypeScript documentation](https://www.typescriptlang.org/docs/) is the compiler and language
   reference. The exact compiler and npm dependency graph are locked by `pnpm-lock.yaml`.
 - [Ajv documentation](https://ajv.js.org/) and
@@ -94,5 +96,5 @@ Python requirement.
   for advisory checks. The npm production graph, frozen Python package, and committed Rust lockfile
   were queried separately.
 
-Version updates should change this ledger, the relevant lock/pin, and the expected adapter identity
-in the same pull request.
+Version updates should change this ledger, the relevant lock/pin, and the expected self-reported
+adapter compatibility strings in the same pull request.

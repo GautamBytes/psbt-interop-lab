@@ -12,13 +12,14 @@ The MVP is deliberately narrow. It proves the hardest part of the product with r
 4. A second two-input fixture reproduces
    [BDK issue #488](https://github.com/bitcoindevkit/bdk_wallet/issues/488) in frozen
    `bdkpython` 2.3.1.
-5. Bitcoin Core finalizes that exact same PSBT, proving the failure is implementation-specific
-   rather than an invalid transaction.
+5. Bitcoin Core finalizes that same returned PSBT, recording the expected BDK/Core contrast under
+   the trusted-image scope.
 
 Each run writes private PSBT checkpoints, structural facts, implementation identities, a JSON
-manifest, and a readable Markdown report. Replay checks that checkpoint contents, facts, and hashes
-are internally consistent without rerunning adapters. Because the manifest and hashes remain in the
-same mutable directory, replay does not authenticate the artifact or its recorded outcome.
+manifest, and a readable Markdown report. Replay reparses each PSBT and verifies its SHA256 against
+the manifest and the stored facts JSON `sha256`; it does not recompute other stored facts or recorded
+outcomes, and it does not rerun adapters. Because all values remain in the same mutable directory,
+replay does not authenticate the artifact.
 
 ## Quick Start
 
@@ -56,13 +57,15 @@ docker compose stop core
 
 ## What Passing Means
 
-The happy path passes only when the Rust adapter preserves the Core-created PSBT byte-for-byte,
-adds valid signatures, Core reports finalization as complete, and Core accepts the extracted
-transaction under current regtest mempool policy.
+Within the trusted-image scope, the happy path passes only when the runner observes a byte-identical
+Rust round trip, then Core reports finalization as complete and accepts the extracted transaction
+under current regtest mempool policy.
 
-The regression path passes only when frozen BDK Python 2.3.1 returns the exact historical
-`finalize.missing_witness_script` class, while Core completes and policy-accepts the same PSBT. An
-expected old failure is therefore a passing regression result, not a hidden error.
+The regression path passes only when the BDK-labeled response returns the exact historical
+`finalize.missing_witness_script` class, while Core completes and policy-accepts the same returned
+PSBT. An expected old failure is therefore a passing regression result, not a hidden error. Core
+validates the returned PSBT, but does not prove BDK executed or that later adapter operations
+preserved the intended unsigned transaction.
 
 Example terminal result:
 
@@ -82,12 +85,18 @@ Runs are written under `artifacts/<run-id>/`:
 - `checkpoints/**/*.psbt`: canonical base64 PSBT state at each handoff
 - `checkpoints/**/*.facts.json`: bounded structural facts and SHA256 hash
 
-Artifact directories are created with mode `0700`; files are created with mode `0600`. Raw PSBTs
-are never copied into the reports. Treat checkpoint files as sensitive anyway: real-world PSBTs can
-contain wallet metadata even when they contain no private keys. Replay opens each final checkpoint
-path without following a final-component symlink and caps a manifest at 1,000 checkpoints. This does
-not stop the trusted host account from replacing a whole self-consistent artifact directory, and
-`O_NOFOLLOW` does not protect intermediate path components.
+Artifact directories are created with mode `0700`; files are created with mode `0600`. Raw PSBT,
+script, and UTXO material is excluded from reports. Adapter name, version, source revision, and
+self-reported digest metadata are intentionally recorded in the manifest and JSON report and are
+protected only by those local permissions. Treat checkpoint files as sensitive anyway: real-world
+PSBTs can contain wallet metadata even when they contain no private keys.
+
+Replay rejects absolute and lexically escaping checkpoint paths and caps a manifest at 1,000
+checkpoints. Intermediate symlinks remain trusted. Final-component `O_NOFOLLOW` protection applies
+only where Node exposes the flag. Replay reparses each PSBT and verifies its SHA256 against the
+manifest and stored facts JSON `sha256`; other stored facts and recorded outcomes are not recomputed.
+This does not stop the trusted host account from replacing a whole self-consistent artifact
+directory.
 
 ## Safety Boundary
 
@@ -106,8 +115,10 @@ This is test infrastructure, not a wallet or signer:
   `no-new-privileges`; Core alone keeps its named regtest data volume writable. Adapters have no
   network.
 - Adapter name, version, source revision, and capability checks are compatibility self-reports, not
-  cryptographic image attestation. Dockerfile digests and dependency hashes support reproducible
-  build selection, not runtime attestation.
+  cryptographic image attestation. A malicious adapter can spoof the expected identity strings and
+  supply any schema-valid self-reported digest; the runner does not compare a pinned content digest.
+  Dockerfile digests and dependency hashes support reproducible build selection, not runtime
+  attestation.
 - The tool never broadcasts a transaction and has no mainnet, testnet, or signet mode.
 
 Read [SECURITY.md](SECURITY.md) and the

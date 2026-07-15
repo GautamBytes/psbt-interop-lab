@@ -14,7 +14,7 @@ flowchart LR
   CLI -->|"bounded JSONL"| BDK["bdkpython 2.3.1 adapter"]
   CLI --> Facts["Lossless wire-facts parser"]
   CLI --> Artifacts["Private checkpoints and reports"]
-  Artifacts --> Replay["Offline consistency replay"]
+  Artifacts --> Replay["Offline PSBT-digest replay"]
 ```
 
 ## Components
@@ -48,9 +48,11 @@ ID and includes implementation name, version, and artifact digest. The status is
 language-specific stack traces.
 
 Startup pins each adapter's self-reported name, version, source revision, operations, and PSBTv0
-support as a compatibility check. The identity and artifact digest are not cryptographic attestation
-of the running image. Dockerfile base digests, downloaded checksums, and dependency hashes support
-reproducible build selection rather than runtime provenance.
+support as a compatibility check. A malicious adapter can spoof the expected identity strings and
+supply any schema-valid self-reported digest; the runner does not compare a pinned content digest.
+These values are not cryptographic attestation of the running image. Dockerfile base digests,
+downloaded checksums, and dependency hashes support reproducible build selection rather than
+runtime provenance.
 
 The Rust adapter signs and finalizes only known fixture inputs. The Python adapter freezes the
 affected `bdkpython` 2.3.1 wheel and exposes round-trip/finalize behavior. Neither adapter has
@@ -60,14 +62,19 @@ network access at runtime.
 
 The wire-facts parser reads BIP174/BIP370 framing directly so serialization changes cannot be
 hidden by a library's normalized object model. It records PSBT version, byte length, SHA256, map
-counts, and key/value sizes. It does not include raw values in reports.
+counts, and key/value sizes. Raw PSBT, script, and UTXO material is excluded from reports.
+Implementation name, version, source revision, and self-reported digest metadata are intentionally
+recorded and protected only by local file permissions.
 
-Each handoff writes both the canonical base64 PSBT and its facts. The manifest binds these files to
-the run's recorded implementation identities. Replay reparses each PSBT and compares the mutable
-checkpoint, facts, and manifest hashes without rerunning adapters or recomputing scenario outcomes.
-This verifies internal consistency at read time; it does not authenticate the artifact directory.
-Replay opens each final checkpoint path with `O_NOFOLLOW` and caps a manifest at 1,000 checkpoints,
-but `O_NOFOLLOW` protects only the final path component.
+Each handoff writes both the canonical base64 PSBT and its facts. The manifest records these files
+alongside the run's self-reported implementation identities. Replay reparses each PSBT and verifies
+its SHA256 against the manifest and stored facts JSON `sha256`; it does not recompute other stored
+facts or recorded outcomes and does not rerun adapters. This does not authenticate the mutable
+artifact directory.
+
+Replay rejects absolute and lexically escaping checkpoint paths and caps a manifest at 1,000
+checkpoints. Intermediate symlinks remain trusted. Final-component `O_NOFOLLOW` protection applies
+only where Node exposes the flag.
 
 ## Runtime And CI Boundaries
 
@@ -82,7 +89,9 @@ GitHub-hosted CI is separate from that runtime. `.github/workflows/ci.yml` gives
 repository permission, no persisted checkout credential or workflow secrets, pinned action commits,
 ephemeral runners, timeouts, and concurrency cancellation. Pull requests run the TypeScript, Rust,
 and BDK checks; the complete Docker proof runs only on `refs/heads/main` or a trusted manual dispatch.
-The workflow provides build evidence and does not publish or attest a release image.
+These controls mitigate credential, compute, and network abuse. Pull-request code can alter its own
+tests and build scripts, so green means revision self-consistency rather than independent check
+integrity. The workflow does not publish or attest a release image.
 
 The detailed assumptions, abuse paths, and residual risks are recorded in the
 [threat model](../psbt-interop-lab-threat-model.md).
@@ -109,6 +118,10 @@ The detailed assumptions, abuse paths, and residual risks are recorded in the
 
 This is a synthetic minimal fixture based on the state transition described in BDK issue #488. It
 does not copy the reporter's wallet data or seed.
+
+Core validates the returned PSBT but does not prove BDK executed or that later adapter operations
+preserved the intended unsigned transaction. The interpretation above retains low false-PASS risk
+only under the trusted-image scope.
 
 ## Extension Points
 
