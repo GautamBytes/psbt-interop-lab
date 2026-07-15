@@ -1,8 +1,8 @@
 import { randomBytes } from "node:crypto";
 import { resolve } from "node:path";
-import { type PsbtFixture, prepareFixtures } from "../core/fixtures.js";
+import { type PreparedFixtures, type PsbtFixture, prepareFixtures } from "../core/fixtures.js";
 import type { CoreRpc } from "../core/rpc.js";
-import { AdapterProcess } from "../protocol/adapter-process.js";
+import { AdapterProcess, type AdapterProcessOptions } from "../protocol/adapter-process.js";
 import type { NegotiatedAdapter } from "../protocol/types.js";
 import { ArtifactRun, type RunManifest } from "../runner/artifacts.js";
 import { generateMarkdownReport, redactValue } from "../runner/report.js";
@@ -15,6 +15,7 @@ import {
   GO_ADAPTER_CONTRACT,
   RUST_ADAPTER_CONTRACT,
 } from "./contracts.js";
+import type { ScenarioDefinition } from "./definition.js";
 import { runScenarioCatalog } from "./engine.js";
 import { classifyHappyPath, createHappyPathScenario } from "./happy-path.js";
 import { createParallelCombineScenario, createRoundtripChainScenario } from "./interop-matrix.js";
@@ -49,9 +50,35 @@ interface FixtureCommitment {
   readonly unsignedTxSha256: `sha256:${string}`;
 }
 
-interface DockerAdapterOptions {
+export interface DockerAdapterOptions {
   readonly platform?: string;
   readonly env?: Readonly<Record<string, string>>;
+}
+
+export interface ProofRuntimeAdapter {
+  request: AdapterProcess["request"];
+  close(): Promise<void>;
+}
+
+export interface ProofRuntimeArtifacts {
+  readonly directory: string;
+  checkpoint: ArtifactRun["checkpoint"];
+  writeManifest: ArtifactRun["writeManifest"];
+  writeReportJson: ArtifactRun["writeReportJson"];
+  writeReportMarkdown: ArtifactRun["writeReportMarkdown"];
+}
+
+export interface ProofDependencies {
+  createArtifacts(root: string, runId: string): Promise<ProofRuntimeArtifacts>;
+  prepareFixtures(rpc: CoreRpc): Promise<PreparedFixtures>;
+  createAdapter(
+    image: string,
+    projectDirectory: string,
+    options?: DockerAdapterOptions,
+  ): ProofRuntimeAdapter;
+  createCatalog(
+    fixtures: PreparedFixtures,
+  ): readonly ScenarioDefinition<ScenarioExecutionContext>[];
 }
 
 function runIdentifier(date = new Date()): string {
@@ -83,11 +110,11 @@ export function serializeFixtureCommitments(fixtures: readonly FixtureCommitment
   return encoded;
 }
 
-function createDockerAdapter(
+export function dockerAdapterProcessOptions(
   image: string,
   projectDirectory: string,
   options: DockerAdapterOptions = {},
-): AdapterProcess {
+): AdapterProcessOptions {
   const environment = options.env ?? {};
   const environmentKeys = Object.keys(environment).sort();
   const args = [
@@ -111,41 +138,94 @@ function createDockerAdapter(
     ...environmentKeys.flatMap((key) => ["--env", key]),
     image,
   ];
-  return new AdapterProcess({
+  return {
     command: "docker",
     args,
     cwd: projectDirectory,
     env: { ...environment },
     maxLineBytes: 4 * 1024 * 1024,
     maxStderrBytes: 64 * 1024,
-  });
+  };
+}
+
+function createDockerAdapter(
+  image: string,
+  projectDirectory: string,
+  options: DockerAdapterOptions = {},
+): AdapterProcess {
+  return new AdapterProcess(dockerAdapterProcessOptions(image, projectDirectory, options));
 }
 
 function negotiatedMap(adapters: readonly NegotiatedAdapter[]): Map<string, NegotiatedAdapter> {
   return new Map(adapters.map((adapter) => [adapter.implementation.name, adapter]));
 }
 
-export async function runProof(options: ProofOptions): Promise<ProofResult> {
+function defaultCatalog(
+  fixtures: PreparedFixtures,
+): readonly ScenarioDefinition<ScenarioExecutionContext>[] {
+  return [
+    createHappyPathScenario(fixtures.happy),
+    createHappyPathScenario(fixtures.happy, {
+      adapter: "btcsuite-go",
+      id: "p2wsh-sign-btcsuite-go",
+      title: "Core to btcsuite signing handoff",
+    }),
+    createHappyPathScenario(fixtures.happy, {
+      adapter: "bitcoinjs-lib",
+      id: "p2wsh-sign-bitcoinjs-lib",
+      title: "Core to bitcoinjs-lib signing handoff",
+    }),
+    createRoundtripChainScenario(fixtures.happy),
+    createParallelCombineScenario(fixtures.happy),
+    createInvalidInputScenario(fixtures.happy),
+    createMetadataPreservationScenario(fixtures.happy),
+    createBdkRegressionScenario(fixtures.regression),
+    createBdkRegressionScenario(fixtures.regression, {
+      adapter: "btcsuite-go",
+      id: "bdk-regression-btcsuite-go",
+      title: "BDK regression through btcsuite finalization",
+    }),
+    createBdkRegressionScenario(fixtures.regression, {
+      adapter: "bitcoinjs-lib",
+      id: "bdk-regression-bitcoinjs-lib",
+      title: "BDK regression through bitcoinjs-lib finalization",
+    }),
+  ];
+}
+
+const DEFAULT_DEPENDENCIES: ProofDependencies = {
+  createArtifacts: ArtifactRun.create,
+  prepareFixtures,
+  createAdapter: createDockerAdapter,
+  createCatalog: defaultCatalog,
+};
+
+export async function runProofWithDependencies(
+  options: ProofOptions,
+  dependencies: ProofDependencies,
+): Promise<ProofResult> {
   const startedAt = new Date().toISOString();
   const runId = runIdentifier();
-  const artifacts = await ArtifactRun.create(resolve(options.artifactRoot), runId);
-  const fixtures = await prepareFixtures(options.rpc);
+  const artifacts = await dependencies.createArtifacts(resolve(options.artifactRoot), runId);
+  const fixtures = await dependencies.prepareFixtures(options.rpc);
   const timeoutMs = options.adapterTimeoutMs ?? 60_000;
   const commitmentConfiguration = serializeFixtureCommitments([
     fixtures.happy,
     fixtures.regression,
   ] satisfies readonly PsbtFixture[]);
   const projectDirectory = resolve(options.projectDirectory);
-  const rust = createDockerAdapter(RUST_IMAGE, projectDirectory, {
+  const rust = dependencies.createAdapter(RUST_IMAGE, projectDirectory, {
     env: { [FIXTURE_COMMITMENTS_ENV]: commitmentConfiguration },
   });
-  const go = createDockerAdapter(GO_IMAGE, projectDirectory, {
+  const go = dependencies.createAdapter(GO_IMAGE, projectDirectory, {
     env: { [FIXTURE_COMMITMENTS_ENV]: commitmentConfiguration },
   });
-  const bitcoinjs = createDockerAdapter(BITCOINJS_IMAGE, projectDirectory, {
+  const bitcoinjs = dependencies.createAdapter(BITCOINJS_IMAGE, projectDirectory, {
     env: { [FIXTURE_COMMITMENTS_ENV]: commitmentConfiguration },
   });
-  const bdk = createDockerAdapter(BDK_IMAGE, projectDirectory, { platform: "linux/amd64" });
+  const bdk = dependencies.createAdapter(BDK_IMAGE, projectDirectory, {
+    platform: "linux/amd64",
+  });
   const context = new ScenarioExecutionContext({
     rpc: options.rpc,
     artifacts,
@@ -177,34 +257,7 @@ export async function runProof(options: ProofOptions): Promise<ProofResult> {
     );
     const negotiated = [rustHello, goHello, bitcoinjsHello, bdkHello];
     const scenarios = await runScenarioCatalog(
-      [
-        createHappyPathScenario(fixtures.happy),
-        createHappyPathScenario(fixtures.happy, {
-          adapter: "btcsuite-go",
-          id: "p2wsh-sign-btcsuite-go",
-          title: "Core to btcsuite signing handoff",
-        }),
-        createHappyPathScenario(fixtures.happy, {
-          adapter: "bitcoinjs-lib",
-          id: "p2wsh-sign-bitcoinjs-lib",
-          title: "Core to bitcoinjs-lib signing handoff",
-        }),
-        createRoundtripChainScenario(fixtures.happy),
-        createParallelCombineScenario(fixtures.happy),
-        createInvalidInputScenario(fixtures.happy),
-        createMetadataPreservationScenario(fixtures.happy),
-        createBdkRegressionScenario(fixtures.regression),
-        createBdkRegressionScenario(fixtures.regression, {
-          adapter: "btcsuite-go",
-          id: "bdk-regression-btcsuite-go",
-          title: "BDK regression through btcsuite finalization",
-        }),
-        createBdkRegressionScenario(fixtures.regression, {
-          adapter: "bitcoinjs-lib",
-          id: "bdk-regression-bitcoinjs-lib",
-          title: "BDK regression through bitcoinjs-lib finalization",
-        }),
-      ],
+      dependencies.createCatalog(fixtures),
       context,
       negotiatedMap(negotiated),
     );
@@ -235,4 +288,8 @@ export async function runProof(options: ProofOptions): Promise<ProofResult> {
   } finally {
     await Promise.all([rust.close(), go.close(), bitcoinjs.close(), bdk.close()]);
   }
+}
+
+export async function runProof(options: ProofOptions): Promise<ProofResult> {
+  return runProofWithDependencies(options, DEFAULT_DEPENDENCIES);
 }

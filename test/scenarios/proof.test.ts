@@ -1,8 +1,23 @@
-import { describe, expect, test } from "vitest";
-import type { AdapterResponse } from "../../src/protocol/types.js";
+import { describe, expect, test, vi } from "vitest";
+import type { PreparedFixtures, PsbtFixture } from "../../src/core/fixtures.js";
+import type { AdapterRequest, AdapterResponse } from "../../src/protocol/types.js";
+import type { ScenarioExecutionContext } from "../../src/scenarios/context.js";
+import {
+  BDK_ADAPTER_CONTRACT,
+  BITCOINJS_ADAPTER_CONTRACT,
+  type ExpectedAdapterContract,
+  GO_ADAPTER_CONTRACT,
+  RUST_ADAPTER_CONTRACT,
+} from "../../src/scenarios/contracts.js";
+import type { ScenarioDefinition } from "../../src/scenarios/definition.js";
 import {
   classifyHappyPath,
   classifyRegression,
+  dockerAdapterProcessOptions,
+  type ProofDependencies,
+  type ProofRuntimeAdapter,
+  type ProofRuntimeArtifacts,
+  runProofWithDependencies,
   serializeFixtureCommitments,
 } from "../../src/scenarios/proof.js";
 
@@ -91,5 +106,178 @@ describe("proof scenario classification", () => {
         { id: "../unsafe", unsignedTxSha256: `sha256:${"b".repeat(64)}` },
       ]),
     ).toThrow(/fixture id/i);
+  });
+});
+
+function fixture(id: PsbtFixture["id"]): PsbtFixture {
+  const commitmentByte = id === "happy-path" ? "c" : "d";
+  return {
+    id,
+    initialPsbt:
+      "cHNidP8BADwCAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/////wD/////AQAAAAAAAAAAAAAAAAAAAAA=",
+    outpoints: [],
+    inputCount: id === "bdk-finalize-regression" ? 2 : 1,
+    outputCount: 1,
+    feeSats: 1_000,
+    scriptTypes: ["p2wsh"],
+    inputDescriptors: ["wsh(pk(...))#fixture"],
+    outputDescriptor: "wsh(pk(...))#fixture",
+    psbtVersion: 0,
+    transactionId: "a".repeat(64),
+    psbtSha256: "b".repeat(64),
+    unsignedTxSha256: `sha256:${commitmentByte.repeat(64)}`,
+  };
+}
+
+function preparedFixtures(): PreparedFixtures {
+  return {
+    descriptor: "wsh(pk(...))#fixture",
+    address: "bcrt1qfixture",
+    core: { version: 310100, subversion: "/Satoshi:31.1.0/", blocks: 109, connections: 0 },
+    happy: fixture("happy-path"),
+    regression: fixture("bdk-finalize-regression"),
+    profiles: {},
+  } as PreparedFixtures;
+}
+
+function runtimeAdapter(contract: ExpectedAdapterContract): ProofRuntimeAdapter & {
+  close: ReturnType<typeof vi.fn>;
+} {
+  const close = vi.fn(async () => undefined);
+  return {
+    close,
+    request: vi.fn(
+      async (request: AdapterRequest): Promise<AdapterResponse> => ({
+        protocol: "psbt-lab.adapter/0.2",
+        id: request.id,
+        status: "ok",
+        implementation: {
+          name: contract.name,
+          version: contract.version,
+          artifactDigest: `sha256:${"e".repeat(64)}`,
+          sourceRevision: contract.sourceRevision,
+        },
+        output: {
+          operations: [...contract.operations],
+          roles: [...contract.roles],
+          psbtVersions: [...contract.psbtVersions],
+          scriptTypes: [...contract.scriptTypes],
+          features: [...(contract.features ?? [])],
+        },
+      }),
+    ),
+  };
+}
+
+function proofHarness(failScenario = false): {
+  dependencies: ProofDependencies;
+  adapters: ProofRuntimeAdapter[];
+  artifacts: ProofRuntimeArtifacts;
+  created: Array<{ image: string; options: { env?: Readonly<Record<string, string>> } }>;
+} {
+  const artifacts: ProofRuntimeArtifacts = {
+    directory: "/tmp/psbt-lab-test/run",
+    checkpoint: vi.fn(),
+    writeManifest: vi.fn(),
+    writeReportJson: vi.fn(),
+    writeReportMarkdown: vi.fn(),
+  };
+  const adapters: ProofRuntimeAdapter[] = [];
+  const created: Array<{ image: string; options: { env?: Readonly<Record<string, string>> } }> = [];
+  const contracts = [
+    RUST_ADAPTER_CONTRACT,
+    GO_ADAPTER_CONTRACT,
+    BITCOINJS_ADAPTER_CONTRACT,
+    BDK_ADAPTER_CONTRACT,
+  ];
+  let adapterIndex = 0;
+  const scenario: ScenarioDefinition<ScenarioExecutionContext> = {
+    id: "runtime-lifecycle",
+    title: "Runtime lifecycle",
+    category: "test",
+    summary: "Runtime test",
+    requirements: [],
+    async run() {
+      if (failScenario) throw new Error("Core unavailable");
+      return {
+        summary: "Runtime passed",
+        assertions: [{ name: "runtime-completed", passed: true }],
+      };
+    },
+  };
+  return {
+    adapters,
+    artifacts,
+    created,
+    dependencies: {
+      createArtifacts: vi.fn(async () => artifacts),
+      prepareFixtures: vi.fn(async () => preparedFixtures()),
+      createAdapter: vi.fn((image, _projectDirectory, options = {}) => {
+        created.push({ image, options });
+        const value = runtimeAdapter(contracts[adapterIndex] as ExpectedAdapterContract);
+        adapterIndex += 1;
+        adapters.push(value);
+        return value;
+      }),
+      createCatalog: vi.fn(() => [scenario]),
+    },
+  };
+}
+
+describe("proof runtime", () => {
+  test("passes commitments through environment values without placing them in Docker arguments", () => {
+    const commitment = JSON.stringify({ "happy-path": `sha256:${"a".repeat(64)}` });
+    const options = dockerAdapterProcessOptions("adapter:image", "/project", {
+      env: { PSBT_LAB_FIXTURE_COMMITMENTS: commitment },
+    });
+
+    expect(options.args).toEqual(
+      expect.arrayContaining([
+        "--network",
+        "none",
+        "--read-only",
+        "--env",
+        "PSBT_LAB_FIXTURE_COMMITMENTS",
+      ]),
+    );
+    expect(options.args).not.toContain(commitment);
+    expect(options.env).toEqual({ PSBT_LAB_FIXTURE_COMMITMENTS: commitment });
+  });
+
+  test("closes every adapter exactly once after a successful run", async () => {
+    const harness = proofHarness();
+    const result = await runProofWithDependencies(
+      {
+        rpc: {} as never,
+        artifactRoot: "/tmp/psbt-lab-test",
+        projectDirectory: "/project",
+      },
+      harness.dependencies,
+    );
+
+    expect(result.manifest.outcome).toBe("passed");
+    expect(harness.adapters).toHaveLength(4);
+    for (const adapter of harness.adapters) expect(adapter.close).toHaveBeenCalledTimes(1);
+    const commitmentEnvironments = harness.created
+      .map(({ options }) => options.env?.["PSBT_LAB_FIXTURE_COMMITMENTS"])
+      .filter((value) => value !== undefined);
+    expect(commitmentEnvironments).toHaveLength(3);
+    expect(commitmentEnvironments.join(" ")).not.toContain("cHNidP8");
+  });
+
+  test("closes every adapter exactly once after an infrastructure failure", async () => {
+    const harness = proofHarness(true);
+
+    await expect(
+      runProofWithDependencies(
+        {
+          rpc: {} as never,
+          artifactRoot: "/tmp/psbt-lab-test",
+          projectDirectory: "/project",
+        },
+        harness.dependencies,
+      ),
+    ).rejects.toThrow(/Core unavailable/);
+    for (const adapter of harness.adapters) expect(adapter.close).toHaveBeenCalledTimes(1);
   });
 });
