@@ -263,6 +263,20 @@ describe("ScenarioExecutionContext", () => {
     expect(call).toHaveBeenNthCalledWith(2, "testmempoolaccept", { rawtxs: ["02000000"] });
   });
 
+  test("asks Core to finalize without extraction when the finalized PSBT must be inspected", async () => {
+    const call = vi.fn().mockResolvedValue({ complete: true, psbt: "finalized-psbt" });
+    const value = context(fakeAdapter(), { call } as unknown as RpcCaller);
+
+    await expect(value.finalizePsbtWithCore("encoded-psbt")).resolves.toEqual({
+      complete: true,
+      psbt: "finalized-psbt",
+    });
+    expect(call).toHaveBeenCalledWith("finalizepsbt", {
+      psbt: "encoded-psbt",
+      extract: false,
+    });
+  });
+
   test("does not ask Core policy about an incomplete PSBT", async () => {
     const call = vi.fn();
     const value = context(fakeAdapter(), { call } as unknown as RpcCaller);

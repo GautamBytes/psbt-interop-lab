@@ -140,7 +140,7 @@ def handle_request(value, digest):
             request_id,
             digest,
             {
-                "operations": ["hello", "inspect", "roundtrip", "finalize"],
+                "operations": ["hello", "native-parse", "inspect", "roundtrip", "finalize"],
                 "roles": ["parser", "finalizer"],
                 "psbtVersions": [0],
                 "scriptTypes": ["p2wsh"],
@@ -150,6 +150,32 @@ def handle_request(value, digest):
                     "finalize": ["p2wsh"],
                 },
                 "features": ["historical-regression.bdk-wallet-488"],
+            },
+        )
+
+    if operation == "native-parse":
+        try:
+            _, psbt = parse_psbt(payload, ["psbt"])
+        except ValueError as error:
+            error_class = (
+                "protocol.invalid_payload"
+                if str(error) == "invalid_payload"
+                else "psbt.native_parse_failed"
+            )
+            return failure(
+                request_id,
+                digest,
+                "rejected",
+                error_class,
+                "BDK rejected the PSBT",
+            )
+        return success(
+            request_id,
+            digest,
+            {
+                "nativeParser": "bdkpython",
+                "inputs": len(psbt.input()),
+                "outputs": len(psbt.output()),
             },
         )
 

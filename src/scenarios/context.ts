@@ -32,6 +32,11 @@ export interface CoreFinalizeResult {
   readonly hex?: string;
 }
 
+export interface CoreFinalizePsbtResult {
+  readonly complete: boolean;
+  readonly psbt?: string;
+}
+
 export interface CorePolicyResult {
   readonly allowed: boolean;
   readonly txid?: string;
@@ -56,6 +61,20 @@ function parseFinalizeResult(value: unknown): CoreFinalizeResult {
   return {
     complete: object["complete"],
     ...(typeof object["hex"] === "string" ? { hex: object["hex"] } : {}),
+  };
+}
+
+function parseFinalizePsbtResult(value: unknown): CoreFinalizePsbtResult {
+  const object = asObject(value, "finalizepsbt");
+  if (typeof object["complete"] !== "boolean") {
+    throw new Error("finalizepsbt omitted its completion status");
+  }
+  if (object["psbt"] !== undefined && typeof object["psbt"] !== "string") {
+    throw new Error("finalizepsbt returned an invalid finalized PSBT");
+  }
+  return {
+    complete: object["complete"],
+    ...(typeof object["psbt"] === "string" ? { psbt: object["psbt"] } : {}),
   };
 }
 
@@ -320,6 +339,15 @@ export class ScenarioExecutionContext {
       await this.#rpc.call("finalizepsbt", {
         psbt,
         extract: true,
+      }),
+    );
+  }
+
+  async finalizePsbtWithCore(psbt: string): Promise<CoreFinalizePsbtResult> {
+    return parseFinalizePsbtResult(
+      await this.#rpc.call("finalizepsbt", {
+        psbt,
+        extract: false,
       }),
     );
   }

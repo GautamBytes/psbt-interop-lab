@@ -8,6 +8,7 @@ import type {
   ScenarioAssertionEvidence,
   ScenarioDefinition,
   ScenarioExecutionOutput,
+  ScenarioFinding,
   ScenarioResult,
 } from "./definition.js";
 
@@ -81,7 +82,12 @@ function missingForRequirement(
     capabilities.scriptTypes,
   );
   for (const operation of requirement.operations ?? []) {
-    if (operation === "hello" || !capabilities.operations.includes(operation)) continue;
+    if (
+      operation === "hello" ||
+      operation === "native-parse" ||
+      !capabilities.operations.includes(operation)
+    )
+      continue;
     for (const scriptType of requirement.scriptTypes ?? []) {
       if (!capabilities.scriptTypes.includes(scriptType)) continue;
       if (!(capabilities.operationScriptTypes?.[operation]?.includes(scriptType) ?? false)) {
@@ -165,6 +171,14 @@ function copyAssertions(
   return assertions.map((assertion) => copyAssertion(assertion));
 }
 
+function copyFindings(findings: readonly ScenarioFinding[] | undefined): ScenarioFinding[] {
+  return (findings ?? []).map((finding) => ({
+    id: finding.id,
+    implementation: redactSensitiveText(finding.implementation),
+    summary: redactSensitiveText(finding.summary),
+  }));
+}
+
 function assertValidCatalog<Context>(catalog: readonly ScenarioDefinition<Context>[]): void {
   const identifiers = new Set<string>();
   for (const [index, definition] of catalog.entries()) {
@@ -205,6 +219,7 @@ function completedResult<Context>(
     summary: redactSensitiveText(output.summary ?? definition.summary),
     durationMs: elapsedMilliseconds(startedAt),
     assertions,
+    ...(output.findings?.length ? { findings: copyFindings(output.findings) } : {}),
     ...(output.expectedFailure
       ? {
           expectedFailure: {

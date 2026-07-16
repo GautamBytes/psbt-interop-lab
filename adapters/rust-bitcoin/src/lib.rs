@@ -201,18 +201,69 @@ fn payload_string<'a>(payload: &'a Map<String, Value>, key: &str) -> Option<&'a 
     payload.get(key).and_then(Value::as_str)
 }
 
-fn parse_psbt(encoded: &str) -> Result<(Vec<u8>, Psbt), String> {
+fn decode_psbt_bytes(encoded: &str) -> Result<Vec<u8>, String> {
+    if encoded.len() > 4 * 1024 * 1024 * 4 / 3 + 4 {
+        return Err("PSBT exceeds the encoded adapter limit".to_owned());
+    }
     let bytes = STANDARD
         .decode(encoded)
         .map_err(|_| "PSBT is not valid base64".to_owned())?;
-    if bytes.len() > 4 * 1024 * 1024 {
+    if bytes.len() > 4 * 1024 * 1024 || STANDARD.encode(&bytes) != encoded {
         return Err("PSBT exceeds the 4 MiB adapter limit".to_owned());
     }
+    Ok(bytes)
+}
+
+fn parse_psbt(encoded: &str) -> Result<(Vec<u8>, Psbt), String> {
+    let bytes = decode_psbt_bytes(encoded)?;
     let psbt = Psbt::deserialize(&bytes).map_err(|error| format!("Invalid PSBT: {error}"))?;
     if psbt.version != 0 {
         return Err("The Rust signer supports PSBTv0 only".to_owned());
     }
     Ok((bytes, psbt))
+}
+
+fn native_parse(request: &Request, digest: &str) -> Value {
+    if !exact_fields(&request.payload, &["psbt"]) {
+        return failure(
+            &request.id,
+            digest,
+            "rejected",
+            "protocol.invalid_payload",
+            "native-parse expects only a psbt field",
+        );
+    }
+    let Some(encoded) = payload_string(&request.payload, "psbt") else {
+        return failure(
+            &request.id,
+            digest,
+            "rejected",
+            "protocol.invalid_payload",
+            "psbt must be a base64 string",
+        );
+    };
+    let parsed = decode_psbt_bytes(encoded).and_then(|bytes| {
+        Psbt::deserialize(&bytes).map_err(|error| format!("Invalid PSBT: {error}"))
+    });
+    match parsed {
+        Ok(psbt) => success(
+            &request.id,
+            digest,
+            json!({
+                "nativeParser": "rust-bitcoin",
+                "psbtVersion": psbt.version,
+                "inputs": psbt.inputs.len(),
+                "outputs": psbt.outputs.len()
+            }),
+        ),
+        Err(_) => failure(
+            &request.id,
+            digest,
+            "rejected",
+            "psbt.native_parse_failed",
+            "rust-bitcoin rejected the PSBT",
+        ),
+    }
 }
 
 fn encoded_psbt(psbt: &Psbt) -> String {
@@ -934,7 +985,7 @@ pub fn handle_value_with_commitments(
             &request.id,
             digest,
             json!({
-                "operations": ["hello", "roundtrip", "sign", "finalize-inputs"],
+                "operations": ["hello", "native-parse", "roundtrip", "sign", "finalize-inputs"],
                 "roles": ["parser", "signer", "finalizer"],
                 "psbtVersions": [0],
                 "scriptTypes": ["p2wpkh", "p2wsh", "p2tr-keypath"],
@@ -953,6 +1004,7 @@ pub fn handle_value_with_commitments(
             "protocol.invalid_payload",
             "hello expects an empty payload",
         ),
+        "native-parse" => native_parse(&request, digest),
         "roundtrip" => roundtrip(&request, digest),
         "sign" => sign(&request, digest, commitments),
         "finalize-inputs" => finalize_inputs(&request, digest, commitments),

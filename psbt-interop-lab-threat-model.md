@@ -9,8 +9,9 @@ valueless deterministic regtest keys. The main security objectives are proof-res
 containment of the host, confidentiality of raw PSBT/script/UTXO artifact material, and bounded
 runtime and CI execution.
 
-The controls fail closed on malformed adapter messages, changed round-trip PSBT bytes, mismatched
-Bitcoin Core RPC replies, an unexpected Core version, and replayed PSBT SHA256 mismatches. They do
+The controls fail closed on malformed adapter messages, disallowed semantic PSBT field changes,
+mismatched Bitcoin Core RPC replies, an unexpected Core version, and replayed PSBT SHA256
+mismatches. They do
 not make this a production signer. Adapter identity is a compatibility self-report rather than
 attestation: a malicious adapter can spoof the expected identity strings and supply any
 schema-valid self-reported digest. Hashes stored in a mutable artifact manifest do not establish
@@ -27,12 +28,18 @@ The confirmed local assumptions are:
 - No arbitrary user PSBTs, mainnet signing, public API, web UI, uploads, or multi-tenancy.
 - The local Docker daemon and host account are trusted.
 - Artifacts remain local and may contain sensitive transaction metadata.
+- External adapter manifests are trusted executable configuration selected by the developer.
 
 The trusted developer chooses the checkout, Docker images, RPC endpoint, and artifact directory.
 The supported guarantee therefore excludes a malicious or compromised host account, Docker daemon,
 kernel, or base image. Production keys and PSBTs, mainnet/testnet/signet use, hardware devices,
 transaction broadcast, public services, and callers other than the one trusted developer are also
 out of scope.
+
+The external conformance command starts the manifest's executable directly with the invoking
+user's privileges. Argument arrays, `shell: false`, bounded input/output, and timeouts limit command
+interpretation and protocol abuse; they do not sandbox the executable. Untrusted manifests and
+untrusted host executables are out of scope.
 
 ### GitHub CI boundary
 
@@ -65,6 +72,8 @@ flowchart TB
     Wire["Bounded PSBT wire parser"]
     Store["Private local artifact directory"]
     Replay["Offline replay verifier"]
+    Manifest["Trusted external adapter manifest"]
+    External["External adapter command"]
 
     CLI -->|"loopback HTTP JSON-RPC"| Core
     Core --> CoreData
@@ -76,6 +85,8 @@ flowchart TB
     CLI -->|"atomic local writes"| Store
     Replay -->|"bounded offline reads; no adapters"| Store
     Replay --> Wire
+    Manifest -->|"strict bounded JSON"| CLI
+    CLI <-->|"bounded stdin/stdout JSONL"| External
   end
 
   subgraph CI["Separate GitHub-hosted CI boundary"]
@@ -110,6 +121,9 @@ The local components and their repository evidence are:
   `adapters/bdkpython-2.3.1/` freezes the historical regression implementation.
 - `AdapterProcess.request` in `src/protocol/adapter-process.ts` mediates one bounded JSONL request at
   a time, validates response schemas and IDs, and terminates on timeout or protocol violation.
+- `loadAdapterManifest` and `runAdapterConformance` in `src/conformance/` validate bounded,
+  versioned executable configuration and test a trusted external adapter's identity, native parser,
+  transport, and semantic roundtrip behavior. They do not sandbox or attest the command.
 - `extractWireFacts` in `src/psbt/wire-facts.ts` parses canonical, bounded PSBT framing independently
   of the native adapters.
 - `ArtifactRun` in `src/runner/artifacts.ts` writes private checkpoint and report files atomically.
@@ -122,7 +136,7 @@ The local components and their repository evidence are:
 
 | Asset | Security objective | Evidence and limitation |
 | --- | --- | --- |
-| Proof outcome and checkpoints | Malformed round trips, mismatched RPC replies, and Core-rejected returned PSBTs must not produce PASS. | `runProof`, `assertByteIdenticalRoundtrip`, and `CoreRpc.call` enforce those checks. Core validation does not prove BDK executed or that later adapter operations preserved the intended unsigned transaction; see TM-001. |
+| Proof outcome and checkpoints | Malformed round trips, disallowed field changes, mismatched RPC replies, and Core-rejected returned PSBTs must not produce PASS. | Scenario transition policies, the lossless semantic parser, and `CoreRpc.call` enforce those checks. The one baselined btcsuite duplicate-key acceptance is reported as a compatibility finding rather than hidden or counted as an unrecognized PASS. Core validation does not prove which binary executed; see TM-001. |
 | Host files and processes | Adapter and Core activity should remain within bounded containers and the selected local artifact directory. | `compose.yaml`, `createDockerAdapter`, and contained artifact paths reduce exposure. The host account, Docker daemon, and kernel remain trusted. |
 | Artifact confidentiality | Raw PSBT, script, and UTXO material should remain out of reports. Implementation identity metadata is intentionally recorded. | `ArtifactRun` uses `0700` directories and `0600` files; those local permissions are the only protection for recorded identity metadata and checkpoint contents. Files are not encrypted from the trusted host account. |
 | Local runner availability | Malformed or stalled adapters, Core replies, parsers, and replay input should have bounded time, memory, process, line, response, and file costs. | `AdapterProcess`, `CoreRpc`, `extractWireFacts`, `verifyReplay`, and container limits bound normal failure modes; a trusted-platform compromise is excluded. |
@@ -136,6 +150,7 @@ hostile:
 
 - A buggy or deliberately malformed adapter response, including a false `byteIdentical` field,
   wrong request ID, oversized output, invalid schema, stale implementation self-report, or hang.
+- A malformed external adapter manifest or an adapter command that violates the JSONL protocol.
 - Accidental operator misconfiguration, such as a wrong Core endpoint, wrong Core version, attached
   peer, stale local image tag, unsuitable artifact path, or an untrusted container on Core's bridge.
 - Corrupted local artifact files, including truncation, digest mismatch, absolute or lexically
@@ -158,7 +173,8 @@ a privileged environment. Those events violate the confirmed trust assumptions.
 | Core identity and fixtures | `src/core/fixtures.ts`: `prepareFixtures` | Requires regtest, zero connections, numeric version `310100`, and expected generated PSBTv0 structure | A compromised Core binary is not detected by these semantic checks. |
 | Host to adapters | `src/protocol/adapter-process.ts`: `AdapterProcess.request` | `shell: false`, one in-flight JSONL request, schema and ID checks, 4 MiB line limit, 64 KiB retained stderr, timeout and termination | Adapter content remains untrusted until scenario checks consume it. |
 | Adapter compatibility | `src/scenarios/contracts.ts`: `assertAdapterHello` | Pins self-reported name, version, source revision, operations, and PSBTv0 support | A malicious adapter can spoof the expected identity strings and supply any schema-valid self-reported digest; neither is image attestation. |
-| Round-trip result | `src/scenarios/contracts.ts`: `assertByteIdenticalRoundtrip` | Parses both canonical PSBT values and compares decoded bytes independently of `byteIdentical` | It establishes byte equality, not which binary produced the response. |
+| Scenario transition | `src/scenarios/context.ts`: `ScenarioExecutionContext.requireTransition` | Parses both PSBTs and applies role-specific semantic field rules independently of `byteIdentical` | It establishes allowed state changes, not which binary produced the response. |
+| External adapter manifest | `src/conformance/manifest.ts`: `loadAdapterManifest`; `src/conformance/check.ts`: `runAdapterConformance` | 1 MiB strict schema, bounded command fields, `shell: false`, minimal environment, JSONL bounds, timeout, identity and parser checks | The selected command executes with the invoking user's host privileges and can spoof self-reported identity. Only trusted manifests are supported. |
 | PSBT parser | `src/psbt/wire-facts.ts`: `extractWireFacts` | Pre-decode encoded-length check; canonical base64; 4 MiB PSBT, key/value, map, and entry bounds; structural framing | It does not interpret wallet intent or prove native-library memory safety. |
 | Replay | `src/runner/replay.ts`: `verifyReplay` | Rejects absolute and lexically escaping paths; bounds manifest/files and checkpoint count; reparses each PSBT and verifies its SHA256 against the manifest and stored facts JSON `sha256` | Intermediate symlinks remain trusted. Final-component `O_NOFOLLOW` applies only where Node exposes it. Other facts/outcomes are not recomputed, and mutable hashes are not authenticity. |
 | Artifact writes | `src/runner/artifacts.ts`: `ArtifactRun` | Safe identifiers, contained paths, exclusive temporary files, `fsync`, atomic rename, private modes | The trusted account can read or replace local artifacts; directory contents are not signed. |
@@ -169,8 +185,9 @@ a privileged environment. Those events violate the confirmed trust assumptions.
 
 1. **False PASS through adapter self-report.** An adapter can return `status: ok`, claim the expected
    identity, and set `byteIdentical: true`. `assertAdapterHello` rejects incompatible self-reported
-   fields, while `assertByteIdenticalRoundtrip` independently parses and byte-compares the returned
-   PSBT. Core validates returned PSBTs through finalization and policy checks, but this does not prove
+   fields, while scenario transition policies independently parse both PSBTs and reject disallowed
+   field additions, removals, or mutations. Core validates returned PSBTs through finalization and
+   policy checks, but this does not prove
    BDK executed or that later adapter operations preserved the intended unsigned transaction. A
    malicious binary can also spoof the expected identity strings and supply any schema-valid
    self-reported digest. False-PASS risk remains low only under the trusted-image scope.
@@ -197,24 +214,30 @@ a privileged environment. Those events violate the confirmed trust assumptions.
    concurrency cancellation, and omission of the Docker proof mitigate those abuses. Pull-request
    code can alter its own tests and build scripts, so green means revision self-consistency rather
    than independent check integrity.
+7. **Trusted manifest starts an unsafe host command.** A manifest can name any local executable and
+   provide environment values. Strict JSON, bounded fields, `shell: false`, protocol limits, and
+   timeouts prevent shell interpolation and bound the conformance exchange, but cannot contain the
+   process after launch. The operator must review the manifest and should use a networkless,
+   read-only container. Safely executing untrusted manifests is not claimed.
 
 ## 8. Threat Model Table
 
 | ID | Asset | Preconditions | Abuse path | Impact | Controls | Residual risk | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| TM-001 | Proof outcome and implementation compatibility | Adapter is buggy, stale, or lies in JSONL output | Self-reported identity, `byteIdentical`, or later adapter output creates a false PASS | Incorrect interoperability conclusion | `AdapterProcess.request` validates schema/ID/bounds; `assertAdapterHello` pins compatibility strings/capabilities; `assertByteIdenticalRoundtrip` independently parses and compares round-trip bytes; Core validates returned PSBTs through finalization and policy checks | Core validation does not prove BDK executed or that later adapter operations preserved the intended unsigned transaction. A malicious adapter can spoof the expected identity strings and supply any schema-valid self-reported digest. False-PASS risk is low only under the trusted-image scope. | Mitigated, low residual false-PASS risk under trusted-image scope |
+| TM-001 | Proof outcome and implementation compatibility | Adapter is buggy, stale, or lies in JSONL output | Self-reported identity, `byteIdentical`, or later adapter output creates a false PASS | Incorrect interoperability conclusion | `AdapterProcess.request` validates schema/ID/bounds; `assertAdapterHello` pins compatibility strings/capabilities; scenario transition policies independently parse both PSBTs and reject disallowed field changes; Core validates finalized transactions and policy; the one baselined btcsuite malformed-input acceptance is emitted as a compatibility finding | Core validation does not prove which binary executed. A malicious adapter can spoof identity and digest fields. False-PASS risk is low only under the trusted-image scope. | Mitigated, low residual false-PASS risk under trusted-image scope |
 | TM-002 | Core-derived fixture and policy result integrity | Wrong local Core instance or stale/mismatched reply | A response is associated with the wrong RPC request or unsupported Core version | Incorrect fixture or false result classification | `CoreRpc.call` requires exact response IDs and bounds transport; `prepareFixtures` requires regtest, zero peers, numeric version `310100`, and expected PSBTv0 structure | A compromised trusted Core binary can lie consistently and is outside the supported platform assumption. | Mitigated, low residual risk |
 | TM-003 | Runner availability and parser integrity | Malformed adapter output or corrupted local replay data | Oversized base64, maps, values, files, output lines, RPC responses, or checkpoint lists consume memory/time | Local denial of service or incomplete proof | 4 MiB adapter/PSBT/file-class bounds, 8 MiB Core response bound, map/entry limits, timeouts, regular-file checks, and 1,000-checkpoint replay cap | Work and disk reads remain possible up to each cap; only suite-generated local inputs are supported. | Mitigated, low residual risk |
 | TM-004 | Host containment and local availability | Containerized process is buggy or hostile; stronger case requires Docker/kernel compromise | Fork/memory/write abuse or attempted container escape | Host resource pressure or host compromise | Read-only roots, temporary `/tmp` for Core, dropped capabilities, PID/memory limits, `no-new-privileges`, networkless adapters, loopback-only Core RPC | Ordinary resource abuse is bounded with low residual risk. Docker daemon, kernel, and base-image compromise are not addressed by these controls. | Mitigated for resource use; Docker/kernel compromise out of scope |
 | TM-005 | Artifact integrity and confidentiality | Local artifacts are corrupted or an actor can edit the artifact directory | Replace checkpoints, facts, manifest hashes, recorded scenarios, or path components | Misleading replay result or metadata disclosure | `ArtifactRun` uses atomic private writes; replay rejects absolute and lexically escaping paths, bounds reads, reparses PSBTs, and compares their SHA256 with manifest and stored facts JSON `sha256`; final-component `O_NOFOLLOW` is used where Node exposes it | Other facts/outcomes are not recomputed; intermediate symlinks remain trusted; hashes and outcomes share one unsigned mutable directory. Raw PSBT/script/UTXO material is excluded from reports, but recorded implementation identity metadata relies only on local permissions. | Accepted, low risk under trusted-local scope |
 | TM-006 | CI availability and check integrity | Untrusted pull-request code executes in hosted jobs | Consume compute/network, seek credentials, or alter tests/build scripts | CI delay/cost or misleading PR signal | `contents: read`, no workflow secrets, `persist-credentials: false`, pinned actions, ephemeral runners, job timeouts, concurrency cancellation; Docker proof skipped for pull requests | Controls mitigate compute/network/credential abuse, but pull-request code controls its own checks. Green means revision self-consistency, not independent check integrity. GitHub runner isolation and registries are externally trusted. | Mitigated, low residual resource/credential risk; check independence not claimed |
-| TM-007 | Real funds, production keys, users, or public services | The lab is extended or misused with arbitrary PSBTs, production keys, mainnet, uploads, hardware, public API/UI, or multiple tenants | Unsupported input reaches parser, native libraries, signing, storage, or policy decisions | Key/fund loss, privacy breach, or remote denial of service | Current CLI exposes only the generated proof suite; fixture key is public and valueless; Core is regtest/offline; no broadcast or public endpoint exists | No production-input, key-isolation, authentication, authorization, rate-limit, tenancy, hardware, or public-service guarantee is provided. | Out of scope; requires a new threat model |
+| TM-007 | Real funds, production keys, users, or public services | The lab is extended or misused with arbitrary PSBTs, production keys, mainnet, uploads, hardware, public API/UI, or multiple tenants | Unsupported input reaches parser, native libraries, signing, storage, or policy decisions | Key/fund loss, privacy breach, or remote denial of service | The built-in matrix exposes only generated fixtures; fixture keys are public and valueless; Core is offline regtest; no broadcast or public endpoint exists | External conformance runs bounded parser probes but is not a production-input security audit. No key-isolation, authentication, authorization, rate-limit, tenancy, hardware, or public-service guarantee is provided. | Out of scope; requires a new threat model |
+| TM-008 | Host files, credentials, and processes | Developer runs an untrusted or insufficiently reviewed external adapter manifest | Manifest starts a host executable that reads files, uses network access, or persists after the check | Host compromise or data disclosure | Strict 1 MiB schema; bounded fields; argument-array spawn with `shell: false`; minimal inherited environment; bounded JSONL and timeout; reports omit command arguments and environment values; documentation recommends a constrained container | These controls do not sandbox the executable. Only trusted manifests are supported; executing untrusted manifests is explicitly out of scope. | Accepted only under trusted-manifest assumption |
 
 ## 9. Criticality Calibration
 
 Runtime severity is calibrated to the confirmed local boundary, not to a general wallet or signing
-service. The operator and host platform are trusted, PSBTs are generated by the suite, the only key
-is public and valueless, Core is offline regtest, no transaction is broadcast, and artifacts stay
+service. The operator and host platform are trusted, PSBTs are generated by the suite, the fixture
+keys are public and valueless, Core is offline regtest, no transaction is broadcast, and artifacts stay
 local. A successful attack within scope can primarily falsify a developer result, expose local test
 metadata, or consume bounded local resources. Those consequences support low residual ratings after
 the implemented checks; they do not support claims of production safety.
@@ -233,16 +256,18 @@ severity materially.
 
 ## 10. Focus Paths
 
-### Independent round-trip verification
+### Independent semantic-transition verification
 
 1. `runProof` in `src/scenarios/proof.ts` sends a suite-generated PSBT through
    `AdapterProcess.request`, which applies schema, request-size, response-line, ID, and timeout checks.
 2. `assertAdapterHello` in `src/scenarios/contracts.ts` first checks the adapter's pinned
    compatibility self-report. This does not attest the running image.
-3. For `roundtrip`, `assertByteIdenticalRoundtrip` requires an `ok` response and a returned PSBT. It
-   does not stop at the adapter's `byteIdentical: true` field.
-4. It calls `extractWireFacts` on both source and returned canonical base64 values, then compares the
-   decoded buffers. A malformed or changed PSBT throws before the scenario can be classified PASS.
+3. Each scenario passes the source and returned PSBT to
+   `ScenarioExecutionContext.requireTransition`; it does not trust the adapter's
+   `byteIdentical: true` field.
+4. `assertPsbtTransition` parses both PSBTs into lossless documents and applies the policy for the
+   requested role. A malformed PSBT or disallowed field addition, removal, or mutation fails with a
+   stable semantic diff. Legal map-entry reordering remains diagnostic rather than failure.
 5. Subsequent returned PSBT states are passed to `CoreRpc.call` for `finalizepsbt` and
    `testmempoolaccept`. Core validates those returned states, but does not prove BDK executed or that
    later adapter operations preserved the intended unsigned transaction. False-PASS risk is retained

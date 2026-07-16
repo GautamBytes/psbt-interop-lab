@@ -7,6 +7,10 @@ canonical, bounded PSBTv0 base64 only. A binary PSBT is capped just below 3 MiB 
 response, including its JSON envelope, remains within the 4 MiB JSONL line limit. Its signer is deliberately limited to the lab's deterministic
 regtest fixtures and never accepts a caller-supplied key or network request.
 
+`native-parse` performs only bounded canonical base64 decoding before calling
+`bitcoin.Psbt.fromBuffer`. This keeps malformed-input classification on bitcoinjs-lib's native
+parser path instead of the adapter's fixture and PSBT-version preflight.
+
 The exact signing policies are:
 
 - `happy-path` and `bdk-finalize-regression`: scalar 1 signs the legacy

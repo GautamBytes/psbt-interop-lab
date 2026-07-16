@@ -8,6 +8,7 @@ describe("detector canaries", () => {
 
     expect(results.map(({ id }) => id)).toEqual([
       "proprietary-field-drop",
+      "unknown-field-drop-during-signing",
       "output-amount-change",
       "sequence-change",
       "signature-removal",
@@ -20,6 +21,11 @@ describe("detector canaries", () => {
           id: "proprietary-field-drop",
           failureCode: "ENTRY_REMOVED",
           keyType: 0xfc,
+        }),
+        expect.objectContaining({
+          id: "unknown-field-drop-during-signing",
+          failureCode: "ENTRY_REMOVED",
+          keyType: 0x50,
         }),
         expect.objectContaining({
           id: "output-amount-change",

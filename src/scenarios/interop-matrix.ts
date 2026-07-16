@@ -52,7 +52,7 @@ function partialSignatureEvidence(
   };
 }
 
-function exactFieldUnionEvidence(
+export function exactFieldUnionEvidence(
   sources: readonly string[],
   combined: string,
 ): ScenarioAssertionEvidence {

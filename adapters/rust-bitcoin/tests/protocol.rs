@@ -275,7 +275,7 @@ fn negotiates_supported_operations() {
     assert_eq!(
         response["output"],
         json!({
-            "operations": ["hello", "roundtrip", "sign", "finalize-inputs"],
+            "operations": ["hello", "native-parse", "roundtrip", "sign", "finalize-inputs"],
             "roles": ["parser", "signer", "finalizer"],
             "psbtVersions": [0],
             "scriptTypes": ["p2wpkh", "p2wsh", "p2tr-keypath"],
@@ -287,6 +287,26 @@ fn negotiates_supported_operations() {
             "features": ["fixture-commitment-sha256"]
         })
     );
+}
+
+#[test]
+fn native_parse_uses_rust_bitcoin_without_fixture_policy() {
+    let accepted = handle_value(
+        request("native-parse", json!({ "psbt": MINIMAL_PSBT })),
+        "sha256:deadbeef",
+    );
+    assert_eq!(accepted["status"], "ok", "{accepted}");
+    assert_eq!(accepted["output"]["nativeParser"], "rust-bitcoin");
+
+    let rejected = handle_value(
+        request(
+            "native-parse",
+            json!({ "psbt": STANDARD.encode(b"not a psbt") }),
+        ),
+        "sha256:deadbeef",
+    );
+    assert_eq!(rejected["status"], "rejected", "{rejected}");
+    assert_eq!(rejected["error"]["class"], "psbt.native_parse_failed");
 }
 
 #[test]

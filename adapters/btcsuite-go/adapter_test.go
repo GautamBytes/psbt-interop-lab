@@ -33,7 +33,7 @@ func TestHelloAdvertisesOnlyImplementedCapabilities(t *testing.T) {
 		t.Fatalf("implementation name = %q", response.Implementation.Name)
 	}
 	want := map[string]any{
-		"operations":   []any{"hello", "inspect", "roundtrip", "sign", "finalize", "finalize-inputs"},
+		"operations":   []any{"hello", "native-parse", "inspect", "roundtrip", "sign", "finalize", "finalize-inputs"},
 		"roles":        []any{"parser", "signer", "finalizer"},
 		"psbtVersions": []any{float64(0)},
 		"scriptTypes":  []any{"p2wpkh", "p2wsh", "p2tr-keypath"},
@@ -49,6 +49,18 @@ func TestHelloAdvertisesOnlyImplementedCapabilities(t *testing.T) {
 	if !jsonEqual(response.Output, want) {
 		t.Fatalf("hello output = %#v, want %#v", response.Output, want)
 	}
+}
+
+func TestNativeParseUsesBtcsuiteParserWithoutFixturePolicy(t *testing.T) {
+	accepted := request(t, "native-parse", map[string]any{"psbt": fixturePSBT(t, 1)})
+	if accepted.Status != "ok" || accepted.Output["nativeParser"] != "btcsuite-go" {
+		t.Fatalf("native parse output = %#v", accepted)
+	}
+
+	rejected := request(t, "native-parse", map[string]any{
+		"psbt": base64.StdEncoding.EncodeToString([]byte("not a psbt")),
+	})
+	assertFailureClass(t, rejected, "rejected", "psbt.native_parse_failed")
 }
 
 func TestExplicitlyAcceptsPSBTV0AndRejectsOtherGlobalVersions(t *testing.T) {

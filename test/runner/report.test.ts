@@ -56,6 +56,13 @@ function manifest(): RunManifest {
             ],
           },
         ],
+        findings: [
+          {
+            id: "known-parser-divergence",
+            implementation: "btcsuite-go",
+            summary: "Accepted a duplicate global key",
+          },
+        ],
       },
       {
         id: "taproot",
@@ -82,6 +89,8 @@ describe("HTML report", () => {
     expect(html).toContain("Metadata &lt;script&gt;alert(1)&lt;/script&gt;");
     expect(html).toContain("ENTRY_REMOVED");
     expect(html).toContain("UNSUPPORTED");
+    expect(html).toContain("Compatibility findings");
+    expect(html).toContain("Accepted a duplicate global key");
     expect(html).toContain("Content-Security-Policy");
     expect(html).not.toContain("<script>");
     expect(html).not.toContain(TESTNET_WIF);

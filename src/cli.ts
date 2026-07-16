@@ -8,18 +8,21 @@ import { detectorCanariesPassed, runDetectorCanaries } from "./canaries.js";
 import {
   type DoctorCheck,
   doctorHasBlockingFailure,
+  formatAdapterConformance,
   formatCanaryResults,
   formatDoctorChecks,
   formatProofSummary,
   formatReplaySummary,
   formatScenarioCatalog,
 } from "./cli-output.js";
+import { runAdapterConformance } from "./conformance/check.js";
+import { loadAdapterManifest } from "./conformance/manifest.js";
 import { CoreRpc } from "./core/rpc.js";
 import { verifyReplay } from "./runner/replay.js";
 import { PROOF_SCENARIOS, runProof } from "./scenarios/proof.js";
 import { runCommand } from "./system/command.js";
 
-const VERSION = "0.2.0";
+const VERSION = "0.3.0";
 const PROJECT_DIRECTORY = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const DEFAULT_RPC_URL = "http://127.0.0.1:18443";
 const DEFAULT_RPC_USER = "psbtlab";
@@ -59,7 +62,7 @@ async function doctor(): Promise<DoctorCheck[]> {
   const checks: DoctorCheck[] = [
     {
       name: "Node.js",
-      ok: nodeMajor >= 22,
+      ok: nodeMajor === 22 || nodeMajor === 24,
       required: true,
       detail: process.versions.node,
     },
@@ -195,6 +198,22 @@ export function createProgram(): Command {
       );
     });
 
+  const adapter = program.command("adapter").description("Onboard external PSBT adapters");
+  adapter
+    .command("check <manifest>")
+    .description("Run protocol and parser conformance checks from a trusted local manifest")
+    .option("--json", "Print machine-readable output")
+    .action(async (manifestPath: string, options: { json?: boolean }) => {
+      const manifest = await loadAdapterManifest(manifestPath);
+      const report = await runAdapterConformance(manifest);
+      process.stdout.write(
+        options.json
+          ? `${JSON.stringify(report, null, 2)}\n`
+          : `${formatAdapterConformance(report)}\n`,
+      );
+      if (!report.passed) process.exitCode = 1;
+    });
+
   addRuntimeOptions(
     program
       .command("run")
@@ -209,6 +228,18 @@ export function createProgram(): Command {
   ).action(async (options: Omit<RunOptions, "suite">) => {
     await executeProof({ ...options, suite: "proof" });
   });
+
+  program
+    .command("stop")
+    .description("Stop the bundled local Bitcoin Core regtest service")
+    .action(async () => {
+      await runCommand("docker", ["compose", "stop", "core"], {
+        cwd: PROJECT_DIRECTORY,
+        timeoutMs: 60_000,
+        maxOutputBytes: 1024 * 1024,
+      });
+      process.stdout.write("Stopped the local Bitcoin Core regtest service.\n");
+    });
 
   program
     .command("replay <artifact-directory>")

@@ -1,0 +1,59 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://psbt-interop-lab.dev/schemas/adapter-manifest-0.1.json",
+  "title": "PSBT Interop Lab Adapter Manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "adapters"],
+  "properties": {
+    "schema": { "const": "psbt-lab.adapters/0.1" },
+    "adapters": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "command", "expected"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+          },
+          "command": { "type": "string", "minLength": 1, "maxLength": 1024 },
+          "args": {
+            "type": "array",
+            "maxItems": 64,
+            "items": { "type": "string", "maxLength": 4096 }
+          },
+          "cwd": { "type": "string", "minLength": 1, "maxLength": 4096 },
+          "env": {
+            "type": "object",
+            "maxProperties": 64,
+            "propertyNames": { "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" },
+            "additionalProperties": { "type": "string", "maxLength": 4096 }
+          },
+          "timeoutMs": {
+            "type": "integer",
+            "minimum": 100,
+            "maximum": 120000
+          },
+          "expected": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "version", "sourceRevision"],
+            "properties": {
+              "name": { "type": "string", "minLength": 1, "maxLength": 128 },
+              "version": { "type": "string", "minLength": 1, "maxLength": 128 },
+              "sourceRevision": { "type": "string", "minLength": 1, "maxLength": 256 },
+              "artifactDigest": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

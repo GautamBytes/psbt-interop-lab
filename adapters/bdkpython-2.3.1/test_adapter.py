@@ -32,7 +32,7 @@ class AdapterTests(unittest.TestCase):
         self.assertEqual(
             response["output"],
             {
-                "operations": ["hello", "inspect", "roundtrip", "finalize"],
+                "operations": ["hello", "native-parse", "inspect", "roundtrip", "finalize"],
                 "roles": ["parser", "finalizer"],
                 "psbtVersions": [0],
                 "scriptTypes": ["p2wsh"],
@@ -44,6 +44,19 @@ class AdapterTests(unittest.TestCase):
                 "features": ["historical-regression.bdk-wallet-488"],
             },
         )
+
+    def test_native_parse_invokes_bdk_without_fixture_policy(self):
+        accepted = handle_request(
+            request("native-parse", {"psbt": MINIMAL_PSBT}), DIGEST
+        )
+        self.assertEqual(accepted["status"], "ok")
+        self.assertEqual(accepted["output"]["nativeParser"], "bdkpython")
+
+        rejected = handle_request(
+            request("native-parse", {"psbt": "bm90IGEgcHNidA=="}), DIGEST
+        )
+        self.assertEqual(rejected["status"], "rejected")
+        self.assertEqual(rejected["error"]["class"], "psbt.native_parse_failed")
 
     def test_known_unsupported_operations_have_a_stable_error(self):
         for operation in ("sign", "combine", "finalize-inputs"):

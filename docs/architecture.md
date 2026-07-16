@@ -27,10 +27,11 @@ The CLI owns scenario order, Core RPC, adapter lifecycle, strict request and res
 timeouts, result classification, artifact writing, and replay. TypeScript is used for developer
 experience and orchestration; no signature algorithm is implemented there.
 
-For every adapter round trip, `assertByteIdenticalRoundtrip` in `src/scenarios/contracts.ts` parses
-the source and returned canonical PSBT and compares decoded bytes independently of the adapter's
-`byteIdentical` claim. `CoreRpc.call` in `src/core/rpc.ts` requires matching JSON-RPC request/response
-IDs, and fixture preparation requires Bitcoin Core numeric version `310100`.
+For every adapter round trip, `ScenarioExecutionContext.requireTransition` parses the source and
+returned PSBT and applies the lossless `roundtrip` transition policy independently of the adapter's
+`byteIdentical` claim. Legal map reordering is diagnostic rather than failure. `CoreRpc.call` in
+`src/core/rpc.ts` requires matching JSON-RPC request/response IDs, and fixture preparation requires
+Bitcoin Core numeric version `310100`.
 
 ### Bitcoin Core fixture source and oracle
 
@@ -61,6 +62,10 @@ runtime provenance.
 Hello capabilities declare script support per operation. This prevents broad parsing or signing
 support from being interpreted as support for finalizing the same script type; scenarios with an
 unsupported operation/script pair are reported as unsupported before execution.
+
+The `native-parse` operation removes the adapter's PSBT structural preflight from invalid-input
+testing. After bounded canonical base64 decoding, the Rust, Go, JavaScript, or Python adapter calls
+the native library parser directly and reports whether that parser accepted or rejected the bytes.
 
 The Rust, Go, and JavaScript adapters sign and finalize only known run-committed fixture inputs.
 The Python adapter freezes the affected `bdkpython` 2.3.1 wheel and exposes round-trip/finalize
@@ -118,18 +123,26 @@ The transaction-intent scenario roundtrips a multi-output P2WPKH fixture through
 adapters, signs it, and verifies transaction version, output amounts and scripts, RBF sequence,
 non-zero locktime, explicit `SIGHASH_ALL`, and BIP32 derivation metadata before Core finalization.
 
-The rejection matrix runs five malformed or undeclared PSBT cases through all four parsers. The
-metadata scenario injects valid BIP174 proprietary entries into every global, input, and output map
-and checks their preservation at each handoff. Three regression scenarios reproduce BDK issue #488
-after Rust, Go, or JavaScript prepares the same mixed finalized/partial state; Core independently
-finalizes and policy-checks the same PSBT.
+The rejection matrix runs five malformed or undeclared PSBT cases through all four native parser
+paths. It currently records btcsuite 1.2.0 accepting a duplicate global unsigned-transaction key as
+a compatibility finding. That one baseline cell may resolve to rejection without breaking the run;
+another malformed acceptance, crash, or timeout still fails the scenario. Findings remain visible
+in every report format and the CLI summary. The metadata scenario injects both generic unknown
+fields and valid BIP174 proprietary
+entries into every global, input, and output map. It checks them through four roundtrips, three
+independent signers, exact-union combining, Core PSBT finalization, and Core policy acceptance.
+Three regression scenarios
+reproduce BDK issue #488 after Rust, Go, or JavaScript prepares the same mixed finalized/partial
+state; Core independently finalizes and policy-checks the same PSBT.
 
 `psbt-lab self-test` deliberately drops metadata, changes an output amount, changes an input
 sequence, and removes a signature. It passes only when the semantic detectors identify every fault.
 
 ## Extension Points
 
-New adapters can be added without changing scenario semantics. The extension interfaces are an
-adapter conformance kit, a declarative scenario format, transition invariants, and a normalized diff
-model. Implementations can then be compared by capability and version while raw PSBT bytes remain
-the source of truth.
+`psbt-lab adapter check <manifest>` is the first external onboarding boundary. A strict versioned
+manifest starts a trusted local command with `shell: false`, negotiates the JSONL protocol, verifies
+the expected identity and baseline parser capabilities, probes valid and malformed native parsing,
+and requires semantic roundtrip preservation. The built-in 18-scenario matrix still
+names its four reviewed adapters in source; passing conformance does not yet inject an external
+adapter into every scenario automatically. See [the adapter guide](adapters.md).

@@ -112,6 +112,16 @@ export function generateMarkdownReport(manifest: RunManifest): string {
         "",
       );
     }
+    if (scenario.findings?.length) {
+      lines.push(
+        "Compatibility findings:",
+        "",
+        ...scenario.findings.map(
+          (finding) => `- \`${finding.id}\` in \`${finding.implementation}\`: ${finding.summary}`,
+        ),
+        "",
+      );
+    }
     if (scenario.transactionId) {
       lines.push(`Policy-accepted txid: \`${scenario.transactionId}\``, "");
     }
@@ -159,6 +169,10 @@ export function generateHtmlReport(manifest: RunManifest): string {
     failed: manifest.scenarios.filter((scenario) => scenario.outcome === "failed").length,
     unsupported: manifest.scenarios.filter((scenario) => scenario.outcome === "unsupported").length,
     skipped: manifest.scenarios.filter((scenario) => scenario.outcome === "skipped").length,
+    findings: manifest.scenarios.reduce(
+      (count, scenario) => count + (scenario.findings?.length ?? 0),
+      0,
+    ),
   };
   const scenarios = manifest.scenarios
     .map((scenario) => {
@@ -189,6 +203,12 @@ export function generateHtmlReport(manifest: RunManifest): string {
             `<li><code>${escapeHtml(capability.adapter)}</code> lacks ${escapeHtml(capability.kind)} <code>${escapeHtml(capability.value)}</code></li>`,
         )
         .join("");
+      const findings = (scenario.findings ?? [])
+        .map(
+          (finding) =>
+            `<li><code>${escapeHtml(finding.id)}</code> in <code>${escapeHtml(finding.implementation)}</code>: ${escapeHtml(finding.summary)}</li>`,
+        )
+        .join("");
       return `<article class="scenario">
         <header>
           <div><span class="badge ${escapeHtml(scenario.outcome)}">${escapeHtml(scenario.outcome.toUpperCase())}</span><span class="category">${escapeHtml(scenario.category)}</span></div>
@@ -197,6 +217,7 @@ export function generateHtmlReport(manifest: RunManifest): string {
         </header>
         <p>${escapeHtml(scenario.summary)}</p>
         ${scenario.expectedFailure ? `<p class="expected">Expected failure: <code>${escapeHtml(scenario.expectedFailure.implementation)}</code> · <code>${escapeHtml(scenario.expectedFailure.errorClass)}</code></p>` : ""}
+        ${findings ? `<h3>Compatibility findings</h3><ul class="findings">${findings}</ul>` : ""}
         ${missing ? `<h3>Missing capabilities</h3><ul>${missing}</ul>` : ""}
         ${assertions ? `<details open><summary>Assertions (${scenario.assertions.length})</summary><ul class="assertions">${assertions}</ul></details>` : ""}
       </article>`;
@@ -242,7 +263,7 @@ export function generateHtmlReport(manifest: RunManifest): string {
     code { font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; overflow-wrap: anywhere; }
     .run-header { border-bottom: 1px solid var(--line); padding-bottom: 24px; }
     .run-meta { color: var(--muted); margin: 8px 0 0; }
-    .metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; margin: 24px 0; border: 1px solid var(--line); background: var(--line); }
+    .metrics { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 1px; margin: 24px 0; border: 1px solid var(--line); background: var(--line); }
     .metric { background: var(--surface); padding: 14px 16px; }
     .metric strong { display: block; font-size: 22px; }
     .metric span, .category, .scenario-id, .assertion span { color: var(--muted); }
@@ -255,6 +276,8 @@ export function generateHtmlReport(manifest: RunManifest): string {
     .badge.unsupported { color: var(--warn); }
     .badge.skipped { color: var(--info); }
     .expected { border-left: 3px solid var(--warn); padding-left: 10px; }
+    .findings { border-left: 3px solid var(--warn); padding-left: 28px; }
+    .findings li { margin: 6px 0; }
     details { border-top: 1px solid var(--line); margin-top: 16px; padding-top: 12px; }
     summary { cursor: pointer; font-weight: 650; }
     .assertions, .failures { list-style: none; padding: 0; margin: 10px 0 0; }
@@ -282,6 +305,7 @@ export function generateHtmlReport(manifest: RunManifest): string {
     <div class="metric"><strong>${counts.failed}</strong><span>Failed</span></div>
     <div class="metric"><strong>${counts.unsupported}</strong><span>Unsupported</span></div>
     <div class="metric"><strong>${counts.skipped}</strong><span>Skipped</span></div>
+    <div class="metric"><strong>${counts.findings}</strong><span>Findings</span></div>
   </section>
   <h2 class="section-title">Scenarios</h2>
   ${scenarios}

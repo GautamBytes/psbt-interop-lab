@@ -13,6 +13,7 @@ interface InvalidPsbtCase {
   readonly id: string;
   readonly psbt: string;
   readonly description: string;
+  readonly kind: "malformed" | "unsupported-version";
 }
 
 function duplicateFirstGlobalEntry(encoded: string): string {
@@ -42,26 +43,31 @@ export function invalidPsbtCases(fixture: PsbtFixture): readonly InvalidPsbtCase
       id: "invalid-base64",
       psbt: "***not-canonical-base64***",
       description: "non-base64 input",
+      kind: "malformed",
     },
     {
       id: "wrong-magic",
       psbt: wrongMagic.toString("base64"),
       description: "wrong PSBT magic bytes",
+      kind: "malformed",
     },
     {
       id: "truncated-map",
       psbt: bytes.subarray(0, -1).toString("base64"),
       description: "truncated final map",
+      kind: "malformed",
     },
     {
       id: "duplicate-global-key",
       psbt: duplicateFirstGlobalEntry(fixture.initialPsbt),
       description: "duplicate global map key",
+      kind: "malformed",
     },
     {
       id: "unsupported-psbt-v2",
       psbt: BIP370_PSBT_V2,
       description: "valid but undeclared PSBTv2 input",
+      kind: "unsupported-version",
     },
   ];
 }
@@ -76,33 +82,49 @@ export function createInvalidInputScenario(
     summary: "Every parser must reject malformed and undeclared PSBT formats without crashing.",
     requirements: PARSERS.map((adapter) => ({
       adapter,
-      operations: ["roundtrip"] as const,
+      operations: ["native-parse"] as const,
       roles: ["parser"] as const,
-      psbtVersions: [0] as const,
-      scriptTypes: ["p2wsh"] as const,
     })),
     async run(context) {
       const assertions: ScenarioAssertionEvidence[] = [];
+      const findings = [];
       for (const testCase of invalidPsbtCases(fixture)) {
         for (const adapter of PARSERS) {
-          const response = await context.request(adapter, "roundtrip", { psbt: testCase.psbt });
+          const response = await context.request(adapter, "native-parse", { psbt: testCase.psbt });
+          const knownBtcsuiteDuplicateAcceptance =
+            adapter === "btcsuite-go" && testCase.id === "duplicate-global-key";
           const rejectedCleanly =
-            response.status === "rejected" || response.status === "unsupported";
+            testCase.kind === "malformed"
+              ? response.status === "rejected" ||
+                (knownBtcsuiteDuplicateAcceptance && response.status === "ok")
+              : response.status === "rejected" || response.status === "unsupported";
+          if (knownBtcsuiteDuplicateAcceptance && response.status === "ok") {
+            findings.push({
+              id: "btcsuite-go-duplicate-global-key-accepted",
+              implementation: "btcsuite-go",
+              summary:
+                "btcsuite PSBT 1.2.0 accepted a duplicate global unsigned-transaction key that BIP174 requires to be unique.",
+            });
+          }
           assertions.push({
             name: `${adapter}-${testCase.id}`,
             passed: rejectedCleanly,
             summary: rejectedCleanly
-              ? `${adapter} rejected ${testCase.description} as ${response.status}`
+              ? `${adapter} reported native parser status ${response.status} for ${testCase.description}`
               : `${adapter} returned ${response.status} for ${testCase.description}`,
           });
         }
       }
       const passed = assertions.every((assertion) => assertion.passed);
       return {
-        summary: passed
-          ? "All four implementations rejected five malformed or undeclared PSBT cases cleanly."
-          : "At least one implementation accepted, crashed on, or timed out for invalid PSBT input.",
+        summary:
+          passed && findings.length > 0
+            ? `All parser probes completed safely and recorded ${findings.length} known compatibility finding.`
+            : passed
+              ? "All four implementations handled five malformed or undeclared PSBT cases cleanly."
+              : "At least one implementation accepted, crashed on, or timed out for invalid PSBT input.",
         assertions,
+        findings,
       };
     },
   };

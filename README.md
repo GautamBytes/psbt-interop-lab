@@ -15,34 +15,53 @@ Requirements:
 
 - Docker Desktop or Docker Engine with Compose
 - Node.js 22 or 24
-- pnpm 10.30.2
+- On ARM hosts, Docker must support `linux/amd64` emulation for the frozen BDK 2.3.1 specimen
 
 ```bash
-pnpm install --frozen-lockfile
-pnpm build
-node dist/cli.js doctor
-node dist/cli.js self-test
-node dist/cli.js matrix
+npm install --global psbt-interop-lab@0.3.0
+psbt-lab doctor
+psbt-lab self-test
+psbt-lab matrix
 ```
 
 The first matrix run builds checksum- and digest-pinned images. Later runs can reuse them:
 
 ```bash
-node dist/cli.js matrix --no-build
+psbt-lab matrix --no-build
 ```
 
 List the executable scenarios or replay a completed run:
 
 ```bash
-node dist/cli.js list
-node dist/cli.js replay artifacts/<run-id>
+psbt-lab list
+psbt-lab replay artifacts/<run-id>
 ```
 
 Stop the local regtest node when finished:
 
 ```bash
-docker compose stop core
+psbt-lab stop
 ```
+
+To work from a source checkout instead, install pnpm 10.30.2, run
+`pnpm install --frozen-lockfile`, and replace `psbt-lab` above with `node dist/cli.js` after
+`pnpm build`.
+
+## External Adapters
+
+Wallet and library maintainers can point the CLI at their own local JSONL adapter without editing
+the built-in matrix:
+
+```bash
+psbt-lab adapter check ./adapters.json
+psbt-lab adapter check ./adapters.json --json
+```
+
+The command validates the strict manifest, process transport, self-reported implementation
+identity, capabilities, valid and malformed native-parser behavior, and semantic roundtrip
+preservation. It executes the configured command directly with `shell: false`; the
+manifest must therefore be treated as trusted local code. See [the adapter guide](docs/adapters.md)
+and the bundled [manifest schema](src/conformance/adapter-manifest.schema.json).
 
 ## Current Coverage
 
@@ -56,8 +75,10 @@ The suite currently runs 18 scenarios:
 - Parallel signing where Rust and Go contribute different inputs before bitcoinjs combines them
 - Transaction-intent preservation across multiple outputs, RBF sequence, non-zero locktime,
   explicit sighash type, and BIP32 derivation metadata
-- Twenty invalid-input cells across four parsers and five malformed or undeclared PSBT cases
-- BIP174 proprietary-field preservation in every global, input, and output map
+- Twenty native-parser cells across four libraries and five malformed or undeclared PSBT cases,
+  including a reported btcsuite 1.2.0 duplicate-global-key compatibility finding
+- Unknown and BIP174 proprietary fields preserved through four parsers, three signers, exact-union
+  combining, Core PSBT finalization, and Core policy acceptance
 - BDK issue #488 reproduction after Rust, Go, and JavaScript finalization workflows
 
 Exact-byte equality is recorded, but it is not the main success rule. Libraries may legally reorder
@@ -65,8 +86,13 @@ PSBT map entries. The lab instead verifies transaction identity and field-level 
 roundtripping, signing, combining, and finalization. Unsupported capabilities are reported as
 unsupported rather than counted as passes.
 
-Run `node dist/cli.js self-test` to prove the detectors catch deliberate metadata loss, output-amount
-mutation, sequence mutation, and signature removal.
+Known native-library divergences remain explicit compatibility findings in CLI, JSON, Markdown,
+and HTML output. The current baseline allows only btcsuite 1.2.0 to either accept or reject the
+duplicate global key probe; another parser accepting malformed input, or any parser crashing or
+timing out, still fails the scenario.
+
+Run `psbt-lab self-test` to prove the detectors catch deliberate proprietary and unknown-field
+loss, output-amount mutation, sequence mutation, and signature removal.
 
 ## Reports
 
@@ -76,6 +102,8 @@ Each run creates a private directory under `artifacts/<run-id>/` containing:
 - `report.json`: redacted machine-readable compatibility results
 - `report.md`: readable scenario and assertion summary
 - `report.html`: self-contained static compatibility report with no scripts or network requests
+- Compatibility findings: implementation-specific behavior that completed safely but diverged from
+  the expected PSBT rules
 - `checkpoints/**/*.psbt`: canonical PSBT states at important handoffs
 - `checkpoints/**/*.facts.json`: bounded field facts and hashes
 

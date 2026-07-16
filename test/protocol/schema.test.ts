@@ -19,6 +19,17 @@ describe("adapter protocol schemas", () => {
     ).toEqual({ ok: true });
   });
 
+  test("accepts the bounded native parser probe operation", () => {
+    expect(
+      validateAdapterRequest({
+        protocol: "psbt-lab.adapter/0.2",
+        id: "native-parse-1",
+        operation: "native-parse",
+        payload: { psbt: "cHNidP8=" },
+      }),
+    ).toEqual({ ok: true });
+  });
+
   test("rejects unknown request properties", () => {
     const result = validateAdapterRequest({
       protocol: "psbt-lab.adapter/0.2",

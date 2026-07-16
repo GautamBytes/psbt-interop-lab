@@ -147,7 +147,7 @@ func (handler *Handler) HandleJSON(raw []byte, digest string) Response {
 			return invalidPayload(value.ID, digest, "hello expects an empty payload")
 		}
 		return success(value.ID, digest, map[string]any{
-			"operations":   []string{"hello", "inspect", "roundtrip", "sign", "finalize", "finalize-inputs"},
+			"operations":   []string{"hello", "native-parse", "inspect", "roundtrip", "sign", "finalize", "finalize-inputs"},
 			"roles":        []string{"parser", "signer", "finalizer"},
 			"psbtVersions": []int{0},
 			"scriptTypes":  []string{"p2wpkh", "p2wsh", "p2tr-keypath"},
@@ -160,6 +160,8 @@ func (handler *Handler) HandleJSON(raw []byte, digest string) Response {
 			},
 			"features": []string{"fixture-commitment-sha256"},
 		})
+	case "native-parse":
+		return nativeParse(value, digest)
 	case "roundtrip":
 		return roundtrip(value, digest)
 	case "inspect":
@@ -173,6 +175,28 @@ func (handler *Handler) HandleJSON(raw []byte, digest string) Response {
 	default:
 		return failure(value.ID, digest, "unsupported", "operation.unsupported", "Operation is not supported by this adapter")
 	}
+}
+
+func nativeParse(value adapterRequest, digest string) Response {
+	encoded, ok := psbtPayload(value.Payload, "psbt")
+	if !ok {
+		return invalidPayload(value.ID, digest, "native-parse expects only a psbt field")
+	}
+	raw, err := decodePSBTBytes(encoded)
+	if err != nil {
+		return failure(value.ID, digest, "rejected", "psbt.native_parse_failed", "btcsuite rejected the PSBT")
+	}
+	reader := bytes.NewReader(raw)
+	packet, err := psbt.NewFromRawBytes(reader, false)
+	if err != nil || reader.Len() != 0 || len(packet.Inputs) > maxPSBTInputs || len(packet.Outputs) > maxPSBTOutputs {
+		return failure(value.ID, digest, "rejected", "psbt.native_parse_failed", "btcsuite rejected the PSBT")
+	}
+	return success(value.ID, digest, map[string]any{
+		"nativeParser": "btcsuite-go",
+		"psbtVersion":  0,
+		"inputs":       len(packet.Inputs),
+		"outputs":      len(packet.Outputs),
+	})
 }
 
 func roundtrip(value adapterRequest, digest string) Response {
@@ -805,12 +829,9 @@ func payloadString(payload map[string]json.RawMessage, field string) (string, bo
 }
 
 func parsePSBT(encoded string) ([]byte, *psbt.Packet, error) {
-	if len(encoded) > base64.StdEncoding.EncodedLen(maxPSBTBytes) {
-		return nil, nil, fmt.Errorf("PSBT exceeds limit")
-	}
-	raw, err := base64.StdEncoding.DecodeString(encoded)
-	if err != nil || len(raw) > maxPSBTBytes || base64.StdEncoding.EncodeToString(raw) != encoded {
-		return nil, nil, fmt.Errorf("invalid PSBT encoding")
+	raw, err := decodePSBTBytes(encoded)
+	if err != nil {
+		return nil, nil, err
 	}
 	if err := preflightPSBT(raw); err != nil {
 		return nil, nil, fmt.Errorf("invalid or unsupported PSBT")
@@ -821,6 +842,17 @@ func parsePSBT(encoded string) ([]byte, *psbt.Packet, error) {
 		return nil, nil, fmt.Errorf("invalid PSBT data")
 	}
 	return raw, packet, nil
+}
+
+func decodePSBTBytes(encoded string) ([]byte, error) {
+	if len(encoded) > base64.StdEncoding.EncodedLen(maxPSBTBytes) {
+		return nil, fmt.Errorf("PSBT exceeds limit")
+	}
+	raw, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil || len(raw) > maxPSBTBytes || base64.StdEncoding.EncodeToString(raw) != encoded {
+		return nil, fmt.Errorf("invalid PSBT encoding")
+	}
+	return raw, nil
 }
 
 func encodePSBT(packet *psbt.Packet) (string, error) {

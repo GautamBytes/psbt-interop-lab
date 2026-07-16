@@ -1,6 +1,6 @@
 {
   "name": "psbt-interop-lab",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Deterministic PSBT interoperability testing for Bitcoin software",
   "type": "module",
   "private": false,
@@ -10,6 +10,7 @@
   "files": [
     "dist",
     "src",
+    "src/conformance/adapter-manifest.schema.json",
     "scripts",
     "compose.yaml",
     "docker",
@@ -47,7 +48,7 @@
     "prepack": "pnpm build"
   },
   "engines": {
-    "node": ">=22"
+    "node": "^22.0.0 || ^24.0.0"
   },
   "packageManager": "pnpm@10.30.2",
   "dependencies": {

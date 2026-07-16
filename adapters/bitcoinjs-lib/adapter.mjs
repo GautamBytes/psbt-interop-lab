@@ -237,6 +237,17 @@ function psbtVersion(bytes) {
 }
 
 function parsePsbt(encoded) {
+  const bytes = decodePsbtBytes(encoded);
+  if (!bytes) return null;
+  try {
+    if (psbtVersion(bytes) !== 0) return null;
+    return { bytes, psbt: bitcoin.Psbt.fromBuffer(bytes, { network: bitcoin.networks.regtest }) };
+  } catch {
+    return null;
+  }
+}
+
+function decodePsbtBytes(encoded) {
   if (
     typeof encoded !== "string" ||
     encoded.length > Math.ceil((MAX_PSBT_BYTES * 4) / 3) ||
@@ -245,12 +256,7 @@ function parsePsbt(encoded) {
     return null;
   const bytes = Buffer.from(encoded, "base64");
   if (bytes.length > MAX_PSBT_BYTES || bytes.toString("base64") !== encoded) return null;
-  try {
-    if (psbtVersion(bytes) !== 0) return null;
-    return { bytes, psbt: bitcoin.Psbt.fromBuffer(bytes, { network: bitcoin.networks.regtest }) };
-  } catch {
-    return null;
-  }
+  return bytes;
 }
 
 function encodedPsbt(psbt) {
@@ -556,7 +562,16 @@ function handleHello(id, digest, payload) {
       "hello expects an empty payload",
     );
   return success(id, digest, {
-    operations: ["hello", "inspect", "roundtrip", "sign", "combine", "finalize", "finalize-inputs"],
+    operations: [
+      "hello",
+      "native-parse",
+      "inspect",
+      "roundtrip",
+      "sign",
+      "combine",
+      "finalize",
+      "finalize-inputs",
+    ],
     roles: ["parser", "signer", "combiner", "finalizer"],
     psbtVersions: [0],
     scriptTypes: ["p2wpkh", "p2wsh", "p2tr-keypath"],
@@ -570,6 +585,42 @@ function handleHello(id, digest, payload) {
     },
     features: ["fixture-commitment-sha256"],
   });
+}
+
+function handleNativeParse(id, digest, payload) {
+  if (!hasExactFields(payload, ["psbt"]) || typeof payload.psbt !== "string")
+    return failure(
+      id,
+      digest,
+      "rejected",
+      "protocol.invalid_payload",
+      "native-parse expects one psbt field",
+    );
+  const bytes = decodePsbtBytes(payload.psbt);
+  if (!bytes)
+    return failure(
+      id,
+      digest,
+      "rejected",
+      "psbt.native_parse_failed",
+      "bitcoinjs-lib rejected the PSBT",
+    );
+  try {
+    const psbt = bitcoin.Psbt.fromBuffer(bytes, { network: bitcoin.networks.regtest });
+    return success(id, digest, {
+      nativeParser: "bitcoinjs-lib",
+      inputs: psbt.inputCount,
+      outputs: psbt.txOutputs.length,
+    });
+  } catch {
+    return failure(
+      id,
+      digest,
+      "rejected",
+      "psbt.native_parse_failed",
+      "bitcoinjs-lib rejected the PSBT",
+    );
+  }
 }
 
 function handleRoundtrip(id, digest, payload) {
@@ -857,6 +908,8 @@ export function handleValue(value, digest = artifactDigest(), config = MISSING_F
   switch (value.operation) {
     case "hello":
       return handleHello(value.id, digest, value.payload);
+    case "native-parse":
+      return handleNativeParse(value.id, digest, value.payload);
     case "roundtrip":
       return handleRoundtrip(value.id, digest, value.payload);
     case "inspect":

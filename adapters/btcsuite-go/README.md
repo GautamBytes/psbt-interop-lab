@@ -5,8 +5,10 @@ It uses `github.com/btcsuite/btcd/btcutil/psbt` v1.2.0 for PSBTv0 parsing,
 serialization, and signature insertion. Signing is hard-restricted to committed
 lab regtest fixtures; no network or broadcast behavior is present.
 
-Supported operations are `hello`, `inspect`, `roundtrip`, `sign`, `finalize`,
-and `finalize-inputs`. The signer supports the `p2wpkh`, `p2wsh`, and
+Supported operations are `hello`, `native-parse`, `inspect`, `roundtrip`, `sign`, `finalize`,
+and `finalize-inputs`. `native-parse` performs only bounded canonical base64 decoding before calling
+btcsuite's parser, so invalid-input results come from the native library rather than the fixture
+policy preflight. The signer supports the `p2wpkh`, `p2wsh`, and
 `p2tr-keypath` script types. `combine` and unknown operations return
 `unsupported` with class `operation.unsupported`.
 

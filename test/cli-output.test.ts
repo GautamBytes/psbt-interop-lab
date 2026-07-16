@@ -34,6 +34,13 @@ describe("CLI output", () => {
             summary: "Policy accepted",
             durationMs: 12,
             assertions: [{ name: "core-policy-accepted", passed: true }],
+            findings: [
+              {
+                id: "known-parser-divergence",
+                implementation: "btcsuite-go",
+                summary: "Accepted a duplicate global key",
+              },
+            ],
           },
         ],
         checkpoints: [],
@@ -41,19 +48,38 @@ describe("CLI output", () => {
     });
 
     expect(output).toContain("PASS  happy-path");
+    expect(output).toContain("PSBT Interop Lab: PASSED (1 FINDING)");
+    expect(output).toContain("FIND  known-parser-divergence: btcsuite-go");
     expect(output).toContain("/tmp/artifacts/run-1");
     expect(output).not.toContain("cHNidP8");
   });
 
   test("prints replay verification count", () => {
-    expect(
-      formatReplaySummary({
-        runId: "run-2",
-        outcome: "passed",
-        verifiedCheckpoints: 5,
-        scenarios: [],
-      }),
-    ).toContain("Verified checkpoints: 5");
+    const output = formatReplaySummary({
+      runId: "run-2",
+      outcome: "passed",
+      verifiedCheckpoints: 5,
+      scenarios: [
+        {
+          id: "invalid-inputs",
+          title: "Invalid inputs",
+          category: "invalid-inputs",
+          outcome: "passed",
+          summary: "Parser probes completed",
+          durationMs: 1,
+          assertions: [{ name: "probe-completed", passed: true }],
+          findings: [
+            {
+              id: "known-parser-divergence",
+              implementation: "btcsuite-go",
+              summary: "Accepted a duplicate global key",
+            },
+          ],
+        },
+      ],
+    });
+    expect(output).toContain("Verified checkpoints: 5");
+    expect(output).toContain("FIND  known-parser-divergence: btcsuite-go");
   });
 
   test("keeps unsupported and skipped outcomes distinct from failures", () => {

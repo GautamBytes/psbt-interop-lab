@@ -2,6 +2,7 @@ export const ADAPTER_PROTOCOL = "psbt-lab.adapter/0.2" as const;
 
 export const adapterOperations = [
   "hello",
+  "native-parse",
   "inspect",
   "roundtrip",
   "sign",
@@ -34,7 +35,7 @@ export const adapterScriptTypes = [
 
 export type AdapterScriptType = (typeof adapterScriptTypes)[number];
 
-export type AdapterScriptOperation = Exclude<AdapterOperation, "hello">;
+export type AdapterScriptOperation = Exclude<AdapterOperation, "hello" | "native-parse">;
 
 export type OperationScriptTypes = Partial<Record<AdapterScriptOperation, AdapterScriptType[]>>;
 

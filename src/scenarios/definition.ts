@@ -26,9 +26,16 @@ export interface ScenarioAssertionEvidence {
   readonly summary?: string;
 }
 
+export interface ScenarioFinding {
+  readonly id: string;
+  readonly implementation: string;
+  readonly summary: string;
+}
+
 export interface ScenarioExecutionOutput {
   readonly summary?: string;
   readonly assertions: readonly ScenarioAssertionEvidence[];
+  readonly findings?: readonly ScenarioFinding[];
   readonly expectedFailure?: {
     readonly implementation: string;
     readonly errorClass: string;

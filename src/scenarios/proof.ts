@@ -330,7 +330,7 @@ export function createProofCatalog(
     createParallelCombineScenario(fixtures.regression),
     createTransactionIntentScenario(fixtures.profiles["intent-rich-p2wpkh"]),
     createInvalidInputScenario(fixtures.happy),
-    createMetadataPreservationScenario(fixtures.happy),
+    createMetadataPreservationScenario(fixtures.profiles["p2wsh-2-of-3"]),
     createBdkRegressionScenario(fixtures.regression),
     createBdkRegressionScenario(fixtures.regression, {
       adapter: "btcsuite-go",

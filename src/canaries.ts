@@ -20,6 +20,7 @@ export interface DetectorCanaryResult {
 
 const CANARY_EXPECTATIONS = [
   { id: "proprietary-field-drop", failureCode: "ENTRY_REMOVED", keyType: 0xfc },
+  { id: "unknown-field-drop-during-signing", failureCode: "ENTRY_REMOVED", keyType: 0x50 },
   { id: "output-amount-change", failureCode: "TRANSACTION_IDENTITY_CHANGED", keyType: 0x00 },
   { id: "sequence-change", failureCode: "TRANSACTION_IDENTITY_CHANGED", keyType: 0x00 },
   { id: "signature-removal", failureCode: "ENTRY_REMOVED", keyType: 0x02 },
@@ -109,6 +110,7 @@ export function runDetectorCanaries(): readonly DetectorCanaryResult[] {
     Buffer.from("must survive", "utf8"),
     Buffer.from("08707362742d6c616201", "hex"),
   );
+  const unknown = entry(0x50, Buffer.from("future field", "utf8"), Buffer.from("01", "hex"));
   const signature = entry(
     0x02,
     Buffer.concat([
@@ -128,6 +130,14 @@ export function runDetectorCanaries(): readonly DetectorCanaryResult[] {
       psbt(),
       "ENTRY_REMOVED",
       0xfc,
+    ),
+    canary(
+      "unknown-field-drop-during-signing",
+      "sign",
+      psbt({ global: [unknown] }),
+      psbt(),
+      "ENTRY_REMOVED",
+      0x50,
     ),
     canary(
       "output-amount-change",

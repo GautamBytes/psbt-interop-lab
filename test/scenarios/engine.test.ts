@@ -75,6 +75,36 @@ describe("scenario engine", () => {
     ]);
   });
 
+  test("preserves and redacts compatibility findings without failing a completed scenario", async () => {
+    const [result] = await runScenarioCatalog(
+      [
+        scenario("known-divergence", async () => ({
+          assertions: passingEvidence("probe-completed"),
+          findings: [
+            {
+              id: "parser-accepted-duplicate-key",
+              implementation: "example-parser",
+              summary: `Accepted invalid input; wif=${TESTNET_WIF}`,
+            },
+          ],
+        })),
+      ],
+      { calls: [] },
+      new Map(),
+    );
+
+    expect(result).toMatchObject({
+      outcome: "passed",
+      findings: [
+        {
+          id: "parser-accepted-duplicate-key",
+          implementation: "example-parser",
+          summary: "Accepted invalid input; wif=[redacted:secret]",
+        },
+      ],
+    });
+  });
+
   test("classifies missing adapter capabilities as unsupported without running", async () => {
     const run = vi.fn();
     const catalog = [

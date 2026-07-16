@@ -15,6 +15,12 @@ permission, ephemeral runners, and runs the complete Docker proof only for main-
 manual executions. See [the threat model](psbt-interop-lab-threat-model.md) for the repository-grounded
 abuse paths and residual-risk calibration.
 
+External adapter manifests are also trusted local code-execution configuration. `adapter check`
+starts the declared command and arguments with `shell: false`, a bounded timeout, bounded JSONL, and
+a minimal inherited environment, but it does not sandbox an arbitrary host executable. Do not run a
+manifest received from an untrusted person. Prefer a separately reviewed container command with the
+same restrictions as the built-in adapters.
+
 ## Protected Assets
 
 - Host files outside the chosen artifact directory
@@ -59,6 +65,11 @@ supply any schema-valid self-reported digest; the runner does not compare a pinn
 These are compatibility assertions and do not attest which image or binary is running. Dockerfile
 base digests, downloaded checksums, lockfiles, and dependency hashes improve build reproducibility,
 not runtime attestation.
+
+The external conformance command never prints manifest command arguments or environment values in
+its report. Its identity checks remain self-reported compatibility checks, not binary attestation.
+Unlike the bundled Docker adapters, a manifest command runs with the privileges and filesystem
+access of the invoking user unless the manifest itself starts a constrained container.
 
 ### Bitcoin Core isolation
 
@@ -118,6 +129,7 @@ independent check integrity.
 - Mainnet signing, transaction broadcast, wallet policy approval, or fee validation for users
 - Public APIs, web UIs, uploads, authentication, rate limiting, multi-tenancy, or shared storage
 - Cryptographic adapter/image attestation or authentication of a mutable artifact directory
+- Sandboxing or safely executing untrusted external adapter manifests
 - Consensus proof beyond what the pinned Core binary and `testmempoolaccept` report
 
 Before adding arbitrary input signing, replace the fixture-only adapter with a separately reviewed

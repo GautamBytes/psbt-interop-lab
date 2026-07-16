@@ -1,4 +1,5 @@
 import { type DetectorCanaryResult, detectorCanariesPassed } from "./canaries.js";
+import type { AdapterConformanceReport } from "./conformance/check.js";
 import type { ReplaySummary } from "./runner/replay.js";
 import type { ProofResult, ProofScenarioSummary } from "./scenarios/proof.js";
 
@@ -39,6 +40,17 @@ export function formatCanaryResults(results: readonly DetectorCanaryResult[]): s
   ].join("\n");
 }
 
+export function formatAdapterConformance(report: AdapterConformanceReport): string {
+  const lines = [`External adapter conformance: ${report.passed ? "PASSED" : "FAILED"}`];
+  for (const adapter of report.adapters) {
+    lines.push(`${adapter.passed ? "PASS" : "FAIL"}  ${adapter.id}`);
+    for (const check of adapter.checks) {
+      lines.push(`      ${check.passed ? "PASS" : "FAIL"}  ${check.name}: ${check.detail}`);
+    }
+  }
+  return lines.join("\n");
+}
+
 function scenarioStatus(outcome: ProofResult["manifest"]["scenarios"][number]["outcome"]): string {
   switch (outcome) {
     case "passed":
@@ -53,13 +65,17 @@ function scenarioStatus(outcome: ProofResult["manifest"]["scenarios"][number]["o
 }
 
 export function formatProofSummary(result: ProofResult): string {
+  const findings = result.manifest.scenarios.flatMap((scenario) => scenario.findings ?? []);
   const lines = [
-    `PSBT Interop Lab: ${result.manifest.outcome.toUpperCase()}`,
+    `PSBT Interop Lab: ${result.manifest.outcome.toUpperCase()}${findings.length > 0 ? ` (${findings.length} ${findings.length === 1 ? "FINDING" : "FINDINGS"})` : ""}`,
     `Core: ${result.manifest.core.subversion} (regtest height ${result.manifest.core.blocks}, ${result.manifest.core.connections} peers)`,
     "",
   ];
   for (const scenario of result.manifest.scenarios) {
     lines.push(`${scenarioStatus(scenario.outcome)}  ${scenario.id}`, `      ${scenario.summary}`);
+    for (const finding of scenario.findings ?? []) {
+      lines.push(`FIND  ${finding.id}: ${finding.implementation}`, `      ${finding.summary}`);
+    }
   }
   lines.push("", `Artifacts: ${result.artifactDirectory}`);
   return lines.join("\n");
@@ -73,6 +89,9 @@ export function formatReplaySummary(summary: ReplaySummary): string {
   ];
   for (const scenario of summary.scenarios) {
     lines.push(`${scenarioStatus(scenario.outcome)}  ${scenario.id}: ${scenario.summary}`);
+    for (const finding of scenario.findings ?? []) {
+      lines.push(`FIND  ${finding.id}: ${finding.implementation}`, `      ${finding.summary}`);
+    }
   }
   return lines.join("\n");
 }

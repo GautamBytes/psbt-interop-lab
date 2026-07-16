@@ -174,7 +174,16 @@ test("hello advertises only proven PSBTv0 operations and script types", () => {
   const result = response(request("hello"));
   assert.equal(result.status, "ok");
   assert.deepEqual(result.output, {
-    operations: ["hello", "inspect", "roundtrip", "sign", "combine", "finalize", "finalize-inputs"],
+    operations: [
+      "hello",
+      "native-parse",
+      "inspect",
+      "roundtrip",
+      "sign",
+      "combine",
+      "finalize",
+      "finalize-inputs",
+    ],
     roles: ["parser", "signer", "combiner", "finalizer"],
     psbtVersions: [0],
     scriptTypes: ["p2wpkh", "p2wsh", "p2tr-keypath"],
@@ -189,6 +198,18 @@ test("hello advertises only proven PSBTv0 operations and script types", () => {
     features: ["fixture-commitment-sha256"],
   });
   assertSchemaShape(result);
+});
+
+test("native-parse invokes bitcoinjs-lib without fixture policy", () => {
+  const accepted = response(request("native-parse", { psbt: fixturePsbt().toBase64() }));
+  assert.equal(accepted.status, "ok");
+  assert.equal(accepted.output.nativeParser, "bitcoinjs-lib");
+
+  const rejected = response(
+    request("native-parse", { psbt: Buffer.from("not a psbt").toString("base64") }),
+  );
+  assert.equal(rejected.status, "rejected");
+  assert.equal(rejected.error.class, "psbt.native_parse_failed");
 });
 
 test("roundtrip canonicalizes a valid PSBTv0 without changing it", () => {

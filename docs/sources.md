@@ -48,6 +48,8 @@ Python requirement.
 
 - [`btcsuite/btcutil/psbt` v1.2.0](https://pkg.go.dev/github.com/btcsuite/btcd/btcutil/psbt@v1.2.0)
   provides the parser, updater, signer, finalizer, and extractor APIs used by the Go adapter.
+  The native-parser matrix records that this release accepts a second global unsigned-transaction
+  key as an unknown global field; BIP174 requires each key to be unique within its map.
 - [`btcsuite/btcd/txscript`](https://pkg.go.dev/github.com/btcsuite/btcd/txscript) provides sighash
   calculation and script execution used to independently verify fixture signatures.
 - The adapter builds with the official Go 1.26.5 image. The committed `go.mod` and `go.sum` lock its
@@ -58,7 +60,7 @@ Python requirement.
 - [`bitcoinjs-lib` 7.0.1](https://github.com/bitcoinjs/bitcoinjs-lib/tree/v7.0.1) provides PSBT
   parsing, signing, combining, finalization, and extraction. Its own documentation warns callers to
   verify and test cryptographic behavior; the lab therefore validates signatures independently.
-- [`tiny-secp256k1` 2.2.4](https://github.com/bitcoinjs/tiny-secp256k1/tree/v2.2.4) provides the
+- [`tiny-secp256k1` 2.2.4](https://www.npmjs.com/package/tiny-secp256k1/v/2.2.4) provides the
   secp256k1 operations used by the adapter. `package-lock.json` pins the complete npm graph.
 
 ## BDK Regression Adapter
@@ -69,6 +71,8 @@ Python requirement.
 - The exact CPython 3.13 manylinux x86_64 wheel is installed directly with
   `--require-hashes --no-deps`. Its PyPI SHA256 is
   `ba6553eae92f2328cff268ed654d39da04516ebbf8ef9a84d46f99e70ecd2c85`.
+  ARM hosts therefore require Docker support for `linux/amd64` emulation when this historical
+  specimen is included in the complete matrix.
 - [BDK wallet issue #488](https://github.com/bitcoindevkit/bdk_wallet/issues/488) documents the
   `PSBT is missing witness script` failure when finalization encounters an already-finalized input,
   and confirms that Core can finalize the same PSBT. The upstream discussion records the fix in
