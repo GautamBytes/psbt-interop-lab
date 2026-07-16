@@ -40,7 +40,7 @@
   "scripts": {
     "generate:validators": "tsx scripts/generate-validators.ts",
     "check:validators": "tsx scripts/generate-validators.ts --check",
-    "build": "pnpm generate:validators && tsc -p tsconfig.build.json",
+    "build": "pnpm generate:validators && tsc -p tsconfig.build.json && tsx scripts/copy-static-assets.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",

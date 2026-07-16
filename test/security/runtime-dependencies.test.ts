@@ -19,6 +19,7 @@ describe("published runtime dependency boundary", () => {
     expect(packageJson.scripts?.["check:validators"]).toBe(
       "tsx scripts/generate-validators.ts --check",
     );
+    expect(packageJson.scripts?.["build"]).toContain("tsx scripts/copy-static-assets.ts");
     expect(readProjectFile("src/protocol/schema.ts")).not.toContain('from "ajv"');
     expect(readProjectFile("src/protocol/schema-definitions.ts")).not.toContain('from "ajv"');
     expect(readProjectFile("src/conformance/manifest.ts")).not.toContain('from "ajv"');
