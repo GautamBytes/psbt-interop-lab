@@ -140,5 +140,5 @@ pnpm build
 ```
 
 Native adapter checks run in CI and during Docker builds. See
-[the architecture](docs/architecture.md) and [official source ledger](docs/sources.md). The project
-is MIT licensed.
+[the architecture](docs/architecture.md), [future work](docs/future-work.md), and
+[official source ledger](docs/sources.md). The project is MIT licensed.
