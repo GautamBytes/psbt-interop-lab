@@ -17,9 +17,9 @@ const SOURCE_REVISION = "bitcoinjs-lib-7.0.1+tiny-secp256k1-2.2.4";
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const SAFE_OPERATION = /^[a-z][a-z-]{0,63}$/;
 const SAFE_COMMITMENT = /^sha256:[0-9a-f]{64}$/;
-const ALLOWED_FIXTURES = new Set(["happy-path", "bdk-finalize-regression"]);
 const MAX_FIXTURE_COMMITMENTS_BYTES = 4096;
 const TEST_PRIVATE_KEY = Buffer.concat([Buffer.alloc(31), Buffer.from([1])]);
+const SECOND_PRIVATE_KEY = Buffer.concat([Buffer.alloc(31), Buffer.from([2])]);
 /** @typedef {{ fixtureCommitments: Map<string, string> | null, fixtureCommitmentsError?: "missing" | "invalid" }} AdapterConfig */
 /** @typedef {{ protocol: string, id: string, operation: string, payload: Record<string, any> }} AdapterRequest */
 /** @type {Readonly<AdapterConfig>} */
@@ -31,10 +31,49 @@ const MISSING_FIXTURE_CONFIG = Object.freeze({
 bitcoin.initEccLib(ecc);
 
 const TEST_PUBLIC_KEY = Buffer.from(ecc.pointFromScalar(TEST_PRIVATE_KEY, true));
+const SECOND_PUBLIC_KEY = Buffer.from(ecc.pointFromScalar(SECOND_PRIVATE_KEY, true));
+const THIRD_PUBLIC_KEY = Buffer.from(
+  "02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+  "hex",
+);
+const TEST_X_ONLY_PUBLIC_KEY = TEST_PUBLIC_KEY.subarray(1);
 const TEST_WITNESS_SCRIPT = bitcoin.script.compile([TEST_PUBLIC_KEY, bitcoin.opcodes.OP_CHECKSIG]);
 const TEST_SCRIPT_PUBKEY = bitcoin.payments.p2wsh({
   redeem: { output: TEST_WITNESS_SCRIPT },
 }).output;
+const P2WPKH_SCRIPT_PUBKEY = bitcoin.payments.p2wpkh({ pubkey: TEST_PUBLIC_KEY }).output;
+const MULTISIG_WITNESS_SCRIPT = bitcoin.script.compile([
+  bitcoin.opcodes.OP_2,
+  TEST_PUBLIC_KEY,
+  SECOND_PUBLIC_KEY,
+  THIRD_PUBLIC_KEY,
+  bitcoin.opcodes.OP_3,
+  bitcoin.opcodes.OP_CHECKMULTISIG,
+]);
+const MULTISIG_SCRIPT_PUBKEY = bitcoin.payments.p2wsh({
+  redeem: { output: MULTISIG_WITNESS_SCRIPT },
+}).output;
+const TAPROOT_SCRIPT_PUBKEY = bitcoin.payments.p2tr({
+  internalPubkey: TEST_X_ONLY_PUBLIC_KEY,
+}).output;
+const SIGNING_POLICIES = new Map([
+  [
+    "happy-path",
+    { kind: "p2wsh-single-key", scriptPubKey: TEST_SCRIPT_PUBKEY, witnessScript: TEST_WITNESS_SCRIPT },
+  ],
+  [
+    "bdk-finalize-regression",
+    { kind: "p2wsh-single-key", scriptPubKey: TEST_SCRIPT_PUBKEY, witnessScript: TEST_WITNESS_SCRIPT },
+  ],
+  ["p2wpkh", { kind: "p2wpkh", scriptPubKey: P2WPKH_SCRIPT_PUBKEY }],
+  [
+    "p2wsh-2-of-3",
+    { kind: "p2wsh-2-of-3", scriptPubKey: MULTISIG_SCRIPT_PUBKEY, witnessScript: MULTISIG_WITNESS_SCRIPT },
+  ],
+  ["p2tr-keypath", { kind: "p2tr-keypath", scriptPubKey: TAPROOT_SCRIPT_PUBKEY }],
+]);
+const ALLOWED_FIXTURES = new Set(SIGNING_POLICIES.keys());
+const FINALIZABLE_FIXTURES = new Set(["happy-path", "bdk-finalize-regression"]);
 
 function artifactDigest() {
   return `sha256:${createHash("sha256")
@@ -270,7 +309,7 @@ function authorizeFixture(psbt, fixtureId, config) {
   return null;
 }
 
-function validateFundingScope(input, txInput) {
+function validateFundingScope(input, txInput, expectedScriptPubKey) {
   /** @type {{ script: Uint8Array, value: bigint } | undefined} */
   let nonWitnessOutput;
   if (input.nonWitnessUtxo) {
@@ -293,7 +332,7 @@ function validateFundingScope(input, txInput) {
   )
     return false;
   const fundingOutput = witnessOutput ?? nonWitnessOutput;
-  return fundingOutput !== undefined && sameBytes(fundingOutput.script, TEST_SCRIPT_PUBKEY);
+  return fundingOutput !== undefined && sameBytes(fundingOutput.script, expectedScriptPubKey);
 }
 
 function parseWitnessStack(serialized) {
@@ -343,15 +382,63 @@ function validateFinalizedInput(psbt, inputIndex, input) {
   }
 }
 
-function validateSigningScope(psbt) {
+function hasTaprootScriptPathMetadata(input) {
+  return (
+    input.tapMerkleRoot !== undefined ||
+    (input.tapLeafScript?.length ?? 0) > 0 ||
+    (input.tapScriptSig?.length ?? 0) > 0 ||
+    (input.tapBip32Derivation ?? []).some((derivation) => derivation.leafHashes.length > 0)
+  );
+}
+
+function hasAnyTaprootMetadata(input) {
+  return (
+    input.tapInternalKey !== undefined ||
+    input.tapKeySig !== undefined ||
+    input.tapMerkleRoot !== undefined ||
+    (input.tapLeafScript?.length ?? 0) > 0 ||
+    (input.tapScriptSig?.length ?? 0) > 0 ||
+    (input.tapBip32Derivation?.length ?? 0) > 0
+  );
+}
+
+function validateProfileMetadata(input, policy) {
+  if (input.finalScriptSig || input.redeemScript) return false;
+  switch (policy.kind) {
+    case "p2wsh-single-key":
+    case "p2wsh-2-of-3":
+      return (
+        input.witnessScript !== undefined &&
+        sameBytes(input.witnessScript, policy.witnessScript) &&
+        !hasAnyTaprootMetadata(input)
+      );
+    case "p2wpkh":
+      return input.witnessScript === undefined && !hasAnyTaprootMetadata(input);
+    case "p2tr-keypath":
+      return (
+        input.witnessScript === undefined &&
+        input.tapInternalKey !== undefined &&
+        sameBytes(input.tapInternalKey, TEST_X_ONLY_PUBLIC_KEY) &&
+        !hasTaprootScriptPathMetadata(input) &&
+        (input.sighashType === undefined || input.sighashType === bitcoin.Transaction.SIGHASH_DEFAULT)
+      );
+    default:
+      return false;
+  }
+}
+
+function validateSigningScope(psbt, fixtureId) {
+  const policy = SIGNING_POLICIES.get(fixtureId);
+  if (!policy) return false;
   if (psbt.inputCount === 0 || psbt.txInputs.length !== psbt.inputCount) return false;
   for (let index = 0; index < psbt.inputCount; index += 1) {
     const input = psbt.data.inputs[index];
     const txInput = psbt.txInputs[index];
-    if (!input || !txInput || !validateFundingScope(input, txInput)) return false;
+    if (!input || !txInput || !validateFundingScope(input, txInput, policy.scriptPubKey)) return false;
     if (input.finalScriptWitness) {
-      if (!validateFinalizedInput(psbt, index, input)) return false;
-    } else if (!input.witnessScript || !sameBytes(input.witnessScript, TEST_WITNESS_SCRIPT)) {
+      if (policy.kind !== "p2wsh-single-key" || !validateFinalizedInput(psbt, index, input))
+        return false;
+    } else if (!validateProfileMetadata(input, policy)) {
       return false;
     }
   }
@@ -379,14 +466,44 @@ function requestedInputIndexes(value, inputCount) {
   return value;
 }
 
-function sign(psbt) {
-  const signer = {
-    publicKey: TEST_PUBLIC_KEY,
-    sign: (hash) => Buffer.from(ecc.sign(hash, TEST_PRIVATE_KEY)),
+function deterministicSigner(privateKey) {
+  return {
+    publicKey: Buffer.from(ecc.pointFromScalar(privateKey, true)),
+    sign: (hash) => Buffer.from(ecc.sign(hash, privateKey)),
   };
+}
+
+function taprootSigner() {
+  const normalizedPrivateKey =
+    TEST_PUBLIC_KEY[0] === 3
+      ? Buffer.from(ecc.privateNegate(TEST_PRIVATE_KEY))
+      : TEST_PRIVATE_KEY;
+  const tweak = bitcoin.crypto.taggedHash("TapTweak", TEST_X_ONLY_PUBLIC_KEY);
+  const tweakedPrivateKey = ecc.privateAdd(normalizedPrivateKey, tweak);
+  if (!tweakedPrivateKey) throw new Error("fixture Taproot key tweak failed");
+  return {
+    publicKey: Buffer.from(ecc.pointFromScalar(tweakedPrivateKey, true)),
+    sign: (hash) => Buffer.from(ecc.sign(hash, tweakedPrivateKey)),
+    signSchnorr: (hash) => Buffer.from(ecc.signSchnorr(hash, tweakedPrivateKey)),
+  };
+}
+
+function sign(psbt, fixtureId) {
+  const policy = SIGNING_POLICIES.get(fixtureId);
+  if (!policy) throw new Error("fixture signing policy is missing");
+  const signer =
+    policy.kind === "p2wsh-2-of-3"
+      ? deterministicSigner(SECOND_PRIVATE_KEY)
+      : policy.kind === "p2tr-keypath"
+        ? taprootSigner()
+        : deterministicSigner(TEST_PRIVATE_KEY);
+  const sighashTypes =
+    policy.kind === "p2tr-keypath"
+      ? [bitcoin.Transaction.SIGHASH_DEFAULT]
+      : [bitcoin.Transaction.SIGHASH_ALL];
   let signedInputs = 0;
   for (let index = 0; index < psbt.inputCount; index += 1) {
-    psbt.signInput(index, signer);
+    psbt.signInput(index, signer, sighashTypes);
     signedInputs += 1;
   }
   return signedInputs;
@@ -430,7 +547,7 @@ function handleHello(id, digest, payload) {
     operations: ["hello", "inspect", "roundtrip", "sign", "combine", "finalize", "finalize-inputs"],
     roles: ["parser", "signer", "combiner", "finalizer"],
     psbtVersions: [0],
-    scriptTypes: ["p2wsh"],
+    scriptTypes: ["p2wpkh", "p2wsh", "p2tr-keypath"],
     features: ["fixture-commitment-sha256"],
   });
 }
@@ -489,7 +606,7 @@ function handleSign(id, digest, payload, config) {
   const authorizationError = authorizeFixture(result.parsed.psbt, result.fixtureId, config);
   if (authorizationError)
     return failure(id, digest, "rejected", authorizationError.class, authorizationError.message);
-  if (!validateSigningScope(result.parsed.psbt))
+  if (!validateSigningScope(result.parsed.psbt, result.fixtureId))
     return failure(
       id,
       digest,
@@ -498,7 +615,7 @@ function handleSign(id, digest, payload, config) {
       "PSBT does not match the deterministic fixture scope",
     );
   try {
-    const signedInputs = sign(result.parsed.psbt);
+    const signedInputs = sign(result.parsed.psbt, result.fixtureId);
     const encoded = encodedPsbt(result.parsed.psbt);
     if (!encoded)
       return failure(
@@ -575,7 +692,15 @@ function handleFinalize(id, digest, payload, config) {
   const authorizationError = authorizeFixture(result.parsed.psbt, result.fixtureId, config);
   if (authorizationError)
     return failure(id, digest, "rejected", authorizationError.class, authorizationError.message);
-  if (!validateSigningScope(result.parsed.psbt))
+  if (!FINALIZABLE_FIXTURES.has(result.fixtureId))
+    return failure(
+      id,
+      digest,
+      "rejected",
+      "policy.fixture_not_allowed",
+      "Finalization is restricted to the deterministic single-key P2WSH fixtures",
+    );
+  if (!validateSigningScope(result.parsed.psbt, result.fixtureId))
     return failure(
       id,
       digest,
@@ -641,7 +766,7 @@ function handleFinalizeInputs(id, digest, payload, config) {
       "protocol.invalid_payload",
       "inputIndexes must be unique, non-empty, in-range safe integers",
     );
-  if (!validateSigningScope(result.parsed.psbt))
+  if (!validateSigningScope(result.parsed.psbt, result.fixtureId))
     return failure(
       id,
       digest,

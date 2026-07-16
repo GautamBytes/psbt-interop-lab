@@ -12,11 +12,42 @@ import * as adapter from "../adapter.mjs";
 import { handleValue, MAX_LINE_BYTES, PROTOCOL } from "../adapter.mjs";
 
 const TEST_PRIVATE_KEY = Buffer.concat([Buffer.alloc(31), Buffer.from([1])]);
+const SECOND_PRIVATE_KEY = Buffer.concat([Buffer.alloc(31), Buffer.from([2])]);
+const THIRD_PRIVATE_KEY = Buffer.concat([Buffer.alloc(31), Buffer.from([3])]);
 const TEST_PUBLIC_KEY = Buffer.from(ecc.pointFromScalar(TEST_PRIVATE_KEY, true));
+const SECOND_PUBLIC_KEY = Buffer.from(ecc.pointFromScalar(SECOND_PRIVATE_KEY, true));
+const THIRD_PUBLIC_KEY = Buffer.from(ecc.pointFromScalar(THIRD_PRIVATE_KEY, true));
+const TEST_X_ONLY_PUBLIC_KEY = TEST_PUBLIC_KEY.subarray(1);
 const TEST_WITNESS_SCRIPT = bitcoin.script.compile([TEST_PUBLIC_KEY, bitcoin.opcodes.OP_CHECKSIG]);
 const TEST_SCRIPT_PUBKEY = bitcoin.payments.p2wsh({
   redeem: { output: TEST_WITNESS_SCRIPT },
 }).output;
+const MULTISIG_WITNESS_SCRIPT = bitcoin.script.compile([
+  bitcoin.opcodes.OP_2,
+  TEST_PUBLIC_KEY,
+  SECOND_PUBLIC_KEY,
+  THIRD_PUBLIC_KEY,
+  bitcoin.opcodes.OP_3,
+  bitcoin.opcodes.OP_CHECKMULTISIG,
+]);
+const PROFILE_SCRIPT_PUBKEYS = {
+  p2wpkh: bitcoin.payments.p2wpkh({ pubkey: TEST_PUBLIC_KEY }).output,
+  "p2wsh-2-of-3": bitcoin.payments.p2wsh({
+    redeem: { output: MULTISIG_WITNESS_SCRIPT },
+  }).output,
+  "p2tr-keypath": bitcoin.payments.p2tr({ internalPubkey: TEST_X_ONLY_PUBLIC_KEY }).output,
+};
+const PROFILE_FIXTURE_IDS = ["p2wpkh", "p2wsh-2-of-3", "p2tr-keypath"];
+const EXACT_PROFILE_SCRIPT_HEX = {
+  p2wpkh: "0014751e76e8199196d454941c45d1b3a323f1433bd6",
+  "p2wsh-2-of-3": "002012c2ffbc6ec1cf5d746dfbd49b1063356212ea55f43023ffc0145934af20c572",
+  "p2tr-keypath": "5120da4710964f7852695de2da025290e24af6d8c281de5a0b902b7135fd9fd74d21",
+};
+const EXACT_MULTISIG_WITNESS_SCRIPT_HEX =
+  "52210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798" +
+  "2102c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5" +
+  "2102f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f953ae";
+const PROFILE_FUNDING_VALUE = 5_000_000_000n;
 const DIGEST = `sha256:${"a".repeat(64)}`;
 const IMPLEMENTATION_KEYS = ["artifactDigest", "name", "sourceRevision", "version"];
 const RESPONSE_KEYS = ["id", "implementation", "output", "protocol", "status"];
@@ -65,6 +96,68 @@ function fixtureConfig() {
   };
 }
 
+function deterministicSigner(privateKey) {
+  return {
+    publicKey: Buffer.from(ecc.pointFromScalar(privateKey, true)),
+    sign: (hash) => Buffer.from(ecc.sign(hash, privateKey)),
+  };
+}
+
+function taprootSigner() {
+  const normalizedPrivateKey =
+    TEST_PUBLIC_KEY[0] === 3
+      ? Buffer.from(ecc.privateNegate(TEST_PRIVATE_KEY))
+      : TEST_PRIVATE_KEY;
+  const tweak = bitcoin.crypto.taggedHash("TapTweak", TEST_X_ONLY_PUBLIC_KEY);
+  const tweakedPrivateKey = ecc.privateAdd(normalizedPrivateKey, tweak);
+  assert.ok(tweakedPrivateKey);
+  return {
+    publicKey: Buffer.from(ecc.pointFromScalar(tweakedPrivateKey, true)),
+    sign: (hash) => Buffer.from(ecc.sign(hash, tweakedPrivateKey)),
+    signSchnorr: (hash) => Buffer.from(ecc.signSchnorr(hash, tweakedPrivateKey)),
+  };
+}
+
+function profilePsbt(fixtureId, { includeNonWitnessUtxo = false } = {}) {
+  const script = PROFILE_SCRIPT_PUBKEYS[fixtureId];
+  assert.ok(script);
+  const funding = new bitcoin.Transaction();
+  funding.version = 2;
+  funding.addInput(Buffer.alloc(32), 0xffffffff);
+  funding.addOutput(script, PROFILE_FUNDING_VALUE);
+
+  const input = {
+    hash: funding.getId(),
+    index: 0,
+    witnessUtxo: { script, value: PROFILE_FUNDING_VALUE },
+    ...(includeNonWitnessUtxo ? { nonWitnessUtxo: funding.toBuffer() } : {}),
+    ...(fixtureId === "p2wsh-2-of-3" ? { witnessScript: MULTISIG_WITNESS_SCRIPT } : {}),
+    ...(fixtureId === "p2tr-keypath" ? { tapInternalKey: TEST_X_ONLY_PUBLIC_KEY } : {}),
+  };
+  const psbt = new bitcoin.Psbt({ network: bitcoin.networks.regtest });
+  psbt.addInput(input);
+  psbt.addOutput({ script, value: PROFILE_FUNDING_VALUE - 20_000n });
+  return { funding, psbt };
+}
+
+function profileConfig(fixtureId, psbt) {
+  return { fixtureCommitments: new Map([[fixtureId, fixtureCommitment(psbt)]]) };
+}
+
+function signProfile(psbt, fixtureId) {
+  return response(
+    request("sign", signingPayload(psbt, fixtureId)),
+    profileConfig(fixtureId, psbt),
+  );
+}
+
+function partialSignatureHex(input) {
+  return (input.partialSig ?? []).map(({ pubkey, signature }) => ({
+    pubkey: Buffer.from(pubkey).toString("hex"),
+    signature: Buffer.from(signature).toString("hex"),
+  }));
+}
+
 function signingPayload(psbt, fixtureId = "happy-path") {
   return { psbt: psbt.toBase64(), network: "regtest", fixtureId };
 }
@@ -82,14 +175,14 @@ function assertSchemaShape(value) {
   }
 }
 
-test("hello advertises only proven PSBTv0 P2WSH operations", () => {
+test("hello advertises only proven PSBTv0 operations and script types", () => {
   const result = response(request("hello"));
   assert.equal(result.status, "ok");
   assert.deepEqual(result.output, {
     operations: ["hello", "inspect", "roundtrip", "sign", "combine", "finalize", "finalize-inputs"],
     roles: ["parser", "signer", "combiner", "finalizer"],
     psbtVersions: [0],
-    scriptTypes: ["p2wsh"],
+    scriptTypes: ["p2wpkh", "p2wsh", "p2tr-keypath"],
     features: ["fixture-commitment-sha256"],
   });
   assertSchemaShape(result);
@@ -217,6 +310,26 @@ test("parses only bounded fixture commitment environment objects", () => {
   }
 });
 
+test("accepts commitments for each exact signable profile and no undeclared profiles", () => {
+  const commitments = new Map(fixtureConfig().fixtureCommitments);
+  for (const fixtureId of PROFILE_FIXTURE_IDS) {
+    const { psbt } = profilePsbt(fixtureId);
+    commitments.set(fixtureId, fixtureCommitment(psbt));
+  }
+
+  assert.deepEqual(
+    adapter.parseFixtureCommitments(JSON.stringify(Object.fromEntries(commitments))),
+    { fixtureCommitments: commitments },
+  );
+  for (const fixtureId of ["p2wsh-single-key", "mixed-p2wpkh-p2tr"]) {
+    const result = adapter.parseFixtureCommitments(
+      JSON.stringify({ [fixtureId]: `sha256:${"a".repeat(64)}` }),
+    );
+    assert.equal(result.fixtureCommitments, null);
+    assert.equal(result.fixtureCommitmentsError, "invalid");
+  }
+});
+
 test("rejects a different unsigned transaction claiming an allowed fixture id", () => {
   const configured = fixturePsbt();
   const forged = fixturePsbt();
@@ -245,6 +358,208 @@ test("does not accept caller-provided fixture commitments", () => {
   assert.equal(result.status, "rejected");
   assert.equal(result.error.class, "protocol.invalid_payload");
   assertSchemaShape(result);
+});
+
+test("scalar 1 signs the exact P2WPKH profile deterministically", () => {
+  const { psbt } = profilePsbt("p2wpkh");
+  const expected = psbt.clone();
+  expected.signInput(0, deterministicSigner(TEST_PRIVATE_KEY));
+
+  const result = signProfile(psbt, "p2wpkh");
+
+  assert.equal(result.status, "ok");
+  assert.equal(result.output.signedInputs, 1);
+  const signed = bitcoin.Psbt.fromBase64(result.output.psbt);
+  assert.equal(
+    Buffer.from(signed.data.inputs[0].witnessUtxo.script).toString("hex"),
+    EXACT_PROFILE_SCRIPT_HEX.p2wpkh,
+  );
+  assert.deepEqual(
+    partialSignatureHex(signed.data.inputs[0]),
+    partialSignatureHex(expected.data.inputs[0]),
+  );
+  assert.deepEqual(
+    signed.data.inputs[0].partialSig.map(({ pubkey }) => Buffer.from(pubkey).toString("hex")),
+    [TEST_PUBLIC_KEY.toString("hex")],
+  );
+  assert.equal(
+    signed.validateSignaturesOfInput(0, (publicKey, hash, signature) =>
+      ecc.verify(hash, publicKey, signature),
+    ),
+    true,
+  );
+  assertSchemaShape(result);
+});
+
+test("scalar 2 contributes its deterministic signature to the exact ordered 2-of-3 P2WSH profile", () => {
+  const { psbt } = profilePsbt("p2wsh-2-of-3");
+  const expected = psbt.clone();
+  expected.signInput(0, deterministicSigner(SECOND_PRIVATE_KEY));
+
+  const result = signProfile(psbt, "p2wsh-2-of-3");
+
+  assert.equal(result.status, "ok");
+  assert.equal(result.output.signedInputs, 1);
+  const signed = bitcoin.Psbt.fromBase64(result.output.psbt);
+  assert.equal(
+    Buffer.from(signed.data.inputs[0].witnessUtxo.script).toString("hex"),
+    EXACT_PROFILE_SCRIPT_HEX["p2wsh-2-of-3"],
+  );
+  assert.equal(
+    Buffer.from(signed.data.inputs[0].witnessScript).toString("hex"),
+    EXACT_MULTISIG_WITNESS_SCRIPT_HEX,
+  );
+  assert.deepEqual(
+    bitcoin.script
+      .decompile(signed.data.inputs[0].witnessScript)
+      .map((item) =>
+        item instanceof Uint8Array ? Buffer.from(item).toString("hex") : item,
+      ),
+    [
+      bitcoin.opcodes.OP_2,
+      TEST_PUBLIC_KEY.toString("hex"),
+      SECOND_PUBLIC_KEY.toString("hex"),
+      THIRD_PUBLIC_KEY.toString("hex"),
+      bitcoin.opcodes.OP_3,
+      bitcoin.opcodes.OP_CHECKMULTISIG,
+    ],
+  );
+  assert.deepEqual(
+    partialSignatureHex(signed.data.inputs[0]),
+    partialSignatureHex(expected.data.inputs[0]),
+  );
+  assert.deepEqual(
+    signed.data.inputs[0].partialSig.map(({ pubkey }) => Buffer.from(pubkey).toString("hex")),
+    [SECOND_PUBLIC_KEY.toString("hex")],
+  );
+  assert.equal(
+    signed.validateSignaturesOfInput(0, (publicKey, hash, signature) =>
+      ecc.verify(hash, publicKey, signature),
+    ),
+    true,
+  );
+  assertSchemaShape(result);
+});
+
+test("TapTweak-adjusted scalar 1 signs the exact key-path Taproot profile with Schnorr", () => {
+  const { psbt } = profilePsbt("p2tr-keypath");
+  const expected = psbt.clone();
+  expected.signInput(0, taprootSigner(), [bitcoin.Transaction.SIGHASH_DEFAULT]);
+
+  const result = signProfile(psbt, "p2tr-keypath");
+
+  assert.equal(result.status, "ok");
+  assert.equal(result.output.signedInputs, 1);
+  const signed = bitcoin.Psbt.fromBase64(result.output.psbt);
+  assert.equal(
+    Buffer.from(signed.data.inputs[0].witnessUtxo.script).toString("hex"),
+    EXACT_PROFILE_SCRIPT_HEX["p2tr-keypath"],
+  );
+  assert.equal(
+    Buffer.from(signed.data.inputs[0].tapInternalKey).toString("hex"),
+    TEST_X_ONLY_PUBLIC_KEY.toString("hex"),
+  );
+  assert.equal(
+    Buffer.from(signed.data.inputs[0].tapKeySig).toString("hex"),
+    Buffer.from(expected.data.inputs[0].tapKeySig).toString("hex"),
+  );
+  assert.equal(signed.data.inputs[0].tapKeySig.length, 64);
+  assert.equal(signed.data.inputs[0].tapScriptSig, undefined);
+  assert.equal(
+    signed.validateSignaturesOfInput(0, (publicKey, hash, signature) =>
+      ecc.verifySchnorr(hash, publicKey, signature),
+    ),
+    true,
+  );
+  assertSchemaShape(result);
+});
+
+test("rejects every profile when its exact funding script is replaced", () => {
+  for (const [index, fixtureId] of PROFILE_FIXTURE_IDS.entries()) {
+    const { psbt } = profilePsbt(fixtureId);
+    const replacementId = PROFILE_FIXTURE_IDS[(index + 1) % PROFILE_FIXTURE_IDS.length];
+    psbt.data.inputs[0].witnessUtxo.script = PROFILE_SCRIPT_PUBKEYS[replacementId];
+
+    const result = signProfile(psbt, fixtureId);
+
+    assert.equal(result.status, "rejected");
+    assert.equal(result.error.class, "policy.psbt_not_authorized");
+    assertSchemaShape(result);
+  }
+});
+
+test("rejects inconsistent witness and non-witness UTXO metadata", () => {
+  const mismatchedValue = profilePsbt("p2wpkh", { includeNonWitnessUtxo: true }).psbt;
+  mismatchedValue.data.inputs[0].witnessUtxo.value += 1n;
+
+  const wrongTransaction = profilePsbt("p2wpkh", { includeNonWitnessUtxo: true }).psbt;
+  const unrelatedFunding = new bitcoin.Transaction();
+  unrelatedFunding.addInput(Buffer.alloc(32, 1), 0xffffffff);
+  unrelatedFunding.addOutput(PROFILE_SCRIPT_PUBKEYS.p2wpkh, PROFILE_FUNDING_VALUE);
+  wrongTransaction.data.inputs[0].nonWitnessUtxo = unrelatedFunding.toBuffer();
+
+  for (const psbt of [mismatchedValue, wrongTransaction]) {
+    const result = signProfile(psbt, "p2wpkh");
+    assert.equal(result.status, "rejected");
+    assert.equal(result.error.class, "policy.psbt_not_authorized");
+    assertSchemaShape(result);
+  }
+});
+
+test("rejects Taproot internal-key, script-path, and non-default sighash metadata", () => {
+  const wrongInternalKey = profilePsbt("p2tr-keypath").psbt;
+  wrongInternalKey.data.inputs[0].tapInternalKey = SECOND_PUBLIC_KEY.subarray(1);
+
+  const merkleRoot = profilePsbt("p2tr-keypath").psbt;
+  merkleRoot.data.inputs[0].tapMerkleRoot = Buffer.alloc(32, 1);
+
+  const leafScript = profilePsbt("p2tr-keypath").psbt;
+  leafScript.data.inputs[0].tapLeafScript = [
+    {
+      controlBlock: Buffer.concat([Buffer.from([0xc0]), TEST_X_ONLY_PUBLIC_KEY]),
+      leafVersion: 0xc0,
+      script: Buffer.from([bitcoin.opcodes.OP_TRUE]),
+    },
+  ];
+
+  const scriptSignature = profilePsbt("p2tr-keypath").psbt;
+  scriptSignature.data.inputs[0].tapScriptSig = [
+    {
+      pubkey: TEST_X_ONLY_PUBLIC_KEY,
+      leafHash: Buffer.alloc(32, 2),
+      signature: Buffer.alloc(64, 3),
+    },
+  ];
+
+  const nonDefaultSighash = profilePsbt("p2tr-keypath").psbt;
+  nonDefaultSighash.updateInput(0, { sighashType: bitcoin.Transaction.SIGHASH_ALL });
+
+  for (const psbt of [wrongInternalKey, merkleRoot, leafScript, scriptSignature, nonDefaultSighash]) {
+    const result = signProfile(psbt, "p2tr-keypath");
+    assert.equal(result.status, "rejected");
+    assert.equal(result.error.class, "policy.psbt_not_authorized");
+    assertSchemaShape(result);
+  }
+});
+
+test("rejects caller-controlled key material for every signable profile", () => {
+  for (const fixtureId of PROFILE_FIXTURE_IDS) {
+    const { psbt } = profilePsbt(fixtureId);
+    for (const callerKey of [
+      { keyWif: "caller-controlled" },
+      { privateKey: TEST_PRIVATE_KEY.toString("hex") },
+      { signer: "caller-controlled" },
+    ]) {
+      const result = response(
+        request("sign", { ...signingPayload(psbt, fixtureId), ...callerKey }),
+        profileConfig(fixtureId, psbt),
+      );
+      assert.equal(result.status, "rejected");
+      assert.equal(result.error.class, "protocol.invalid_payload");
+      assert.doesNotMatch(result.error.message, /[0-9a-f]{64}|private|key material/i);
+      assertSchemaShape(result);
+    }
+  }
 });
 
 test("signs and finalizes the authorized deterministic P2WSH fixture", () => {
