@@ -5,12 +5,16 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"runtime"
 	"strings"
 	"testing"
 
+	"github.com/btcsuite/btcd/btcec/v2"
+	"github.com/btcsuite/btcd/btcec/v2/ecdsa"
+	"github.com/btcsuite/btcd/btcec/v2/schnorr"
 	"github.com/btcsuite/btcd/btcutil"
 	"github.com/btcsuite/btcd/btcutil/psbt"
 	"github.com/btcsuite/btcd/txscript"
@@ -32,7 +36,7 @@ func TestHelloAdvertisesOnlyImplementedCapabilities(t *testing.T) {
 		"operations":   []any{"hello", "inspect", "roundtrip", "sign", "finalize", "finalize-inputs"},
 		"roles":        []any{"parser", "signer", "finalizer"},
 		"psbtVersions": []any{float64(0)},
-		"scriptTypes":  []any{"p2wsh"},
+		"scriptTypes":  []any{"p2wpkh", "p2wsh", "p2tr-keypath"},
 		"features":     []any{"fixture-commitment-sha256"},
 	}
 	if !jsonEqual(response.Output, want) {
@@ -258,6 +262,170 @@ func TestFixtureCommitmentConfigurationRejectsMissingAndInvalidValues(t *testing
 	if accepted.Status != "ok" {
 		t.Fatalf("environment commitment was rejected: %#v", accepted)
 	}
+}
+
+func TestSignsP2WPKHProfileWithScalarOne(t *testing.T) {
+	encoded := profilePSBT(t, "p2wpkh")
+	response := requestWithProfileCommitment(t, "p2wpkh", encoded)
+	if response.Status != "ok" || response.Output["signedInputs"] != 1 {
+		t.Fatalf("sign response = %#v", response)
+	}
+
+	packet := decodePacket(t, response.Output["psbt"].(string))
+	input := packet.Inputs[0]
+	wantPubKey := scalarKey(1).PubKey().SerializeCompressed()
+	if len(input.PartialSigs) != 1 || !bytes.Equal(input.PartialSigs[0].PubKey, wantPubKey) {
+		t.Fatalf("partial signatures = %#v, want only scalar-1", input.PartialSigs)
+	}
+	assertECDSAPartialSignature(t, packet, 0, testP2WPKHScriptCode(t, wantPubKey), input.PartialSigs[0])
+}
+
+func TestSignsP2WSHMultisigProfileWithOnlyScalarTwo(t *testing.T) {
+	packet := decodePacket(t, profilePSBT(t, "p2wsh-2-of-3"))
+	witnessScript := multisigWitnessScript(t)
+	existing := profilePartialSignature(t, packet, 0, scalarKey(1), witnessScript)
+	packet.Inputs[0].PartialSigs = []*psbt.PartialSig{existing}
+	encoded := encodePacket(t, packet)
+
+	response := requestWithProfileCommitment(t, "p2wsh-2-of-3", encoded)
+	if response.Status != "ok" || response.Output["signedInputs"] != 1 {
+		t.Fatalf("sign response = %#v", response)
+	}
+
+	signed := decodePacket(t, response.Output["psbt"].(string))
+	partials := partialsByPubKey(signed.Inputs[0].PartialSigs)
+	pubKey1 := scalarKey(1).PubKey().SerializeCompressed()
+	pubKey2 := scalarKey(2).PubKey().SerializeCompressed()
+	pubKey3 := scalarKey(3).PubKey().SerializeCompressed()
+	if len(partials) != 2 || partials[hex.EncodeToString(pubKey1)] == nil || partials[hex.EncodeToString(pubKey2)] == nil {
+		t.Fatalf("partial signatures = %#v, want scalar-1 and scalar-2", signed.Inputs[0].PartialSigs)
+	}
+	if partials[hex.EncodeToString(pubKey3)] != nil {
+		t.Fatal("btcsuite contributed a scalar-3 signature")
+	}
+	if !bytes.Equal(partials[hex.EncodeToString(pubKey1)].Signature, existing.Signature) {
+		t.Fatal("btcsuite replaced the existing scalar-1 signature")
+	}
+	assertECDSAPartialSignature(t, signed, 0, witnessScript, partials[hex.EncodeToString(pubKey1)])
+	assertECDSAPartialSignature(t, signed, 0, witnessScript, partials[hex.EncodeToString(pubKey2)])
+}
+
+func TestSignsTaprootKeyPathProfileWithDefaultSighash(t *testing.T) {
+	encoded := profilePSBT(t, "p2tr-keypath")
+	response := requestWithProfileCommitment(t, "p2tr-keypath", encoded)
+	if response.Status != "ok" || response.Output["signedInputs"] != 1 {
+		t.Fatalf("sign response = %#v", response)
+	}
+
+	packet := decodePacket(t, response.Output["psbt"].(string))
+	input := packet.Inputs[0]
+	if len(input.TaprootKeySpendSig) != schnorr.SignatureSize {
+		t.Fatalf("Taproot key-spend signature length = %d, want %d", len(input.TaprootKeySpendSig), schnorr.SignatureSize)
+	}
+	if len(input.PartialSigs) != 0 || len(input.TaprootScriptSpendSig) != 0 {
+		t.Fatalf("Taproot signature inserted into the wrong PSBT field: %#v", input)
+	}
+	assertTaprootKeySpendSignature(t, packet, 0, input.TaprootKeySpendSig)
+}
+
+func TestProfileSigningRequiresExactSegWitV0PrevoutsAndScripts(t *testing.T) {
+	for _, profileID := range []string{"p2wpkh", "p2wsh-2-of-3"} {
+		t.Run(profileID+" missing full previous transaction", func(t *testing.T) {
+			packet := decodePacket(t, profilePSBT(t, profileID))
+			packet.Inputs[0].NonWitnessUtxo = nil
+			assertProfileAuthorizationRejected(t, profileID, packet)
+		})
+
+		t.Run(profileID+" inconsistent witness previous output", func(t *testing.T) {
+			packet := decodePacket(t, profilePSBT(t, profileID))
+			packet.Inputs[0].WitnessUtxo.Value++
+			assertProfileAuthorizationRejected(t, profileID, packet)
+		})
+	}
+
+	t.Run("p2wpkh wrong key script", func(t *testing.T) {
+		packet := decodePacket(t, profilePSBT(t, "p2wpkh"))
+		rebindProfileFunding(t, packet, p2wpkhScriptPubKey(scalarKey(2).PubKey().SerializeCompressed()))
+		assertProfileAuthorizationRejected(t, "p2wpkh", packet)
+	})
+
+	t.Run("p2wsh wrong public key order", func(t *testing.T) {
+		packet := decodePacket(t, profilePSBT(t, "p2wsh-2-of-3"))
+		wrongScript, err := txscript.NewScriptBuilder().
+			AddOp(txscript.OP_2).
+			AddData(scalarKey(2).PubKey().SerializeCompressed()).
+			AddData(scalarKey(1).PubKey().SerializeCompressed()).
+			AddData(scalarKey(3).PubKey().SerializeCompressed()).
+			AddOp(txscript.OP_3).
+			AddOp(txscript.OP_CHECKMULTISIG).
+			Script()
+		if err != nil {
+			t.Fatal(err)
+		}
+		packet.Inputs[0].WitnessScript = wrongScript
+		rebindProfileFunding(t, packet, fixtureP2WSHScript(wrongScript))
+		assertProfileAuthorizationRejected(t, "p2wsh-2-of-3", packet)
+	})
+}
+
+func TestProfileSigningRejectsInvalidExistingECDSASignatures(t *testing.T) {
+	for _, profileID := range []string{"p2wpkh", "p2wsh-2-of-3"} {
+		t.Run(profileID, func(t *testing.T) {
+			packet := decodePacket(t, profilePSBT(t, profileID))
+			scriptCode := testP2WPKHScriptCode(t, scalarKey(1).PubKey().SerializeCompressed())
+			if profileID == "p2wsh-2-of-3" {
+				scriptCode = multisigWitnessScript(t)
+			}
+			forgedTransaction := packet.UnsignedTx.Copy()
+			forgedTransaction.LockTime++
+			packet.Inputs[0].PartialSigs = []*psbt.PartialSig{
+				profilePartialSignatureForTransaction(t, packet, forgedTransaction, 0, scalarKey(1), scriptCode),
+			}
+			response := requestWithProfileCommitment(t, profileID, encodePacket(t, packet))
+			assertFailureClass(t, response, "rejected", "signing.signature_invalid")
+		})
+	}
+}
+
+func TestTaprootProfileRequiresCompleteExactKeyPathMetadata(t *testing.T) {
+	tests := map[string]func(*psbt.Packet){
+		"missing witness previous output": func(packet *psbt.Packet) {
+			packet.Inputs[0].WitnessUtxo = nil
+		},
+		"mismatched optional full previous transaction": func(packet *psbt.Packet) {
+			packet.Inputs[0].NonWitnessUtxo = decodePacket(t, profilePSBT(t, "p2wpkh")).Inputs[0].NonWitnessUtxo
+		},
+		"wrong internal key": func(packet *psbt.Packet) {
+			packet.Inputs[0].TaprootInternalKey = schnorr.SerializePubKey(scalarKey(2).PubKey())
+		},
+		"wrong output key": func(packet *psbt.Packet) {
+			packet.Inputs[0].WitnessUtxo.PkScript = taprootScriptPubKey(t, scalarKey(2))
+		},
+		"non-default sighash": func(packet *psbt.Packet) {
+			packet.Inputs[0].SighashType = txscript.SigHashAll
+		},
+		"script-path merkle root": func(packet *psbt.Packet) {
+			packet.Inputs[0].TaprootMerkleRoot = bytes.Repeat([]byte{1}, sha256.Size)
+		},
+	}
+
+	for name, mutate := range tests {
+		t.Run(name, func(t *testing.T) {
+			packet := decodePacket(t, profilePSBT(t, "p2tr-keypath"))
+			mutate(packet)
+			assertProfileAuthorizationRejected(t, "p2tr-keypath", packet)
+		})
+	}
+}
+
+func TestTaprootProfileRejectsInvalidExistingKeySpendSignature(t *testing.T) {
+	packet := decodePacket(t, profilePSBT(t, "p2tr-keypath"))
+	forgedTransaction := packet.UnsignedTx.Copy()
+	forgedTransaction.LockTime++
+	packet.Inputs[0].TaprootKeySpendSig = taprootSignatureForTransaction(t, packet, forgedTransaction, 0)
+
+	response := requestWithProfileCommitment(t, "p2tr-keypath", encodePacket(t, packet))
+	assertFailureClass(t, response, "rejected", "signing.signature_invalid")
 }
 
 func TestSignsAndFinalizesFixtureInputs(t *testing.T) {
@@ -501,6 +669,9 @@ func defaultTestHandler(t *testing.T) *Handler {
 	return testHandler(t, map[string]string{
 		"happy-path":              fixtureCommitment(t, fixturePSBT(t, 1)),
 		"bdk-finalize-regression": fixtureCommitment(t, fixturePSBT(t, 2)),
+		"p2wpkh":                  fixtureCommitment(t, profilePSBT(t, "p2wpkh")),
+		"p2wsh-2-of-3":            fixtureCommitment(t, profilePSBT(t, "p2wsh-2-of-3")),
+		"p2tr-keypath":            fixtureCommitment(t, profilePSBT(t, "p2tr-keypath")),
 	})
 }
 
@@ -518,6 +689,214 @@ func assertFailureClass(t *testing.T, response Response, status, class string) {
 	if response.Status != status || response.Error == nil || response.Error.Class != class {
 		t.Fatalf("response = %#v, want %s/%s", response, status, class)
 	}
+}
+
+func requestWithProfileCommitment(t *testing.T, profileID, encoded string) Response {
+	t.Helper()
+	handler := testHandler(t, map[string]string{profileID: fixtureCommitment(t, encoded)})
+	return requestWithHandler(t, handler, "sign", signingPayload(encoded, profileID))
+}
+
+func assertProfileAuthorizationRejected(t *testing.T, profileID string, packet *psbt.Packet) {
+	t.Helper()
+	response := requestWithProfileCommitment(t, profileID, encodePacket(t, packet))
+	assertFailureClass(t, response, "rejected", "policy.psbt_not_authorized")
+}
+
+func profilePSBT(t *testing.T, profileID string) string {
+	t.Helper()
+	var pkScript, witnessScript []byte
+	switch profileID {
+	case "p2wpkh":
+		pkScript = p2wpkhScriptPubKey(scalarKey(1).PubKey().SerializeCompressed())
+	case "p2wsh-2-of-3":
+		witnessScript = multisigWitnessScript(t)
+		pkScript = fixtureP2WSHScript(witnessScript)
+	case "p2tr-keypath":
+		pkScript = taprootScriptPubKey(t, scalarKey(1))
+	default:
+		t.Fatalf("unknown profile %q", profileID)
+	}
+
+	funding := wire.NewMsgTx(2)
+	funding.AddTxIn(wire.NewTxIn(&wire.OutPoint{}, nil, nil))
+	funding.AddTxOut(&wire.TxOut{Value: 50_000, PkScript: pkScript})
+	spend := wire.NewMsgTx(2)
+	spend.AddTxIn(wire.NewTxIn(&wire.OutPoint{Hash: funding.TxHash(), Index: 0}, nil, nil))
+	spend.AddTxOut(&wire.TxOut{Value: 40_000, PkScript: pkScript})
+	packet, err := psbt.NewFromUnsignedTx(spend)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := &packet.Inputs[0]
+	input.WitnessUtxo = funding.TxOut[0]
+	switch profileID {
+	case "p2wpkh":
+		input.NonWitnessUtxo = funding.Copy()
+	case "p2wsh-2-of-3":
+		input.NonWitnessUtxo = funding.Copy()
+		input.WitnessScript = witnessScript
+	case "p2tr-keypath":
+		input.TaprootInternalKey = schnorr.SerializePubKey(scalarKey(1).PubKey())
+	}
+	return encodePacket(t, packet)
+}
+
+func scalarKey(value byte) *btcec.PrivateKey {
+	scalar := make([]byte, 32)
+	scalar[len(scalar)-1] = value
+	key, _ := btcec.PrivKeyFromBytes(scalar)
+	return key
+}
+
+func p2wpkhScriptPubKey(publicKey []byte) []byte {
+	return append([]byte{txscript.OP_0, txscript.OP_DATA_20}, btcutil.Hash160(publicKey)...)
+}
+
+func testP2WPKHScriptCode(t *testing.T, publicKey []byte) []byte {
+	t.Helper()
+	script, err := txscript.NewScriptBuilder().
+		AddOp(txscript.OP_DUP).
+		AddOp(txscript.OP_HASH160).
+		AddData(btcutil.Hash160(publicKey)).
+		AddOp(txscript.OP_EQUALVERIFY).
+		AddOp(txscript.OP_CHECKSIG).
+		Script()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return script
+}
+
+func multisigWitnessScript(t *testing.T) []byte {
+	t.Helper()
+	script, err := txscript.NewScriptBuilder().
+		AddOp(txscript.OP_2).
+		AddData(scalarKey(1).PubKey().SerializeCompressed()).
+		AddData(scalarKey(2).PubKey().SerializeCompressed()).
+		AddData(scalarKey(3).PubKey().SerializeCompressed()).
+		AddOp(txscript.OP_3).
+		AddOp(txscript.OP_CHECKMULTISIG).
+		Script()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return script
+}
+
+func taprootScriptPubKey(t *testing.T, internalKey *btcec.PrivateKey) []byte {
+	t.Helper()
+	script, err := txscript.PayToTaprootScript(txscript.ComputeTaprootKeyNoScript(internalKey.PubKey()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return script
+}
+
+func rebindProfileFunding(t *testing.T, packet *psbt.Packet, pkScript []byte) {
+	t.Helper()
+	input := &packet.Inputs[0]
+	previous := packet.UnsignedTx.TxIn[0].PreviousOutPoint
+	if input.NonWitnessUtxo == nil || int(previous.Index) >= len(input.NonWitnessUtxo.TxOut) {
+		t.Fatal("profile lacks a full previous transaction")
+	}
+	funding := input.NonWitnessUtxo.Copy()
+	funding.TxOut[previous.Index].PkScript = pkScript
+	packet.UnsignedTx.TxIn[0].PreviousOutPoint.Hash = funding.TxHash()
+	input.NonWitnessUtxo = funding
+	input.WitnessUtxo = funding.TxOut[previous.Index]
+}
+
+func partialsByPubKey(partials []*psbt.PartialSig) map[string]*psbt.PartialSig {
+	result := make(map[string]*psbt.PartialSig, len(partials))
+	for _, partial := range partials {
+		result[hex.EncodeToString(partial.PubKey)] = partial
+	}
+	return result
+}
+
+func profilePartialSignature(t *testing.T, packet *psbt.Packet, inputIndex int, key *btcec.PrivateKey, scriptCode []byte) *psbt.PartialSig {
+	t.Helper()
+	return profilePartialSignatureForTransaction(t, packet, packet.UnsignedTx, inputIndex, key, scriptCode)
+}
+
+func profilePartialSignatureForTransaction(t *testing.T, packet *psbt.Packet, transaction *wire.MsgTx, inputIndex int, key *btcec.PrivateKey, scriptCode []byte) *psbt.PartialSig {
+	t.Helper()
+	fetcher := profilePrevOutFetcher(t, packet)
+	sigHashes := txscript.NewTxSigHashes(transaction, fetcher)
+	previous := fetcher.FetchPrevOutput(transaction.TxIn[inputIndex].PreviousOutPoint)
+	signature, err := txscript.RawTxInWitnessSignature(
+		transaction, sigHashes, inputIndex, previous.Value, scriptCode, txscript.SigHashAll, key,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &psbt.PartialSig{PubKey: key.PubKey().SerializeCompressed(), Signature: signature}
+}
+
+func assertECDSAPartialSignature(t *testing.T, packet *psbt.Packet, inputIndex int, scriptCode []byte, partial *psbt.PartialSig) {
+	t.Helper()
+	if partial == nil || len(partial.Signature) < 2 || partial.Signature[len(partial.Signature)-1] != byte(txscript.SigHashAll) {
+		t.Fatalf("input %d has a missing or non-SIGHASH_ALL signature", inputIndex)
+	}
+	fetcher := profilePrevOutFetcher(t, packet)
+	sigHashes := txscript.NewTxSigHashes(packet.UnsignedTx, fetcher)
+	previous := fetcher.FetchPrevOutput(packet.UnsignedTx.TxIn[inputIndex].PreviousOutPoint)
+	hash, err := txscript.CalcWitnessSigHash(scriptCode, sigHashes, txscript.SigHashAll, packet.UnsignedTx, inputIndex, previous.Value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	signature, err := ecdsa.ParseDERSignature(partial.Signature[:len(partial.Signature)-1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	publicKey, err := btcec.ParsePubKey(partial.PubKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !signature.Verify(hash, publicKey) {
+		t.Fatalf("input %d ECDSA signature does not verify", inputIndex)
+	}
+}
+
+func taprootSignatureForTransaction(t *testing.T, packet *psbt.Packet, transaction *wire.MsgTx, inputIndex int) []byte {
+	t.Helper()
+	fetcher := profilePrevOutFetcher(t, packet)
+	sigHashes := txscript.NewTxSigHashes(transaction, fetcher)
+	previous := fetcher.FetchPrevOutput(transaction.TxIn[inputIndex].PreviousOutPoint)
+	signature, err := txscript.RawTxInTaprootSignature(
+		transaction, sigHashes, inputIndex, previous.Value, previous.PkScript, nil, txscript.SigHashDefault, scalarKey(1),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return signature
+}
+
+func assertTaprootKeySpendSignature(t *testing.T, packet *psbt.Packet, inputIndex int, signature []byte) {
+	t.Helper()
+	fetcher := profilePrevOutFetcher(t, packet)
+	sigHashes := txscript.NewTxSigHashes(packet.UnsignedTx, fetcher)
+	previous := fetcher.FetchPrevOutput(packet.UnsignedTx.TxIn[inputIndex].PreviousOutPoint)
+	version, witnessProgram, err := txscript.ExtractWitnessProgramInfo(previous.PkScript)
+	if err != nil || version != 1 {
+		t.Fatalf("invalid Taproot previous output: version=%d err=%v", version, err)
+	}
+	if err := txscript.VerifyTaprootKeySpend(witnessProgram, signature, packet.UnsignedTx, inputIndex, fetcher, sigHashes, nil); err != nil {
+		t.Fatalf("input %d Taproot signature does not verify: %v", inputIndex, err)
+	}
+}
+
+func profilePrevOutFetcher(t *testing.T, packet *psbt.Packet) *txscript.MultiPrevOutFetcher {
+	t.Helper()
+	prevOuts := make(map[wire.OutPoint]*wire.TxOut, len(packet.Inputs))
+	for index, input := range packet.Inputs {
+		if input.WitnessUtxo == nil {
+			t.Fatalf("input %d has no witness previous output", index)
+		}
+		prevOuts[packet.UnsignedTx.TxIn[index].PreviousOutPoint] = input.WitnessUtxo
+	}
+	return txscript.NewMultiPrevOutFetcher(prevOuts)
 }
 
 func fixturePSBT(t *testing.T, inputs int) string {

@@ -12,6 +12,9 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/btcsuite/btcd/btcec/v2"
+	"github.com/btcsuite/btcd/btcec/v2/ecdsa"
+	"github.com/btcsuite/btcd/btcec/v2/schnorr"
 	"github.com/btcsuite/btcd/btcutil"
 	"github.com/btcsuite/btcd/btcutil/psbt"
 	"github.com/btcsuite/btcd/txscript"
@@ -34,6 +37,9 @@ const (
 var allowedFixtures = map[string]struct{}{
 	"happy-path":              {},
 	"bdk-finalize-regression": {},
+	"p2wpkh":                  {},
+	"p2wsh-2-of-3":            {},
+	"p2tr-keypath":            {},
 }
 
 type Implementation struct {
@@ -144,7 +150,7 @@ func (handler *Handler) HandleJSON(raw []byte, digest string) Response {
 			"operations":   []string{"hello", "inspect", "roundtrip", "sign", "finalize", "finalize-inputs"},
 			"roles":        []string{"parser", "signer", "finalizer"},
 			"psbtVersions": []int{0},
-			"scriptTypes":  []string{"p2wsh"},
+			"scriptTypes":  []string{"p2wpkh", "p2wsh", "p2tr-keypath"},
 			"features":     []string{"fixture-commitment-sha256"},
 		})
 	case "roundtrip":
@@ -233,6 +239,9 @@ func (handler *Handler) sign(value adapterRequest, digest string) Response {
 			indexes[index] = index
 		}
 	}
+	if isProfileSigningFixture(fixtureID) {
+		return handler.signProfile(value.ID, digest, packet, fixtureID, indexes)
+	}
 	key, publicKey, witnessScript, funding, class := handler.authorizeFixture(packet, fixtureID)
 	if class != "" {
 		return failure(value.ID, digest, "rejected", class, authorizationMessage(class))
@@ -271,10 +280,382 @@ func (handler *Handler) sign(value adapterRequest, digest string) Response {
 	return success(value.ID, digest, map[string]any{"psbt": encodedResult, "signedInputs": signed})
 }
 
+type profileKind uint8
+
+const (
+	profileP2WPKH profileKind = iota + 1
+	profileP2WSHMultisig
+	profileP2TRKeyPath
+)
+
+type profileAuthorization struct {
+	kind              profileKind
+	privateKey        *btcec.PrivateKey
+	publicKey         []byte
+	scriptCode        []byte
+	witnessScript     []byte
+	internalKey       []byte
+	allowedPublicKeys map[string]struct{}
+	funding           []*wire.TxOut
+	prevOutFetcher    *txscript.MultiPrevOutFetcher
+}
+
+func isProfileSigningFixture(fixtureID string) bool {
+	switch fixtureID {
+	case "p2wpkh", "p2wsh-2-of-3", "p2tr-keypath":
+		return true
+	default:
+		return false
+	}
+}
+
+func (handler *Handler) signProfile(id, digest string, packet *psbt.Packet, fixtureID string, indexes []int) Response {
+	authorization, class := handler.authorizeProfile(packet, fixtureID)
+	if class != "" {
+		return failure(id, digest, "rejected", class, authorizationMessage(class))
+	}
+	sigHashes := txscript.NewTxSigHashes(packet.UnsignedTx, authorization.prevOutFetcher)
+	if !verifyProfileSignatures(packet, authorization, sigHashes) {
+		return failure(id, digest, "rejected", "signing.signature_invalid", "An existing fixture signature is invalid")
+	}
+
+	var updater *psbt.Updater
+	if authorization.kind != profileP2TRKeyPath {
+		var err error
+		updater, err = psbt.NewUpdater(packet)
+		if err != nil {
+			return failure(id, digest, "rejected", "psbt.parse_failed", "PSBT could not be prepared for signing")
+		}
+	}
+
+	signed := 0
+	for _, index := range indexes {
+		previous := authorization.funding[index]
+		switch authorization.kind {
+		case profileP2WPKH, profileP2WSHMultisig:
+			if hasPartialSignature(packet.Inputs[index].PartialSigs, authorization.publicKey) {
+				signed++
+				continue
+			}
+			signature, err := txscript.RawTxInWitnessSignature(
+				packet.UnsignedTx,
+				sigHashes,
+				index,
+				previous.Value,
+				authorization.scriptCode,
+				txscript.SigHashAll,
+				authorization.privateKey,
+			)
+			if err != nil {
+				return failure(id, digest, "rejected", "signing.failed", "Fixture signing failed")
+			}
+			outcome, err := updater.Sign(index, signature, authorization.publicKey, nil, nil)
+			if err != nil || outcome != psbt.SignSuccesful {
+				return failure(id, digest, "rejected", "signing.failed", "Fixture signing failed")
+			}
+		case profileP2TRKeyPath:
+			signature, err := txscript.RawTxInTaprootSignature(
+				packet.UnsignedTx,
+				sigHashes,
+				index,
+				previous.Value,
+				previous.PkScript,
+				nil,
+				txscript.SigHashDefault,
+				authorization.privateKey,
+			)
+			if err != nil || len(signature) != schnorr.SignatureSize {
+				return failure(id, digest, "rejected", "signing.failed", "Fixture signing failed")
+			}
+			packet.Inputs[index].TaprootKeySpendSig = signature
+		default:
+			return failure(id, digest, "rejected", "signing.failed", "Fixture signing failed")
+		}
+		signed++
+	}
+
+	if !verifyProfileSignatures(packet, authorization, sigHashes) {
+		return failure(id, digest, "rejected", "signing.failed", "Fixture signing failed")
+	}
+	encodedResult, err := encodePSBT(packet)
+	if err != nil {
+		return failure(id, digest, "crashed", "adapter.serialize_failed", "PSBT could not be serialized")
+	}
+	return success(id, digest, map[string]any{"psbt": encodedResult, "signedInputs": signed})
+}
+
+func (handler *Handler) authorizeProfile(packet *psbt.Packet, fixtureID string) (*profileAuthorization, string) {
+	if class := handler.commitmentClass(fixtureID, packet); class != "" {
+		return nil, class
+	}
+	if packet == nil || packet.UnsignedTx == nil || len(packet.Inputs) == 0 ||
+		len(packet.Inputs) != len(packet.UnsignedTx.TxIn) {
+		return nil, "policy.psbt_not_authorized"
+	}
+
+	authorization, expectedPkScript, err := newProfileAuthorization(fixtureID)
+	if err != nil {
+		return nil, "policy.psbt_not_authorized"
+	}
+	authorization.funding = make([]*wire.TxOut, len(packet.Inputs))
+	prevOuts := make(map[wire.OutPoint]*wire.TxOut, len(packet.Inputs))
+	for index := range packet.Inputs {
+		input := &packet.Inputs[index]
+		txIn := packet.UnsignedTx.TxIn[index]
+		if txIn == nil || input.WitnessUtxo == nil || input.WitnessUtxo.Value < 0 ||
+			input.WitnessUtxo.Value > btcutil.MaxSatoshi ||
+			input.FinalScriptSig != nil || input.FinalScriptWitness != nil ||
+			!bytes.Equal(input.WitnessUtxo.PkScript, expectedPkScript) ||
+			!profileMetadataAuthorized(input, authorization) {
+			return nil, "policy.psbt_not_authorized"
+		}
+
+		previous := txIn.PreviousOutPoint
+		fullOutput, fullOutputPresent, fullOutputValid := referencedNonWitnessOutput(input.NonWitnessUtxo, previous)
+		if !fullOutputValid || (authorization.kind != profileP2TRKeyPath && !fullOutputPresent) {
+			return nil, "policy.psbt_not_authorized"
+		}
+		if fullOutputPresent && !txOutEqual(input.WitnessUtxo, fullOutput) {
+			return nil, "policy.psbt_not_authorized"
+		}
+
+		if existing := prevOuts[previous]; existing != nil && !txOutEqual(existing, input.WitnessUtxo) {
+			return nil, "policy.psbt_not_authorized"
+		}
+		authorization.funding[index] = input.WitnessUtxo
+		prevOuts[previous] = input.WitnessUtxo
+	}
+	authorization.prevOutFetcher = txscript.NewMultiPrevOutFetcher(prevOuts)
+	return authorization, ""
+}
+
+func newProfileAuthorization(fixtureID string) (*profileAuthorization, []byte, error) {
+	key1 := fixtureScalarKey(1)
+	publicKey1 := key1.PubKey().SerializeCompressed()
+	authorization := &profileAuthorization{allowedPublicKeys: make(map[string]struct{})}
+
+	switch fixtureID {
+	case "p2wpkh":
+		scriptCode, err := p2wpkhScriptCode(publicKey1)
+		if err != nil {
+			return nil, nil, err
+		}
+		authorization.kind = profileP2WPKH
+		authorization.privateKey = key1
+		authorization.publicKey = publicKey1
+		authorization.scriptCode = scriptCode
+		authorization.allowedPublicKeys[string(publicKey1)] = struct{}{}
+		return authorization, p2wpkhPkScript(publicKey1), nil
+
+	case "p2wsh-2-of-3":
+		publicKeys := [][]byte{
+			publicKey1,
+			fixtureScalarKey(2).PubKey().SerializeCompressed(),
+			fixtureScalarKey(3).PubKey().SerializeCompressed(),
+		}
+		witnessScript, err := orderedMultisigWitnessScript(publicKeys)
+		if err != nil {
+			return nil, nil, err
+		}
+		authorization.kind = profileP2WSHMultisig
+		authorization.privateKey = fixtureScalarKey(2)
+		authorization.publicKey = publicKeys[1]
+		authorization.scriptCode = witnessScript
+		authorization.witnessScript = witnessScript
+		for _, publicKey := range publicKeys {
+			authorization.allowedPublicKeys[string(publicKey)] = struct{}{}
+		}
+		return authorization, p2wshScript(witnessScript), nil
+
+	case "p2tr-keypath":
+		internalKey := schnorr.SerializePubKey(key1.PubKey())
+		pkScript, err := txscript.PayToTaprootScript(txscript.ComputeTaprootKeyNoScript(key1.PubKey()))
+		if err != nil {
+			return nil, nil, err
+		}
+		authorization.kind = profileP2TRKeyPath
+		authorization.privateKey = key1
+		authorization.publicKey = publicKey1
+		authorization.internalKey = internalKey
+		return authorization, pkScript, nil
+
+	default:
+		return nil, nil, fmt.Errorf("unknown signing profile")
+	}
+}
+
+func profileMetadataAuthorized(input *psbt.PInput, authorization *profileAuthorization) bool {
+	if input == nil || authorization == nil {
+		return false
+	}
+	switch authorization.kind {
+	case profileP2WPKH:
+		return (input.SighashType == 0 || input.SighashType == txscript.SigHashAll) &&
+			input.RedeemScript == nil && input.WitnessScript == nil &&
+			!hasTaprootMetadata(input)
+	case profileP2WSHMultisig:
+		return (input.SighashType == 0 || input.SighashType == txscript.SigHashAll) &&
+			input.RedeemScript == nil && bytes.Equal(input.WitnessScript, authorization.witnessScript) &&
+			!hasTaprootMetadata(input)
+	case profileP2TRKeyPath:
+		if input.SighashType != txscript.SigHashDefault || input.RedeemScript != nil || input.WitnessScript != nil ||
+			len(input.PartialSigs) != 0 || len(input.Bip32Derivation) != 0 ||
+			!bytes.Equal(input.TaprootInternalKey, authorization.internalKey) ||
+			len(input.TaprootScriptSpendSig) != 0 || len(input.TaprootLeafScript) != 0 || len(input.TaprootMerkleRoot) != 0 {
+			return false
+		}
+		for _, derivation := range input.TaprootBip32Derivation {
+			if derivation == nil || len(derivation.LeafHashes) != 0 || !bytes.Equal(derivation.XOnlyPubKey, authorization.internalKey) {
+				return false
+			}
+		}
+		return true
+	default:
+		return false
+	}
+}
+
+func hasTaprootMetadata(input *psbt.PInput) bool {
+	return len(input.TaprootKeySpendSig) != 0 || len(input.TaprootScriptSpendSig) != 0 ||
+		len(input.TaprootLeafScript) != 0 || len(input.TaprootBip32Derivation) != 0 ||
+		len(input.TaprootInternalKey) != 0 || len(input.TaprootMerkleRoot) != 0
+}
+
+func referencedNonWitnessOutput(transaction *wire.MsgTx, previous wire.OutPoint) (*wire.TxOut, bool, bool) {
+	if transaction == nil {
+		return nil, false, true
+	}
+	if transaction.TxHash() != previous.Hash || uint64(previous.Index) >= uint64(len(transaction.TxOut)) {
+		return nil, true, false
+	}
+	output := transaction.TxOut[previous.Index]
+	if output == nil {
+		return nil, true, false
+	}
+	return output, true, true
+}
+
+func txOutEqual(left, right *wire.TxOut) bool {
+	return left != nil && right != nil && left.Value == right.Value && bytes.Equal(left.PkScript, right.PkScript)
+}
+
+func verifyProfileSignatures(packet *psbt.Packet, authorization *profileAuthorization, sigHashes *txscript.TxSigHashes) bool {
+	if packet == nil || packet.UnsignedTx == nil || authorization == nil || sigHashes == nil ||
+		len(packet.Inputs) != len(authorization.funding) {
+		return false
+	}
+	for index, input := range packet.Inputs {
+		switch authorization.kind {
+		case profileP2WPKH, profileP2WSHMultisig:
+			hash, err := txscript.CalcWitnessSigHash(
+				authorization.scriptCode,
+				sigHashes,
+				txscript.SigHashAll,
+				packet.UnsignedTx,
+				index,
+				authorization.funding[index].Value,
+			)
+			if err != nil {
+				return false
+			}
+			for _, partial := range input.PartialSigs {
+				if partial == nil || len(partial.Signature) < 2 ||
+					partial.Signature[len(partial.Signature)-1] != byte(txscript.SigHashAll) {
+					return false
+				}
+				if _, ok := authorization.allowedPublicKeys[string(partial.PubKey)]; !ok {
+					return false
+				}
+				publicKey, err := btcec.ParsePubKey(partial.PubKey)
+				if err != nil {
+					return false
+				}
+				signature, err := ecdsa.ParseDERSignature(partial.Signature[:len(partial.Signature)-1])
+				if err != nil || !signature.Verify(hash, publicKey) {
+					return false
+				}
+			}
+
+		case profileP2TRKeyPath:
+			if len(input.TaprootKeySpendSig) == 0 {
+				continue
+			}
+			if len(input.TaprootKeySpendSig) != schnorr.SignatureSize {
+				return false
+			}
+			version, witnessProgram, err := txscript.ExtractWitnessProgramInfo(authorization.funding[index].PkScript)
+			if err != nil || version != 1 || len(witnessProgram) != schnorr.PubKeyBytesLen {
+				return false
+			}
+			if txscript.VerifyTaprootKeySpend(
+				witnessProgram,
+				input.TaprootKeySpendSig,
+				packet.UnsignedTx,
+				index,
+				authorization.prevOutFetcher,
+				sigHashes,
+				nil,
+			) != nil {
+				return false
+			}
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+func hasPartialSignature(partials []*psbt.PartialSig, publicKey []byte) bool {
+	for _, partial := range partials {
+		if partial != nil && bytes.Equal(partial.PubKey, publicKey) {
+			return true
+		}
+	}
+	return false
+}
+
+func fixtureScalarKey(value byte) *btcec.PrivateKey {
+	scalar := make([]byte, 32)
+	scalar[len(scalar)-1] = value
+	privateKey, _ := btcec.PrivKeyFromBytes(scalar)
+	return privateKey
+}
+
+func p2wpkhPkScript(publicKey []byte) []byte {
+	return append([]byte{txscript.OP_0, txscript.OP_DATA_20}, btcutil.Hash160(publicKey)...)
+}
+
+func p2wpkhScriptCode(publicKey []byte) ([]byte, error) {
+	return txscript.NewScriptBuilder().
+		AddOp(txscript.OP_DUP).
+		AddOp(txscript.OP_HASH160).
+		AddData(btcutil.Hash160(publicKey)).
+		AddOp(txscript.OP_EQUALVERIFY).
+		AddOp(txscript.OP_CHECKSIG).
+		Script()
+}
+
+func orderedMultisigWitnessScript(publicKeys [][]byte) ([]byte, error) {
+	if len(publicKeys) != 3 {
+		return nil, fmt.Errorf("multisig profile requires three keys")
+	}
+	return txscript.NewScriptBuilder().
+		AddOp(txscript.OP_2).
+		AddData(publicKeys[0]).
+		AddData(publicKeys[1]).
+		AddData(publicKeys[2]).
+		AddOp(txscript.OP_3).
+		AddOp(txscript.OP_CHECKMULTISIG).
+		Script()
+}
+
 func (handler *Handler) finalize(value adapterRequest, digest string) Response {
 	encoded, fixtureID, failureResponse := fixturePayload(value, digest, "psbt", "network", "fixtureId")
 	if failureResponse != nil {
 		return *failureResponse
+	}
+	if isProfileSigningFixture(fixtureID) {
+		return failure(value.ID, digest, "rejected", "policy.fixture_not_allowed", "Finalization is reserved for legacy fixtures")
 	}
 	_, packet, err := parsePSBT(encoded)
 	if err != nil {
