@@ -1,6 +1,6 @@
 {
   "name": "psbt-interop-lab",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Deterministic PSBT interoperability testing for Bitcoin software",
   "type": "module",
   "private": false,
@@ -31,14 +31,16 @@
     "adapters/rust-bitcoin/Dockerfile",
     "adapters/rust-bitcoin/src",
     "adapters/rust-bitcoin/tests",
-    "docs",
+    "docs/*.md",
     "README.md",
     "SECURITY.md",
     "psbt-interop-lab-threat-model.md",
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "generate:validators": "tsx scripts/generate-validators.ts",
+    "check:validators": "tsx scripts/generate-validators.ts --check",
+    "build": "pnpm generate:validators && tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -52,12 +54,12 @@
   },
   "packageManager": "pnpm@10.30.2",
   "dependencies": {
-    "ajv": "8.20.0",
     "commander": "15.0.0"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.4",
     "@types/node": "24.13.3",
+    "ajv": "8.20.0",
     "tsx": "4.23.1",
     "typescript": "7.0.2",
     "vitest": "4.1.10"

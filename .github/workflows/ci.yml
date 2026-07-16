@@ -32,6 +32,7 @@ jobs:
           cache: pnpm
           package-manager-cache: false
       - run: pnpm install --frozen-lockfile
+      - run: pnpm check:validators
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
@@ -73,7 +74,8 @@ jobs:
       - run: pnpm build
       - run: mkdir -p /tmp/psbt-package /tmp/psbt-install
       - run: npm pack --ignore-scripts --pack-destination /tmp/psbt-package
-      - run: npm install --prefix /tmp/psbt-install /tmp/psbt-package/psbt-interop-lab-0.3.0.tgz --ignore-scripts
+      - run: npm install --prefix /tmp/psbt-install /tmp/psbt-package/psbt-interop-lab-*.tgz --ignore-scripts
+      - run: test ! -d /tmp/psbt-install/node_modules/ajv
       - run: /tmp/psbt-install/node_modules/.bin/psbt-lab self-test
       - run: /tmp/psbt-install/node_modules/.bin/psbt-lab adapter --help
       - run: test -f /tmp/psbt-install/node_modules/psbt-interop-lab/compose.yaml
@@ -97,6 +99,7 @@ jobs:
           cache-dependency-path: adapters/btcsuite-go/go.sum
       - run: go test -count=1 ./...
       - run: go vet ./...
+      - run: go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...
 
   bitcoinjs-adapter:
     name: bitcoinjs-lib adapter

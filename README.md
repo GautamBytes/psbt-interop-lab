@@ -18,7 +18,7 @@ Requirements:
 - On ARM hosts, Docker must support `linux/amd64` emulation for the frozen BDK 2.3.1 specimen
 
 ```bash
-npm install --global psbt-interop-lab@0.3.0
+npm install --global psbt-interop-lab@0.3.1
 psbt-lab doctor
 psbt-lab self-test
 psbt-lab matrix
@@ -132,6 +132,7 @@ Read [SECURITY.md](SECURITY.md) and the
 ## Development
 
 ```bash
+pnpm check:validators
 pnpm lint
 pnpm typecheck
 pnpm test

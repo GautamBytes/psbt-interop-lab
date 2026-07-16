@@ -88,9 +88,11 @@ Python requirement.
   reference documents platform-dependent flag exposure, including `O_NOFOLLOW` where available.
 - [TypeScript documentation](https://www.typescriptlang.org/docs/) is the compiler and language
   reference. The exact compiler and npm dependency graph are locked by `pnpm-lock.yaml`.
-- [Ajv documentation](https://ajv.js.org/) and
-  [Commander documentation](https://github.com/tj/commander.js#readme) are the primary references
-  for strict JSON Schema validation and CLI parsing respectively.
+- [Ajv documentation](https://ajv.js.org/) and its
+  [standalone validation code](https://ajv.js.org/standalone.html) guide define the build-time JSON
+  Schema compiler used to generate runtime validators with no Ajv production dependency.
+- [Commander documentation](https://github.com/tj/commander.js#readme) is the primary reference for
+  CLI parsing.
 - [Vitest documentation](https://vitest.dev/guide/) defines the test-runner behavior used by the
   TypeScript suite.
 - [Docker Compose documentation](https://docs.docker.com/compose/) is the container orchestration
@@ -123,6 +125,9 @@ Python requirement.
   [RustSec `cargo-audit`](https://github.com/RustSec/rustsec/tree/main/cargo-audit) scanner are used
   for advisory checks. The npm production graph, frozen Python package, and committed Rust lockfile
   were queried separately.
+- The official Go
+  [`govulncheck`](https://go.dev/doc/tutorial/govulncheck) tool is pinned at v1.6.0 in CI and checks
+  whether known vulnerabilities are reachable from the btcsuite adapter.
 
 Version updates should change this ledger, the relevant lock/pin, and the expected self-reported
 adapter compatibility strings in the same pull request.

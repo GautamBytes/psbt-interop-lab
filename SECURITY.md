@@ -21,6 +21,26 @@ a minimal inherited environment, but it does not sandbox an arbitrary host execu
 manifest received from an untrusted person. Prefer a separately reviewed container command with the
 same restrictions as the built-in adapters.
 
+## Dependency And Scanner Status
+
+The installed CLI has one production dependency, Commander. Ajv is development-only: it compiles
+the protocol and manifest JSON Schemas into checked-in standalone validators, and CI verifies that
+the generated runtime code is current and contains no Ajv import or `require` call. The release
+tarball smoke test installs without lifecycle scripts and confirms that Ajv is absent.
+
+The btcsuite adapter pins `golang.org/x/crypto` v0.52.0 and its required
+`golang.org/x/sys` v0.45.0. CI runs the official `govulncheck` v1.6.0 against the adapter. On
+2026-07-16, `npm audit --omit=dev` reported zero vulnerabilities and `govulncheck` reported zero
+reachable or imported-package vulnerabilities.
+
+Some package scanners inspect every bundled Dockerfile and adapter lockfile as if it were part of
+the Node.js runtime. They may therefore report native code, install scripts, network or shell
+access, changing transitive ownership, or module-level advisories. Those capabilities are expected
+in a source-distributed interoperability lab that builds Rust, Go, Python, JavaScript, and Bitcoin
+Core containers. A capability alert is not evidence that the CLI executes that dependency during
+installation. Review reachable vulnerabilities and the controls in this document rather than
+treating aggregate capability counts as runtime findings.
+
 ## Protected Assets
 
 - Host files outside the chosen artifact directory

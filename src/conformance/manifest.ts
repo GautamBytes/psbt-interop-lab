@@ -1,8 +1,7 @@
 import { open } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
-import { Ajv } from "ajv";
+import { validateAdapterManifest as generatedValidateManifest } from "../generated/validators.js";
 import type { AdapterProcessOptions } from "../protocol/adapter-process.js";
-import manifestSchema from "./adapter-manifest.schema.json" with { type: "json" };
 
 export const ADAPTER_MANIFEST_SCHEMA = "psbt-lab.adapters/0.1" as const;
 const MAX_MANIFEST_BYTES = 1024 * 1024;
@@ -49,8 +48,17 @@ export interface AdapterManifest {
   readonly adapters: readonly ExternalAdapterDefinition[];
 }
 
-const ajv = new Ajv({ allErrors: true, strict: true });
-const validateManifest = ajv.compile<RawAdapterManifest>(manifestSchema);
+interface GeneratedValidationError {
+  readonly instancePath: string;
+  readonly message?: string;
+}
+
+interface GeneratedValidator<T> {
+  (value: unknown): value is T;
+  readonly errors?: readonly GeneratedValidationError[] | null;
+}
+
+const validateManifest = generatedValidateManifest as GeneratedValidator<RawAdapterManifest>;
 
 function manifestError(detail: string): TypeError {
   return new TypeError(`Invalid adapter manifest: ${detail}`);
