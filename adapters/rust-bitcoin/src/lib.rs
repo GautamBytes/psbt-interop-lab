@@ -1,12 +1,13 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use base64::{Engine as _, engine::general_purpose::STANDARD};
-use bitcoin::key::PrivateKey;
-use bitcoin::opcodes::all::OP_CHECKSIG;
-use bitcoin::psbt::{Psbt, SigningKeys};
+use bitcoin::key::{PrivateKey, TapTweak};
+use bitcoin::opcodes::all::{OP_CHECKMULTISIG, OP_CHECKSIG};
+use bitcoin::psbt::Psbt;
 use bitcoin::script::Builder;
-use bitcoin::secp256k1::Secp256k1;
-use bitcoin::{PublicKey, Witness};
+use bitcoin::secp256k1::{Keypair, Message, Secp256k1, XOnlyPublicKey};
+use bitcoin::sighash::{EcdsaSighashType, Prevouts, SighashCache, TapSighashType};
+use bitcoin::{PublicKey, ScriptBuf, TxOut, Witness, ecdsa, taproot};
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
@@ -15,7 +16,17 @@ pub const ADAPTER_PROTOCOL: &str = "psbt-lab.adapter/0.2";
 const MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
 const MAX_COMMITMENTS_BYTES: usize = 4 * 1024;
 const TEST_WIF: &str = "cMahea7zqjxrtgAbB7LSGbcQUr1uX1ojuat9jZodMN87JcbXMTcA";
-const ALLOWED_FIXTURES: [&str; 2] = ["happy-path", "bdk-finalize-regression"];
+const SCALAR_TWO_PUBLIC_KEY: &str =
+    "02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5";
+const SCALAR_THREE_PUBLIC_KEY: &str =
+    "02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9";
+const ALLOWED_FIXTURES: [&str; 5] = [
+    "happy-path",
+    "bdk-finalize-regression",
+    "p2wpkh",
+    "p2wsh-2-of-3",
+    "p2tr-keypath",
+];
 
 #[derive(Clone, Debug)]
 pub struct FixtureCommitments {
@@ -283,18 +294,98 @@ fn expected_witness_script(public_key: &PublicKey) -> bitcoin::ScriptBuf {
         .into_script()
 }
 
-fn validate_signing_scope(psbt: &Psbt, public_key: &PublicKey) -> Result<(), &'static str> {
+fn expected_multisig_witness_script(public_key: &PublicKey) -> Result<ScriptBuf, String> {
+    let scalar_two = SCALAR_TWO_PUBLIC_KEY
+        .parse::<PublicKey>()
+        .map_err(|_| "Built-in scalar-2 public key is invalid".to_owned())?;
+    let scalar_three = SCALAR_THREE_PUBLIC_KEY
+        .parse::<PublicKey>()
+        .map_err(|_| "Built-in scalar-3 public key is invalid".to_owned())?;
+    Ok(Builder::new()
+        .push_int(2)
+        .push_key(public_key)
+        .push_key(&scalar_two)
+        .push_key(&scalar_three)
+        .push_int(3)
+        .push_opcode(OP_CHECKMULTISIG)
+        .into_script())
+}
+
+#[derive(Clone, Debug)]
+enum SigningProfile {
+    P2wpkh {
+        script_pubkey: ScriptBuf,
+    },
+    P2wsh {
+        script_pubkey: ScriptBuf,
+        witness_script: ScriptBuf,
+    },
+    P2trKeypath {
+        script_pubkey: ScriptBuf,
+        internal_key: XOnlyPublicKey,
+    },
+}
+
+impl SigningProfile {
+    fn for_fixture(
+        fixture_id: &str,
+        public_key: &PublicKey,
+        private_key: &PrivateKey,
+        secp: &Secp256k1<bitcoin::secp256k1::All>,
+    ) -> Result<Self, String> {
+        match fixture_id {
+            "happy-path" | "bdk-finalize-regression" => {
+                let witness_script = expected_witness_script(public_key);
+                Ok(Self::P2wsh {
+                    script_pubkey: witness_script.to_p2wsh(),
+                    witness_script,
+                })
+            }
+            "p2wpkh" => Ok(Self::P2wpkh {
+                script_pubkey: ScriptBuf::new_p2wpkh(
+                    &public_key
+                        .wpubkey_hash()
+                        .map_err(|_| "Built-in fixture key must be compressed".to_owned())?,
+                ),
+            }),
+            "p2wsh-2-of-3" => {
+                let witness_script = expected_multisig_witness_script(public_key)?;
+                Ok(Self::P2wsh {
+                    script_pubkey: witness_script.to_p2wsh(),
+                    witness_script,
+                })
+            }
+            "p2tr-keypath" => {
+                let internal_key = Keypair::from_secret_key(secp, &private_key.inner)
+                    .x_only_public_key()
+                    .0;
+                Ok(Self::P2trKeypath {
+                    script_pubkey: ScriptBuf::new_p2tr(secp, internal_key, None),
+                    internal_key,
+                })
+            }
+            _ => Err("Unknown signing fixture".to_owned()),
+        }
+    }
+
+    fn has_fixture_signature(&self, psbt: &Psbt, index: usize, public_key: &PublicKey) -> bool {
+        match self {
+            Self::P2wpkh { .. } | Self::P2wsh { .. } => {
+                psbt.inputs[index].partial_sigs.contains_key(public_key)
+            }
+            Self::P2trKeypath { .. } => psbt.inputs[index].tap_key_sig.is_some(),
+        }
+    }
+}
+
+fn validated_prevouts(psbt: &Psbt) -> Result<Vec<TxOut>, &'static str> {
     if psbt.inputs.is_empty() || psbt.inputs.len() != psbt.unsigned_tx.input.len() {
         return Err("PSBT has no signable fixture inputs");
     }
-    let expected_script = expected_witness_script(public_key);
-    let expected_script_pubkey = expected_script.to_p2wsh();
 
+    let mut prevouts = Vec::with_capacity(psbt.inputs.len());
     for (index, input) in psbt.inputs.iter().enumerate() {
         let previous_output = &psbt.unsigned_tx.input[index].previous_output;
-        if input.witness_script.as_ref() != Some(&expected_script) {
-            return Err("Every input must use the lab wsh(pk(fixture-key)) witness script");
-        }
         let non_witness_output = if let Some(transaction) = input.non_witness_utxo.as_ref() {
             if transaction.compute_txid() != previous_output.txid {
                 return Err("A non-witness UTXO does not match its PSBT previous-output txid");
@@ -315,11 +406,193 @@ fn validate_signing_scope(psbt: &Psbt, public_key: &PublicKey) -> Result<(), &'s
             (Some(witness), _) => Some(witness),
             (None, full) => full,
         };
-        if funding_output.map(|output| &output.script_pubkey) != Some(&expected_script_pubkey) {
+        prevouts.push(
+            funding_output
+                .ok_or("Every input must provide its referenced UTXO")?
+                .clone(),
+        );
+    }
+    Ok(prevouts)
+}
+
+fn validate_profile_signing_scope(
+    psbt: &Psbt,
+    profile: &SigningProfile,
+) -> Result<Vec<TxOut>, &'static str> {
+    let prevouts = validated_prevouts(psbt)?;
+    for (input, funding_output) in psbt.inputs.iter().zip(&prevouts) {
+        match profile {
+            SigningProfile::P2wpkh { script_pubkey } => {
+                if &funding_output.script_pubkey != script_pubkey
+                    || input.witness_script.is_some()
+                    || input.redeem_script.is_some()
+                {
+                    return Err("Every P2WPKH input must spend the exact scalar-1 fixture script");
+                }
+                if input
+                    .sighash_type
+                    .is_some_and(|sighash_type| sighash_type != EcdsaSighashType::All.into())
+                {
+                    return Err("P2WPKH fixture inputs require SIGHASH_ALL");
+                }
+            }
+            SigningProfile::P2wsh {
+                script_pubkey,
+                witness_script,
+            } => {
+                if &funding_output.script_pubkey != script_pubkey
+                    || input.witness_script.as_ref() != Some(witness_script)
+                    || input.redeem_script.is_some()
+                {
+                    return Err("Every P2WSH input must spend its exact fixture witness script");
+                }
+                if input
+                    .sighash_type
+                    .is_some_and(|sighash_type| sighash_type != EcdsaSighashType::All.into())
+                {
+                    return Err("P2WSH fixture inputs require SIGHASH_ALL");
+                }
+            }
+            SigningProfile::P2trKeypath {
+                script_pubkey,
+                internal_key,
+            } => {
+                let has_script_path_origin = input
+                    .tap_key_origins
+                    .values()
+                    .any(|(leaf_hashes, _)| !leaf_hashes.is_empty());
+                if &funding_output.script_pubkey != script_pubkey
+                    || input.tap_internal_key != Some(*internal_key)
+                    || input.tap_merkle_root.is_some()
+                    || !input.tap_scripts.is_empty()
+                    || !input.tap_script_sigs.is_empty()
+                    || has_script_path_origin
+                    || input.witness_script.is_some()
+                    || input.redeem_script.is_some()
+                {
+                    return Err("Every Taproot input must be the exact scalar-1 key-path fixture");
+                }
+                if input
+                    .sighash_type
+                    .is_some_and(|sighash_type| sighash_type != TapSighashType::Default.into())
+                {
+                    return Err("Taproot key-path fixture inputs require SIGHASH_DEFAULT");
+                }
+            }
+        }
+    }
+    Ok(prevouts)
+}
+
+fn validate_legacy_finalization_scope(
+    psbt: &Psbt,
+    public_key: &PublicKey,
+) -> Result<(), &'static str> {
+    let prevouts = validated_prevouts(psbt)?;
+    let expected_script = expected_witness_script(public_key);
+    let expected_script_pubkey = expected_script.to_p2wsh();
+    for (input, funding_output) in psbt.inputs.iter().zip(prevouts) {
+        if input.witness_script.as_ref() != Some(&expected_script) {
+            return Err("Every input must use the lab wsh(pk(fixture-key)) witness script");
+        }
+        if funding_output.script_pubkey != expected_script_pubkey {
             return Err("Every input must spend the lab fixture script");
         }
     }
     Ok(())
+}
+
+fn manually_sign_inputs(
+    psbt: &mut Psbt,
+    profile: &SigningProfile,
+    prevouts: &[TxOut],
+    input_indexes: &[usize],
+    private_key: &PrivateKey,
+    public_key: &PublicKey,
+    secp: &Secp256k1<bitcoin::secp256k1::All>,
+) -> Result<usize, String> {
+    let transaction = psbt.unsigned_tx.clone();
+    let mut cache = SighashCache::new(&transaction);
+    match profile {
+        SigningProfile::P2wpkh { script_pubkey } => {
+            let mut signatures = Vec::with_capacity(input_indexes.len());
+            for &index in input_indexes {
+                let sighash = cache
+                    .p2wpkh_signature_hash(
+                        index,
+                        script_pubkey,
+                        prevouts[index].value,
+                        EcdsaSighashType::All,
+                    )
+                    .map_err(|error| format!("Input {index} P2WPKH sighash failed: {error}"))?;
+                signatures.push((
+                    index,
+                    ecdsa::Signature::sighash_all(
+                        secp.sign_ecdsa(&Message::from(sighash), &private_key.inner),
+                    ),
+                ));
+            }
+            for (index, signature) in signatures {
+                psbt.inputs[index]
+                    .partial_sigs
+                    .insert(*public_key, signature);
+            }
+        }
+        SigningProfile::P2wsh { witness_script, .. } => {
+            let mut signatures = Vec::with_capacity(input_indexes.len());
+            for &index in input_indexes {
+                let sighash = cache
+                    .p2wsh_signature_hash(
+                        index,
+                        witness_script,
+                        prevouts[index].value,
+                        EcdsaSighashType::All,
+                    )
+                    .map_err(|error| format!("Input {index} P2WSH sighash failed: {error}"))?;
+                signatures.push((
+                    index,
+                    ecdsa::Signature::sighash_all(
+                        secp.sign_ecdsa(&Message::from(sighash), &private_key.inner),
+                    ),
+                ));
+            }
+            for (index, signature) in signatures {
+                psbt.inputs[index]
+                    .partial_sigs
+                    .insert(*public_key, signature);
+            }
+        }
+        SigningProfile::P2trKeypath { .. } => {
+            let keypair = Keypair::from_secret_key(secp, &private_key.inner)
+                .tap_tweak(secp, None)
+                .to_keypair();
+            let mut signatures = Vec::with_capacity(input_indexes.len());
+            for &index in input_indexes {
+                let sighash = cache
+                    .taproot_key_spend_signature_hash(
+                        index,
+                        &Prevouts::All(prevouts),
+                        TapSighashType::Default,
+                    )
+                    .map_err(|error| format!("Input {index} Taproot sighash failed: {error}"))?;
+                signatures.push((
+                    index,
+                    taproot::Signature {
+                        signature: secp.sign_schnorr_no_aux_rand(&Message::from(sighash), &keypair),
+                        sighash_type: TapSighashType::Default,
+                    },
+                ));
+            }
+            for (index, signature) in signatures {
+                psbt.inputs[index].tap_key_sig = Some(signature);
+            }
+        }
+    }
+
+    Ok(input_indexes
+        .iter()
+        .filter(|&&index| profile.has_fixture_signature(psbt, index, public_key))
+        .count())
 }
 
 fn roundtrip(request: &Request, digest: &str) -> Value {
@@ -391,7 +664,7 @@ fn sign(request: &Request, digest: &str, commitments: &FixtureCommitments) -> Va
     };
     let input_indexes = if has_input_indexes {
         match requested_input_indexes(&request.payload, psbt.inputs.len()) {
-            Ok(indexes) => Some(indexes),
+            Ok(indexes) => indexes,
             Err(message) => {
                 return failure(
                     &request.id,
@@ -403,7 +676,7 @@ fn sign(request: &Request, digest: &str, commitments: &FixtureCommitments) -> Va
             }
         }
     } else {
-        None
+        (0..psbt.inputs.len()).collect()
     };
     if let Some(response) = commitment_failure(request, digest, commitments, fixture_id, &psbt) {
         return response;
@@ -420,110 +693,62 @@ fn sign(request: &Request, digest: &str, commitments: &FixtureCommitments) -> Va
             );
         }
     };
-    if let Err(message) = validate_signing_scope(&psbt, &public_key) {
+    let secp = Secp256k1::new();
+    let profile = match SigningProfile::for_fixture(fixture_id, &public_key, &private_key, &secp) {
+        Ok(profile) => profile,
+        Err(message) => {
+            return failure(
+                &request.id,
+                digest,
+                "crashed",
+                "adapter.fixture_key_invalid",
+                &message,
+            );
+        }
+    };
+    let prevouts = match validate_profile_signing_scope(&psbt, &profile) {
+        Ok(prevouts) => prevouts,
+        Err(message) => {
+            return failure(
+                &request.id,
+                digest,
+                "rejected",
+                "policy.psbt_not_authorized",
+                message,
+            );
+        }
+    };
+    let signed_inputs = match manually_sign_inputs(
+        &mut psbt,
+        &profile,
+        &prevouts,
+        &input_indexes,
+        &private_key,
+        &public_key,
+        &secp,
+    ) {
+        Ok(signed_inputs) => signed_inputs,
+        Err(message) => {
+            return failure(&request.id, digest, "rejected", "signing.failed", &message);
+        }
+    };
+    if signed_inputs != input_indexes.len() {
         return failure(
             &request.id,
             digest,
             "rejected",
-            "policy.psbt_not_authorized",
-            message,
-        );
-    }
-
-    let secp = Secp256k1::new();
-    let mut keys = BTreeMap::new();
-    keys.insert(public_key, private_key);
-    if let Some(input_indexes) = input_indexes {
-        let selected: BTreeSet<usize> = input_indexes.iter().copied().collect();
-        let mut skipped_derivations = Vec::new();
-        for (index, input) in psbt.inputs.iter_mut().enumerate() {
-            if !selected.contains(&index) {
-                skipped_derivations.push((index, std::mem::take(&mut input.bip32_derivation)));
-            }
-        }
-
-        let signing_result = psbt.sign(&keys, &secp);
-        for (index, derivation) in skipped_derivations {
-            psbt.inputs[index].bip32_derivation = derivation;
-        }
-
-        let (signing_keys, signing_errors) = match signing_result {
-            Ok(signing_keys) => (signing_keys, BTreeMap::new()),
-            Err((signing_keys, signing_errors)) => (signing_keys, signing_errors),
-        };
-        let signed_inputs = signing_keys
-            .iter()
-            .filter(|(index, signing_keys)| {
-                selected.contains(index)
-                    && match signing_keys {
-                        SigningKeys::Ecdsa(keys) => !keys.is_empty(),
-                        SigningKeys::Schnorr(keys) => !keys.is_empty(),
-                    }
-            })
-            .count();
-        let failed_inputs = signing_errors
-            .keys()
-            .filter(|index| selected.contains(*index))
-            .count();
-
-        if failed_inputs > 0 {
-            return failure(
-                &request.id,
-                digest,
-                "rejected",
-                "signing.failed",
-                &format!(
-                    "Signing completed {signed_inputs} input(s) but {failed_inputs} input(s) failed"
-                ),
-            );
-        }
-        if signed_inputs != input_indexes.len() {
-            return failure(
-                &request.id,
-                digest,
-                "rejected",
-                "signing.no_matching_key",
-                "The fixture key did not sign every selected input",
-            );
-        }
-        return success(
-            &request.id,
-            digest,
-            json!({
-                "psbt": encoded_psbt(&psbt),
-                "signedInputs": signed_inputs
-            }),
-        );
-    }
-
-    match psbt.sign(&keys, &secp) {
-        Ok(signing_keys) if !signing_keys.is_empty() => success(
-            &request.id,
-            digest,
-            json!({
-                "psbt": encoded_psbt(&psbt),
-                "signedInputs": signing_keys.len()
-            }),
-        ),
-        Ok(_) => failure(
-            &request.id,
-            digest,
-            "rejected",
             "signing.no_matching_key",
-            "The fixture key did not sign any input",
-        ),
-        Err((signing_keys, errors)) => failure(
-            &request.id,
-            digest,
-            "rejected",
-            "signing.failed",
-            &format!(
-                "Signing completed {} input(s) but {} input(s) failed",
-                signing_keys.len(),
-                errors.len()
-            ),
-        ),
+            "The fixture key did not sign every selected input",
+        );
     }
+    success(
+        &request.id,
+        digest,
+        json!({
+            "psbt": encoded_psbt(&psbt),
+            "signedInputs": signed_inputs
+        }),
+    )
 }
 
 fn finalize_inputs(request: &Request, digest: &str, commitments: &FixtureCommitments) -> Value {
@@ -584,7 +809,7 @@ fn finalize_inputs(request: &Request, digest: &str, commitments: &FixtureCommitm
             );
         }
     };
-    if let Err(message) = validate_signing_scope(&psbt, &public_key) {
+    if let Err(message) = validate_legacy_finalization_scope(&psbt, &public_key) {
         return failure(
             &request.id,
             digest,
@@ -711,7 +936,7 @@ pub fn handle_value_with_commitments(
                 "operations": ["hello", "roundtrip", "sign", "finalize-inputs"],
                 "roles": ["parser", "signer", "finalizer"],
                 "psbtVersions": [0],
-                "scriptTypes": ["p2wsh"],
+                "scriptTypes": ["p2wpkh", "p2wsh", "p2tr-keypath"],
                 "features": ["fixture-commitment-sha256"]
             }),
         ),

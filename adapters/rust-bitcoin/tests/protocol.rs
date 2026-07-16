@@ -6,9 +6,12 @@ use bitcoin::absolute::LockTime;
 use bitcoin::bip32::{DerivationPath, Fingerprint};
 use bitcoin::hashes::Hash;
 use bitcoin::hex::DisplayHex;
-use bitcoin::key::PrivateKey;
-use bitcoin::opcodes::all::OP_CHECKSIG;
+use bitcoin::key::{PrivateKey, TapTweak};
+use bitcoin::opcodes::all::{OP_CHECKMULTISIG, OP_CHECKSIG};
+use bitcoin::psbt::PsbtSighashType;
 use bitcoin::script::Builder;
+use bitcoin::secp256k1::{Keypair, Message, Secp256k1, SecretKey};
+use bitcoin::sighash::{EcdsaSighashType, Prevouts, SighashCache, TapSighashType};
 use bitcoin::transaction::Version;
 use bitcoin::{
     Amount, OutPoint, Psbt, ScriptBuf, Sequence, Transaction, TxIn, TxOut, Txid, Witness,
@@ -23,6 +26,7 @@ const CORE_TYPESCRIPT_UNSIGNED_TX_HEX: &str = "0200000001a6d3ba520dcfe2e1540e150
 const CORE_TYPESCRIPT_UNSIGNED_TX_COMMITMENT: &str =
     "sha256:2f46d1ac133fc2d11c6c267ae8a299eb19d688f9d1ea7d1fa0e178aaf339e4de";
 const FIXTURE_COMMITMENTS_ENV: &str = "PSBT_LAB_FIXTURE_COMMITMENTS";
+const FIXTURE_WIF: &str = "cMahea7zqjxrtgAbB7LSGbcQUr1uX1ojuat9jZodMN87JcbXMTcA";
 
 fn request(operation: &str, payload: Value) -> Value {
     json!({
@@ -91,6 +95,177 @@ fn handle_authorized(value: Value, fixture_id: &str, encoded: &str) -> Value {
     )
 }
 
+fn sign_profile(fixture_id: &str, encoded: &str, input_indexes: Option<Value>) -> Value {
+    let payload = match input_indexes {
+        Some(input_indexes) => json!({
+            "psbt": encoded,
+            "network": "regtest",
+            "fixtureId": fixture_id,
+            "inputIndexes": input_indexes
+        }),
+        None => json!({
+            "psbt": encoded,
+            "network": "regtest",
+            "fixtureId": fixture_id
+        }),
+    };
+    handle_authorized(request("sign", payload), fixture_id, encoded)
+}
+
+fn decode_psbt(encoded: &str) -> Psbt {
+    Psbt::deserialize(&STANDARD.decode(encoded).expect("base64 PSBT")).expect("valid PSBT")
+}
+
+fn scalar_secret_key(scalar: u8) -> SecretKey {
+    let mut bytes = [0_u8; 32];
+    bytes[31] = scalar;
+    SecretKey::from_slice(&bytes).expect("valid fixture scalar")
+}
+
+fn scalar_public_key(scalar: u8) -> bitcoin::PublicKey {
+    bitcoin::PublicKey::new(scalar_secret_key(scalar).public_key(&Secp256k1::new()))
+}
+
+fn scalar_xonly(scalar: u8) -> bitcoin::XOnlyPublicKey {
+    Keypair::from_secret_key(&Secp256k1::new(), &scalar_secret_key(scalar))
+        .x_only_public_key()
+        .0
+}
+
+fn multisig_witness_script() -> ScriptBuf {
+    Builder::new()
+        .push_int(2)
+        .push_key(&scalar_public_key(1))
+        .push_key(&scalar_public_key(2))
+        .push_key(&scalar_public_key(3))
+        .push_int(3)
+        .push_opcode(OP_CHECKMULTISIG)
+        .into_script()
+}
+
+fn unsigned_profile_fixture(fixture_id: &str, input_count: usize) -> String {
+    let secp = Secp256k1::new();
+    let fixture_public_key = scalar_public_key(1);
+    let (script_pubkey, witness_script, tap_internal_key) = match fixture_id {
+        "p2wpkh" => (
+            ScriptBuf::new_p2wpkh(&fixture_public_key.wpubkey_hash().expect("compressed key")),
+            None,
+            None,
+        ),
+        "p2wsh-2-of-3" => {
+            let witness_script = multisig_witness_script();
+            (witness_script.to_p2wsh(), Some(witness_script), None)
+        }
+        "p2tr-keypath" => {
+            let internal_key = scalar_xonly(1);
+            (
+                ScriptBuf::new_p2tr(&secp, internal_key, None),
+                None,
+                Some(internal_key),
+            )
+        }
+        _ => panic!("unsupported profile fixture"),
+    };
+    let funding_output = TxOut {
+        value: Amount::from_sat(50_000),
+        script_pubkey,
+    };
+    let spend = Transaction {
+        version: Version::TWO,
+        lock_time: LockTime::ZERO,
+        input: (0..input_count)
+            .map(|index| TxIn {
+                previous_output: OutPoint {
+                    txid: Txid::from_byte_array([u8::try_from(index + 1).expect("test index"); 32]),
+                    vout: 0,
+                },
+                script_sig: ScriptBuf::new(),
+                sequence: Sequence::ENABLE_RBF_NO_LOCKTIME,
+                witness: Witness::new(),
+            })
+            .collect(),
+        output: vec![TxOut {
+            value: Amount::from_sat(
+                u64::try_from(input_count).expect("test input count") * 50_000 - 10_000,
+            ),
+            script_pubkey: funding_output.script_pubkey.clone(),
+        }],
+    };
+    let mut psbt = Psbt::from_unsigned_tx(spend).expect("unsigned transaction");
+    for input in &mut psbt.inputs {
+        input.witness_utxo = Some(funding_output.clone());
+        input.witness_script = witness_script.clone();
+        input.tap_internal_key = tap_internal_key;
+        assert!(input.bip32_derivation.is_empty());
+        assert!(input.tap_key_origins.is_empty());
+    }
+    STANDARD.encode(psbt.serialize())
+}
+
+fn assert_valid_ecdsa_signature(psbt: &Psbt, input_index: usize) {
+    let public_key = scalar_public_key(1);
+    let input = &psbt.inputs[input_index];
+    let signature = input
+        .partial_sigs
+        .get(&public_key)
+        .expect("scalar-1 ECDSA signature");
+    assert_eq!(signature.sighash_type, EcdsaSighashType::All);
+    let funding_output = input.witness_utxo.as_ref().expect("witness UTXO");
+    let mut cache = SighashCache::new(&psbt.unsigned_tx);
+    let sighash = match input.witness_script.as_ref() {
+        Some(witness_script) => cache
+            .p2wsh_signature_hash(
+                input_index,
+                witness_script,
+                funding_output.value,
+                EcdsaSighashType::All,
+            )
+            .expect("P2WSH sighash"),
+        None => cache
+            .p2wpkh_signature_hash(
+                input_index,
+                &funding_output.script_pubkey,
+                funding_output.value,
+                EcdsaSighashType::All,
+            )
+            .expect("P2WPKH sighash"),
+    };
+    Secp256k1::verification_only()
+        .verify_ecdsa(
+            &Message::from(sighash),
+            &signature.signature,
+            &public_key.inner,
+        )
+        .expect("valid scalar-1 ECDSA signature");
+}
+
+fn assert_valid_taproot_signature(psbt: &Psbt, input_index: usize) {
+    let input = &psbt.inputs[input_index];
+    let signature = input.tap_key_sig.as_ref().expect("Taproot key signature");
+    assert_eq!(signature.sighash_type, TapSighashType::Default);
+    assert_eq!(signature.to_vec().len(), 64);
+    let prevouts = psbt
+        .inputs
+        .iter()
+        .map(|input| input.witness_utxo.clone().expect("validated prevout"))
+        .collect::<Vec<_>>();
+    let mut cache = SighashCache::new(&psbt.unsigned_tx);
+    let sighash = cache
+        .taproot_key_spend_signature_hash(
+            input_index,
+            &Prevouts::All(&prevouts),
+            TapSighashType::Default,
+        )
+        .expect("Taproot key-path sighash");
+    let secp = Secp256k1::verification_only();
+    let output_key = scalar_xonly(1)
+        .tap_tweak(&secp, None)
+        .0
+        .to_x_only_public_key();
+    secp.verify_schnorr(&signature.signature, &Message::from(sighash), &output_key)
+        .expect("valid tweaked scalar-1 Schnorr signature");
+}
+
 #[test]
 fn negotiates_supported_operations() {
     let response = handle_value(request("hello", json!({})), "sha256:deadbeef");
@@ -103,7 +278,7 @@ fn negotiates_supported_operations() {
             "operations": ["hello", "roundtrip", "sign", "finalize-inputs"],
             "roles": ["parser", "signer", "finalizer"],
             "psbtVersions": [0],
-            "scriptTypes": ["p2wsh"],
+            "scriptTypes": ["p2wpkh", "p2wsh", "p2tr-keypath"],
             "features": ["fixture-commitment-sha256"]
         })
     );
@@ -176,6 +351,111 @@ fn spawned_adapter_signs_with_valid_startup_fixture_commitments() {
 
     assert_eq!(response["status"], "ok", "{response}");
     assert_eq!(response["output"]["signedInputs"], 1);
+    assert_eq!(response_psbt(&response).inputs[0].partial_sigs.len(), 1);
+}
+
+#[test]
+fn signs_p2wpkh_without_derivation_metadata() {
+    let encoded = unsigned_profile_fixture("p2wpkh", 1);
+    let response = sign_profile("p2wpkh", &encoded, None);
+
+    assert_eq!(response["status"], "ok", "{response}");
+    assert_eq!(response["output"]["signedInputs"], 1);
+    let signed = response_psbt(&response);
+    assert_valid_ecdsa_signature(&signed, 0);
+}
+
+#[test]
+fn contributes_scalar_one_to_the_exact_ordered_two_of_three_script() {
+    let encoded = unsigned_profile_fixture("p2wsh-2-of-3", 1);
+    let response = sign_profile("p2wsh-2-of-3", &encoded, None);
+
+    assert_eq!(response["status"], "ok", "{response}");
+    assert_eq!(response["output"]["signedInputs"], 1);
+    let signed = response_psbt(&response);
+    assert_eq!(
+        signed.inputs[0].witness_script,
+        Some(multisig_witness_script())
+    );
+    assert_eq!(signed.inputs[0].partial_sigs.len(), 1);
+    assert_valid_ecdsa_signature(&signed, 0);
+}
+
+#[test]
+fn signs_exact_p2tr_keypath_with_default_sighash() {
+    let encoded = unsigned_profile_fixture("p2tr-keypath", 1);
+    let response = sign_profile("p2tr-keypath", &encoded, None);
+
+    assert_eq!(response["status"], "ok", "{response}");
+    assert_eq!(response["output"]["signedInputs"], 1);
+    let signed = response_psbt(&response);
+    assert_valid_taproot_signature(&signed, 0);
+}
+
+#[test]
+fn rejects_non_all_ecdsa_sighashes() {
+    for fixture_id in ["p2wpkh", "p2wsh-2-of-3"] {
+        let mut psbt = decode_psbt(&unsigned_profile_fixture(fixture_id, 1));
+        psbt.inputs[0].sighash_type = Some(PsbtSighashType::from(EcdsaSighashType::Single));
+        let encoded = STANDARD.encode(psbt.serialize());
+        let response = sign_profile(fixture_id, &encoded, None);
+
+        assert_eq!(response["status"], "rejected", "{fixture_id}: {response}");
+        assert_eq!(response["error"]["class"], "policy.psbt_not_authorized");
+        assert!(response.get("output").is_none());
+    }
+}
+
+#[test]
+fn rejects_non_default_taproot_sighashes() {
+    let mut psbt = decode_psbt(&unsigned_profile_fixture("p2tr-keypath", 1));
+    psbt.inputs[0].sighash_type = Some(PsbtSighashType::from(TapSighashType::All));
+    let encoded = STANDARD.encode(psbt.serialize());
+    let response = sign_profile("p2tr-keypath", &encoded, None);
+
+    assert_eq!(response["status"], "rejected", "{response}");
+    assert_eq!(response["error"]["class"], "policy.psbt_not_authorized");
+    assert!(response.get("output").is_none());
+}
+
+#[test]
+fn rejects_taproot_merkle_or_script_path_metadata() {
+    let mut psbt = decode_psbt(&unsigned_profile_fixture("p2tr-keypath", 1));
+    psbt.inputs[0].tap_merkle_root = Some(bitcoin::TapNodeHash::from_byte_array([1; 32]));
+    let encoded = STANDARD.encode(psbt.serialize());
+    let response = sign_profile("p2tr-keypath", &encoded, None);
+
+    assert_eq!(response["status"], "rejected", "{response}");
+    assert_eq!(response["error"]["class"], "policy.psbt_not_authorized");
+    assert!(response.get("output").is_none());
+}
+
+#[test]
+fn rejects_taproot_with_a_non_fixture_funding_script() {
+    let mut psbt = decode_psbt(&unsigned_profile_fixture("p2tr-keypath", 1));
+    psbt.inputs[0]
+        .witness_utxo
+        .as_mut()
+        .expect("witness UTXO")
+        .script_pubkey = ScriptBuf::new_p2tr(&Secp256k1::new(), scalar_xonly(2), None);
+    let encoded = STANDARD.encode(psbt.serialize());
+    let response = sign_profile("p2tr-keypath", &encoded, None);
+
+    assert_eq!(response["status"], "rejected", "{response}");
+    assert_eq!(response["error"]["class"], "policy.psbt_not_authorized");
+    assert!(response.get("output").is_none());
+}
+
+#[test]
+fn taproot_requires_all_prevouts_even_when_signing_one_selected_input() {
+    let mut psbt = decode_psbt(&unsigned_profile_fixture("p2tr-keypath", 2));
+    psbt.inputs[1].witness_utxo = None;
+    let encoded = STANDARD.encode(psbt.serialize());
+    let response = sign_profile("p2tr-keypath", &encoded, Some(json!([0])));
+
+    assert_eq!(response["status"], "rejected", "{response}");
+    assert_eq!(response["error"]["class"], "policy.psbt_not_authorized");
+    assert!(response.get("output").is_none());
 }
 
 #[test]
@@ -518,8 +798,7 @@ fn signed_two_input_fixture() -> String {
 }
 
 fn unsigned_two_input_fixture() -> String {
-    let key = PrivateKey::from_wif("cMahea7zqjxrtgAbB7LSGbcQUr1uX1ojuat9jZodMN87JcbXMTcA")
-        .expect("fixture key");
+    let key = PrivateKey::from_wif(FIXTURE_WIF).expect("fixture key");
     let public_key = key.public_key(&bitcoin::secp256k1::Secp256k1::new());
     let witness_script = Builder::new()
         .push_key(&public_key)
@@ -578,8 +857,7 @@ fn response_psbt(response: &Value) -> Psbt {
 
 #[test]
 fn refuses_a_non_witness_utxo_with_the_wrong_txid() {
-    let key = PrivateKey::from_wif("cMahea7zqjxrtgAbB7LSGbcQUr1uX1ojuat9jZodMN87JcbXMTcA")
-        .expect("fixture key");
+    let key = PrivateKey::from_wif(FIXTURE_WIF).expect("fixture key");
     let public_key = key.public_key(&bitcoin::secp256k1::Secp256k1::new());
     let witness_script = Builder::new()
         .push_key(&public_key)
@@ -641,8 +919,7 @@ fn refuses_a_non_witness_utxo_with_the_wrong_txid() {
 
 #[test]
 fn refuses_a_non_witness_utxo_with_an_out_of_range_vout() {
-    let key = PrivateKey::from_wif("cMahea7zqjxrtgAbB7LSGbcQUr1uX1ojuat9jZodMN87JcbXMTcA")
-        .expect("fixture key");
+    let key = PrivateKey::from_wif(FIXTURE_WIF).expect("fixture key");
     let public_key = key.public_key(&bitcoin::secp256k1::Secp256k1::new());
     let witness_script = Builder::new()
         .push_key(&public_key)
