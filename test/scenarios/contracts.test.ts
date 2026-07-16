@@ -8,9 +8,19 @@ import {
   assertAdapterHello,
   assertByteIdenticalRoundtrip,
   BITCOINJS_ADAPTER_CONTRACT,
+  type ExpectedAdapterContract,
   GO_ADAPTER_CONTRACT,
   RUST_ADAPTER_CONTRACT,
 } from "../../src/scenarios/contracts.js";
+
+function operationScriptTypes(contract: ExpectedAdapterContract): Record<string, JsonValue> {
+  return Object.fromEntries(
+    Object.entries(contract.operationScriptTypes).map(([operation, scriptTypes]) => [
+      operation,
+      [...scriptTypes],
+    ]),
+  );
+}
 
 const MINIMAL_PSBT =
   "cHNidP8BADwCAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/////wD/////AQAAAAAAAAAAAAAAAAAAAAA=";
@@ -41,6 +51,7 @@ function hello(
     roles: [...RUST_ADAPTER_CONTRACT.roles],
     psbtVersions: [0],
     scriptTypes: [...RUST_ADAPTER_CONTRACT.scriptTypes],
+    operationScriptTypes: operationScriptTypes(RUST_ADAPTER_CONTRACT),
     features: [...RUST_ADAPTER_CONTRACT.features],
   },
 ): AdapterResponse {
@@ -48,6 +59,13 @@ function hello(
 }
 
 describe("adapter contracts", () => {
+  test.each([RUST_ADAPTER_CONTRACT, GO_ADAPTER_CONTRACT, BITCOINJS_ADAPTER_CONTRACT])(
+    "$name declares modern SegWit and Taproot profile support",
+    (contract) => {
+      expect(contract.scriptTypes).toEqual(["p2wpkh", "p2wsh", "p2tr-keypath"]);
+    },
+  );
+
   test("rejects a lying byte-identical response", () => {
     const source = MINIMAL_PSBT;
     const changedBytes = Buffer.from(source, "base64");
@@ -78,6 +96,7 @@ describe("adapter contracts", () => {
         roles: [...RUST_ADAPTER_CONTRACT.roles],
         psbtVersions: [0],
         scriptTypes: [...RUST_ADAPTER_CONTRACT.scriptTypes],
+        operationScriptTypes: operationScriptTypes(RUST_ADAPTER_CONTRACT),
         features: [...RUST_ADAPTER_CONTRACT.features],
       },
     );
@@ -92,6 +111,7 @@ describe("adapter contracts", () => {
         roles: [...RUST_ADAPTER_CONTRACT.roles],
         psbtVersions: [2],
         scriptTypes: [...RUST_ADAPTER_CONTRACT.scriptTypes],
+        operationScriptTypes: operationScriptTypes(RUST_ADAPTER_CONTRACT),
         features: [...RUST_ADAPTER_CONTRACT.features],
       },
     );
@@ -109,13 +129,14 @@ describe("adapter contracts", () => {
         roles: [...RUST_ADAPTER_CONTRACT.roles],
         psbtVersions: [...RUST_ADAPTER_CONTRACT.psbtVersions],
         scriptTypes: [...RUST_ADAPTER_CONTRACT.scriptTypes],
+        operationScriptTypes: operationScriptTypes(RUST_ADAPTER_CONTRACT),
         features: [...RUST_ADAPTER_CONTRACT.features],
         [key]: [...value],
       },
     );
 
     expect(() => assertAdapterHello(response, RUST_ADAPTER_CONTRACT)).toThrow(
-      /omitted|does not support/i,
+      /omitted|does not support|undeclared/i,
     );
   });
 
@@ -129,6 +150,7 @@ describe("adapter contracts", () => {
         roles: [...RUST_ADAPTER_CONTRACT.roles],
         psbtVersions: [...RUST_ADAPTER_CONTRACT.psbtVersions],
         scriptTypes: [...RUST_ADAPTER_CONTRACT.scriptTypes],
+        operationScriptTypes: operationScriptTypes(RUST_ADAPTER_CONTRACT),
         features: [...RUST_ADAPTER_CONTRACT.features],
       },
     });
@@ -142,6 +164,7 @@ describe("adapter contracts", () => {
         roles: [...RUST_ADAPTER_CONTRACT.roles],
         psbtVersions: [...RUST_ADAPTER_CONTRACT.psbtVersions],
         scriptTypes: [...RUST_ADAPTER_CONTRACT.scriptTypes],
+        operationScriptTypes: operationScriptTypes(RUST_ADAPTER_CONTRACT),
         features: [],
       },
     );
@@ -166,6 +189,7 @@ describe("adapter contracts", () => {
           roles: [...contract.roles],
           psbtVersions: [...contract.psbtVersions],
           scriptTypes: [...contract.scriptTypes],
+          operationScriptTypes: operationScriptTypes(contract),
           features: [...contract.features],
         },
         implementation,

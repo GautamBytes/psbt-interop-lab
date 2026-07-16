@@ -4,10 +4,10 @@
 
 This model covers the local generated-regtest workflow and its separate GitHub-hosted build pipeline.
 Under the confirmed assumptions, no high or critical runtime threat remains: one trusted developer
-runs the CLI from a trusted host account and Docker daemon, and the signer uses only a public,
-valueless regtest key. The main security objectives are proof-result integrity, containment of the
-host, confidentiality of raw PSBT/script/UTXO artifact material, and bounded runtime and CI
-execution.
+runs the CLI from a trusted host account and Docker daemon, and the signing adapters use only public,
+valueless deterministic regtest keys. The main security objectives are proof-result integrity,
+containment of the host, confidentiality of raw PSBT/script/UTXO artifact material, and bounded
+runtime and CI execution.
 
 The controls fail closed on malformed adapter messages, changed round-trip PSBT bytes, mismatched
 Bitcoin Core RPC replies, an unexpected Core version, and replayed PSBT SHA256 mismatches. They do
@@ -38,7 +38,8 @@ out of scope.
 
 GitHub-hosted CI is a separate build-time boundary: no secrets, read-only repository permission,
 ephemeral runners, and the complete Docker proof only on trusted main-branch or manual runs.
-Pull-request code is untrusted and runs only the TypeScript, Rust, and frozen BDK build/test jobs.
+Pull-request code is untrusted and runs only the TypeScript, Rust, Go, JavaScript, and frozen BDK
+build/test jobs.
 The workflow in `.github/workflows/ci.yml` supplies `contents: read`, disables persisted checkout
 credentials, pins action revisions, sets per-job timeouts, and cancels superseded runs. A manual
 Docker proof is assumed to target a revision selected by a trusted maintainer. This workflow does not
@@ -58,6 +59,8 @@ flowchart TB
     Core["Bitcoin Core 31.1 regtest container"]
     CoreData["Writable named regtest data volume"]
     Rust["Networkless rust-bitcoin adapter"]
+    Go["Networkless btcsuite Go adapter"]
+    JS["Networkless bitcoinjs-lib adapter"]
     BDK["Networkless bdkpython 2.3.1 adapter"]
     Wire["Bounded PSBT wire parser"]
     Store["Private local artifact directory"]
@@ -66,6 +69,8 @@ flowchart TB
     CLI -->|"loopback HTTP JSON-RPC"| Core
     Core --> CoreData
     CLI <-->|"bounded stdin/stdout JSONL"| Rust
+    CLI <-->|"bounded stdin/stdout JSONL"| Go
+    CLI <-->|"bounded stdin/stdout JSONL"| JS
     CLI <-->|"bounded stdin/stdout JSONL"| BDK
     CLI -->|"canonical PSBTs"| Wire
     CLI -->|"atomic local writes"| Store
@@ -76,7 +81,7 @@ flowchart TB
   subgraph CI["Separate GitHub-hosted CI boundary"]
     Event["push, pull_request, or workflow_dispatch"]
     PR["Untrusted pull-request code"]
-    Checks["TypeScript, Rust, and BDK jobs"]
+    Checks["TypeScript, Rust, Go, JavaScript, and BDK jobs"]
     Gate{"main branch or trusted manual run?"}
     DockerProof["Complete Docker proof"]
     Skip["Docker proof skipped"]
@@ -99,8 +104,10 @@ The local components and their repository evidence are:
   requires the returned JSON-RPC ID to equal the request ID.
 - `prepareFixtures` in `src/core/fixtures.ts` requires regtest, zero peers, Bitcoin Core numeric
   version `310100`, and suite-generated PSBTv0 structure.
-- The Rust adapter in `adapters/rust-bitcoin/` signs only the two known fixture policies. The BDK
-  adapter in `adapters/bdkpython-2.3.1/` freezes the historical regression implementation.
+- The Rust, Go, and JavaScript adapters sign only declared suite fixture profiles whose unsigned
+  transactions match run-scoped commitments. Their hello responses declare script support per
+  operation so signing support is not mistaken for finalization support. The BDK adapter in
+  `adapters/bdkpython-2.3.1/` freezes the historical regression implementation.
 - `AdapterProcess.request` in `src/protocol/adapter-process.ts` mediates one bounded JSONL request at
   a time, validates response schemas and IDs, and terminates on timeout or protocol violation.
 - `extractWireFacts` in `src/psbt/wire-facts.ts` parses canonical, bounded PSBT framing independently
@@ -134,8 +141,9 @@ hostile:
 - Corrupted local artifact files, including truncation, digest mismatch, absolute or lexically
   escaping paths, final-component symlinks on platforms where Node exposes `O_NOFOLLOW`, oversized
   files, or a manifest with excessive checkpoints. Intermediate symlinks remain trusted.
-- Untrusted pull-request code running in the GitHub-hosted TypeScript, Rust, and BDK CI jobs and
-  attempting to consume compute, inspect the public checkout, or misuse job network access.
+- Untrusted pull-request code running in the GitHub-hosted TypeScript, Rust, Go, JavaScript, and BDK
+  CI jobs and attempting to consume compute, inspect the public checkout, or misuse job network
+  access.
 
 The model does not claim protection against the trusted host account deliberately rewriting all
 artifact files and hashes, a compromised Docker daemon or kernel escaping container controls, a
@@ -265,7 +273,8 @@ severity materially.
    secrets.
 2. Exact action commit pins prepare Node, pnpm, or Python. Lockfiles and requirement hashes constrain
    selected dependencies, while registries and the hosted platform remain external trust.
-3. The TypeScript, Rust, and BDK jobs execute build/test commands with 10- or 15-minute timeouts.
+3. The TypeScript, Rust, Go, JavaScript, and BDK jobs execute build/test commands with 10- or
+   15-minute timeouts.
    Workflow concurrency cancels superseded runs for the same workflow/ref. Pull-request code can
    alter those test and build scripts, so green means revision self-consistency rather than
    independent check integrity.

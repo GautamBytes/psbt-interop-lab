@@ -15,6 +15,7 @@ describe("fixture profile definitions", () => {
       "p2wsh-2-of-3",
       "p2tr-keypath",
       "mixed-p2wpkh-p2tr",
+      "intent-rich-p2wpkh",
     ]);
   });
 
@@ -44,6 +45,15 @@ describe("fixture profile definitions", () => {
         id: "mixed-p2wpkh-p2tr",
         scriptTypes: ["p2wpkh", "p2tr-keypath"],
         inputDescriptorIds: ["p2wpkh", "p2tr-keypath"],
+      },
+      {
+        id: "intent-rich-p2wpkh",
+        scriptTypes: ["p2wpkh"],
+        inputDescriptorIds: ["p2wpkh"],
+        outputDescriptorIds: ["p2wpkh", "p2tr-keypath"],
+        sequences: [0xffff_fffc],
+        locktime: 42,
+        transactionVersion: 2,
       },
     ]);
 

@@ -54,6 +54,7 @@ export type MissingCapabilityKind =
   | "role"
   | "psbtVersion"
   | "scriptType"
+  | "operationScriptType"
   | "feature";
 
 export interface MissingCapability {

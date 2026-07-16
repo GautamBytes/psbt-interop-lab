@@ -6,6 +6,8 @@ import type {
   AdapterResponse,
   NegotiatedAdapter,
 } from "../../src/protocol/types.js";
+import { extractTransactionIdentity } from "../../src/psbt/diff.js";
+import { parsePsbtDocument } from "../../src/psbt/document.js";
 import { extractWireFacts } from "../../src/psbt/wire-facts.js";
 import { createBdkRegressionScenario } from "../../src/scenarios/bdk-regression.js";
 import {
@@ -14,6 +16,7 @@ import {
 } from "../../src/scenarios/context.js";
 import { runScenarioCatalog } from "../../src/scenarios/engine.js";
 import { createHappyPathScenario } from "../../src/scenarios/happy-path.js";
+import * as interopMatrix from "../../src/scenarios/interop-matrix.js";
 import {
   createParallelCombineScenario,
   createRoundtripChainScenario,
@@ -28,6 +31,10 @@ import {
 const magic = Buffer.from("70736274ff", "hex");
 const fixturePublicKey = Buffer.from(
   "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+  "hex",
+);
+const fixturePublicKey2 = Buffer.from(
+  "02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
   "hex",
 );
 const partialSignature = Buffer.concat([
@@ -90,8 +97,51 @@ function encodedPsbt(inputMaps: readonly (readonly Buffer[])[], transactionFirst
   ]).toString("base64");
 }
 
+function intentPsbt(inputEntries: readonly Buffer[] = []): string {
+  const unsigned = Buffer.concat([
+    Buffer.from("02000000", "hex"),
+    Buffer.from([1]),
+    Buffer.alloc(32, 0x01),
+    Buffer.from("00000000", "hex"),
+    Buffer.from([0]),
+    Buffer.from("fcffffff", "hex"),
+    Buffer.from([2]),
+    Buffer.from("1027000000000000", "hex"),
+    Buffer.from([1, 0x51]),
+    Buffer.from("2823000000000000", "hex"),
+    Buffer.from([1, 0x00]),
+    Buffer.from("2a000000", "hex"),
+  ]);
+  return Buffer.concat([
+    magic,
+    map(entry(0x00, unsigned)),
+    map(...inputEntries),
+    map(),
+    map(),
+  ]).toString("base64");
+}
+
+function appendFirstInputEntry(psbt: string, added: Buffer): string {
+  const document = parsePsbtDocument(psbt);
+  const maps = document.maps.map((documentMap) => {
+    const entries = documentMap.entries.map((item) =>
+      entry(item.keyType, Buffer.from(item.value), Buffer.from(item.keyData)),
+    );
+    return documentMap.location.kind === "input" && documentMap.location.index === 0
+      ? map(...entries, added)
+      : map(...entries);
+  });
+  return Buffer.concat([magic, ...maps]).toString("base64");
+}
+
 function signedInput(): Buffer {
   return entry(0x02, partialSignature, fixturePublicKey);
+}
+
+function signedInput2(): Buffer {
+  const signature = Buffer.from(partialSignature);
+  signature[5] = 0x03;
+  return entry(0x02, signature, fixturePublicKey2);
 }
 
 function finalizedInput(): Buffer {
@@ -181,6 +231,11 @@ const rustNegotiated: NegotiatedAdapter = {
     roles: ["parser", "signer", "finalizer"],
     psbtVersions: [0],
     scriptTypes: ["p2wsh"],
+    operationScriptTypes: {
+      roundtrip: ["p2wsh"],
+      sign: ["p2wsh"],
+      "finalize-inputs": ["p2wsh"],
+    },
     features: ["fixture-commitment-sha256"],
   },
 };
@@ -191,6 +246,11 @@ const bdkNegotiated: NegotiatedAdapter = {
     roles: ["parser", "finalizer"],
     psbtVersions: [0],
     scriptTypes: ["p2wsh"],
+    operationScriptTypes: {
+      inspect: ["p2wsh"],
+      roundtrip: ["p2wsh"],
+      finalize: ["p2wsh"],
+    },
     features: ["historical-regression.bdk-wallet-488"],
   },
 };
@@ -201,6 +261,13 @@ const goNegotiated: NegotiatedAdapter = {
     roles: ["parser", "signer", "finalizer"],
     psbtVersions: [0],
     scriptTypes: ["p2wsh"],
+    operationScriptTypes: {
+      inspect: ["p2wsh"],
+      roundtrip: ["p2wsh"],
+      sign: ["p2wsh"],
+      finalize: ["p2wsh"],
+      "finalize-inputs": ["p2wsh"],
+    },
     features: ["fixture-commitment-sha256"],
   },
 };
@@ -217,6 +284,14 @@ const bitcoinjsNegotiated: NegotiatedAdapter = {
     roles: ["parser", "signer", "combiner", "finalizer"],
     psbtVersions: [0],
     scriptTypes: ["p2wsh"],
+    operationScriptTypes: {
+      inspect: ["p2wsh"],
+      roundtrip: ["p2wsh"],
+      sign: ["p2wsh"],
+      combine: ["p2wsh"],
+      finalize: ["p2wsh"],
+      "finalize-inputs": ["p2wsh"],
+    },
     features: ["fixture-commitment-sha256"],
   },
 };
@@ -322,6 +397,55 @@ describe("happy path scenario", () => {
 
     expect(result).toMatchObject({ id: "p2wsh-sign-btcsuite-go", outcome: "passed" });
     expect(go.requests.map(({ operation }) => operation)).toEqual(["roundtrip", "sign"]);
+  });
+
+  test("declares and executes a P2WPKH profile handoff without pretending it is P2WSH", async () => {
+    const initial = encodedPsbt([[]]);
+    const signed = encodedPsbt([[signedInput()]]);
+    const rust = adapter((request) =>
+      success(request, rustImplementation, {
+        psbt: request.operation === "sign" ? signed : initial,
+        ...(request.operation === "sign" ? { signedInputs: 1 } : {}),
+      }),
+    );
+    const context = executionContext(new Map([["rust-bitcoin", rust]]));
+    const p2wpkhFixture = {
+      ...fixture("p2wpkh", initial, 1),
+      scriptTypes: ["p2wpkh" as const],
+    };
+    const p2wpkhRust = {
+      ...rustNegotiated,
+      capabilities: {
+        ...rustNegotiated.capabilities,
+        scriptTypes: ["p2wpkh" as const, "p2wsh" as const],
+        operationScriptTypes: {
+          ...rustNegotiated.capabilities.operationScriptTypes,
+          roundtrip: ["p2wpkh" as const, "p2wsh" as const],
+          sign: ["p2wpkh" as const, "p2wsh" as const],
+        },
+      },
+    };
+
+    const scenario = createHappyPathScenario(p2wpkhFixture, {
+      adapter: "rust-bitcoin",
+      id: "p2wpkh-sign-rust-bitcoin",
+      title: "P2WPKH signing through rust-bitcoin",
+      scriptType: "p2wpkh",
+      signatureKeyTypes: [0x02],
+    });
+    expect(scenario.requirements).toMatchObject([{ scriptTypes: ["p2wpkh"] }]);
+
+    const [result] = await runScenarioCatalog(
+      [scenario],
+      context,
+      new Map([["rust-bitcoin", p2wpkhRust]]),
+    );
+
+    expect(result).toMatchObject({
+      id: "p2wpkh-sign-rust-bitcoin",
+      outcome: "passed",
+    });
+    expect(rust.requests.map(({ operation }) => operation)).toEqual(["roundtrip", "sign"]);
   });
 });
 
@@ -475,6 +599,198 @@ describe("BDK regression scenario", () => {
 });
 
 describe("active implementation matrix scenarios", () => {
+  test("exports a same-input 2-of-3 multisig interoperability scenario", () => {
+    expect(interopMatrix).toHaveProperty("createSameInputMultisigScenario");
+  });
+
+  test("exports the transaction-intent enrichment and executable scenario", () => {
+    expect(interopMatrix).toHaveProperty("enrichPsbtWithIntentMetadata");
+    expect(interopMatrix).toHaveProperty("createTransactionIntentScenario");
+  });
+
+  test("adds explicit sighash and derivation metadata without changing transaction intent", () => {
+    const initial = intentPsbt([entry(0x06, Buffer.from("751e76e8", "hex"), fixturePublicKey)]);
+    const intentFixture = {
+      ...fixture("intent-rich-p2wpkh", initial, 1),
+      outputCount: 2,
+      scriptTypes: ["p2wpkh" as const],
+    };
+
+    const enriched = interopMatrix.enrichPsbtWithIntentMetadata(intentFixture);
+    const before = parsePsbtDocument(initial);
+    const after = parsePsbtDocument(enriched);
+    const input = after.maps.find(
+      (candidate) => candidate.location.kind === "input" && candidate.location.index === 0,
+    );
+    const sighash = input?.entries.find(
+      (candidate) => candidate.keyType === 0x03 && candidate.keyData.length === 0,
+    );
+    const derivation = input?.entries.find(
+      (candidate) => candidate.keyType === 0x06 && candidate.keyData.equals(fixturePublicKey),
+    );
+
+    expect(sighash?.value.toString("hex")).toBe("01000000");
+    expect(derivation?.value.toString("hex")).toBe("751e76e8");
+    expect(extractTransactionIdentity(after)).toEqual(extractTransactionIdentity(before));
+  });
+
+  test("preserves rich transaction intent through three parsers, signing, and Core policy", async () => {
+    const initial = intentPsbt([entry(0x06, Buffer.from("751e76e8", "hex"), fixturePublicKey)]);
+    const intentFixture = {
+      ...fixture("intent-rich-p2wpkh", initial, 1),
+      outputCount: 2,
+      scriptTypes: ["p2wpkh" as const],
+    };
+    const enriched = interopMatrix.enrichPsbtWithIntentMetadata(intentFixture);
+    const signed = appendFirstInputEntry(enriched, signedInput());
+    const passthrough = (implementation: AdapterImplementation) =>
+      adapter((request) =>
+        success(request, implementation, {
+          psbt: request.operation === "sign" ? signed : (request.payload["psbt"] as string),
+          ...(request.operation === "sign" ? { signedInputs: 1 } : { byteIdentical: true }),
+        }),
+      );
+    const rust = passthrough(rustImplementation);
+    const go = passthrough(goImplementation);
+    const bitcoinjs = passthrough(bitcoinjsImplementation);
+    const context = executionContext(
+      new Map([
+        ["rust-bitcoin", rust],
+        ["btcsuite-go", go],
+        ["bitcoinjs-lib", bitcoinjs],
+      ]),
+    );
+    const withP2wpkh = (negotiated: NegotiatedAdapter): NegotiatedAdapter => ({
+      ...negotiated,
+      capabilities: {
+        ...negotiated.capabilities,
+        scriptTypes: ["p2wpkh", "p2wsh"],
+        operationScriptTypes: Object.fromEntries(
+          Object.entries(negotiated.capabilities.operationScriptTypes ?? {}).map(
+            ([operation, scriptTypes]) => [
+              operation,
+              operation === "roundtrip" || operation === "sign"
+                ? ["p2wpkh", ...scriptTypes]
+                : scriptTypes,
+            ],
+          ),
+        ),
+      },
+    });
+
+    const [result] = await runScenarioCatalog(
+      [interopMatrix.createTransactionIntentScenario(intentFixture)],
+      context,
+      new Map([
+        ["rust-bitcoin", withP2wpkh(rustNegotiated)],
+        ["btcsuite-go", withP2wpkh(goNegotiated)],
+        ["bitcoinjs-lib", withP2wpkh(bitcoinjsNegotiated)],
+      ]),
+    );
+
+    expect(result).toMatchObject({
+      id: "transaction-intent-preservation",
+      outcome: "passed",
+      policyAccepted: true,
+      assertions: expect.arrayContaining([
+        expect.objectContaining({
+          name: "expected-version-locktime-sequence-outputs",
+          passed: true,
+        }),
+        expect.objectContaining({ name: "explicit-sighash-and-derivation", passed: true }),
+        expect.objectContaining({ name: "rust-bitcoin-signing-transition", passed: true }),
+        expect.objectContaining({ name: "core-policy-accepted", passed: true }),
+      ]),
+    });
+    expect(rust.requests.map(({ operation }) => operation)).toEqual(["roundtrip", "sign"]);
+    expect(go.requests.map(({ operation }) => operation)).toEqual(["roundtrip"]);
+    expect(bitcoinjs.requests.map(({ operation }) => operation)).toEqual(["roundtrip"]);
+  });
+
+  test("combines two independent signatures on the same multisig input", async () => {
+    const initial = encodedPsbt([[]]);
+    const rustSigned = encodedPsbt([[signedInput()]]);
+    const bitcoinjsSigned = encodedPsbt([[signedInput2()]]);
+    const combined = encodedPsbt([[signedInput(), signedInput2()]]);
+    const rust = adapter((request) =>
+      success(request, rustImplementation, { psbt: rustSigned, signedInputs: 1 }),
+    );
+    const bitcoinjs = adapter((request) =>
+      success(request, bitcoinjsImplementation, {
+        psbt: request.operation === "combine" ? combined : bitcoinjsSigned,
+        ...(request.operation === "combine" ? { combinedCount: 2 } : { signedInputs: 1 }),
+      }),
+    );
+    const context = executionContext(
+      new Map([
+        ["rust-bitcoin", rust],
+        ["bitcoinjs-lib", bitcoinjs],
+      ]),
+    );
+
+    const [result] = await runScenarioCatalog(
+      [interopMatrix.createSameInputMultisigScenario(fixture("p2wsh-2-of-3", initial, 1))],
+      context,
+      new Map([
+        ["rust-bitcoin", rustNegotiated],
+        ["bitcoinjs-lib", bitcoinjsNegotiated],
+      ]),
+    );
+
+    expect(result).toMatchObject({
+      id: "same-input-2-of-3-multisig",
+      outcome: "passed",
+      policyAccepted: true,
+      assertions: expect.arrayContaining([
+        expect.objectContaining({ name: "rust-bitcoin-added-scalar-1", passed: true }),
+        expect.objectContaining({ name: "bitcoinjs-lib-added-scalar-2", passed: true }),
+        expect.objectContaining({ name: "combined-two-distinct-signatures", passed: true }),
+        expect.objectContaining({ name: "core-policy-accepted", passed: true }),
+      ]),
+    });
+    expect(rust.requests.map(({ operation }) => operation)).toEqual(["sign"]);
+    expect(bitcoinjs.requests.map(({ operation }) => operation)).toEqual(["sign", "combine"]);
+  });
+
+  test("fails same-input multisig when the combiner adds a field outside the exact union", async () => {
+    const initial = encodedPsbt([[]]);
+    const rustSigned = encodedPsbt([[signedInput()]]);
+    const bitcoinjsSigned = encodedPsbt([[signedInput2()]]);
+    const combined = encodedPsbt([[signedInput(), signedInput2()]]);
+    const contaminated = appendFirstInputEntry(combined, proprietaryEntry);
+    const rust = adapter((request) =>
+      success(request, rustImplementation, { psbt: rustSigned, signedInputs: 1 }),
+    );
+    const bitcoinjs = adapter((request) =>
+      success(request, bitcoinjsImplementation, {
+        psbt: request.operation === "combine" ? contaminated : bitcoinjsSigned,
+        ...(request.operation === "combine" ? { combinedCount: 2 } : { signedInputs: 1 }),
+      }),
+    );
+    const context = executionContext(
+      new Map([
+        ["rust-bitcoin", rust],
+        ["bitcoinjs-lib", bitcoinjs],
+      ]),
+    );
+
+    const [result] = await runScenarioCatalog(
+      [interopMatrix.createSameInputMultisigScenario(fixture("p2wsh-2-of-3", initial, 1))],
+      context,
+      new Map([
+        ["rust-bitcoin", rustNegotiated],
+        ["bitcoinjs-lib", bitcoinjsNegotiated],
+      ]),
+    );
+
+    expect(result).toMatchObject({
+      outcome: "failed",
+      assertions: expect.arrayContaining([
+        expect.objectContaining({ name: "combined-exact-field-union", passed: false }),
+      ]),
+    });
+  });
+
   test("roundtrips through four implementations before signing", async () => {
     const initial = encodedPsbt([[]]);
     const signed = encodedPsbt([[signedInput()]]);

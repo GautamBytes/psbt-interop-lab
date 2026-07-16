@@ -59,16 +59,28 @@ const TAPROOT_SCRIPT_PUBKEY = bitcoin.payments.p2tr({
 const SIGNING_POLICIES = new Map([
   [
     "happy-path",
-    { kind: "p2wsh-single-key", scriptPubKey: TEST_SCRIPT_PUBKEY, witnessScript: TEST_WITNESS_SCRIPT },
+    {
+      kind: "p2wsh-single-key",
+      scriptPubKey: TEST_SCRIPT_PUBKEY,
+      witnessScript: TEST_WITNESS_SCRIPT,
+    },
   ],
   [
     "bdk-finalize-regression",
-    { kind: "p2wsh-single-key", scriptPubKey: TEST_SCRIPT_PUBKEY, witnessScript: TEST_WITNESS_SCRIPT },
+    {
+      kind: "p2wsh-single-key",
+      scriptPubKey: TEST_SCRIPT_PUBKEY,
+      witnessScript: TEST_WITNESS_SCRIPT,
+    },
   ],
   ["p2wpkh", { kind: "p2wpkh", scriptPubKey: P2WPKH_SCRIPT_PUBKEY }],
   [
     "p2wsh-2-of-3",
-    { kind: "p2wsh-2-of-3", scriptPubKey: MULTISIG_SCRIPT_PUBKEY, witnessScript: MULTISIG_WITNESS_SCRIPT },
+    {
+      kind: "p2wsh-2-of-3",
+      scriptPubKey: MULTISIG_SCRIPT_PUBKEY,
+      witnessScript: MULTISIG_WITNESS_SCRIPT,
+    },
   ],
   ["p2tr-keypath", { kind: "p2tr-keypath", scriptPubKey: TAPROOT_SCRIPT_PUBKEY }],
 ]);
@@ -420,7 +432,8 @@ function validateProfileMetadata(input, policy) {
         input.tapInternalKey !== undefined &&
         sameBytes(input.tapInternalKey, TEST_X_ONLY_PUBLIC_KEY) &&
         !hasTaprootScriptPathMetadata(input) &&
-        (input.sighashType === undefined || input.sighashType === bitcoin.Transaction.SIGHASH_DEFAULT)
+        (input.sighashType === undefined ||
+          input.sighashType === bitcoin.Transaction.SIGHASH_DEFAULT)
       );
     default:
       return false;
@@ -434,7 +447,8 @@ function validateSigningScope(psbt, fixtureId) {
   for (let index = 0; index < psbt.inputCount; index += 1) {
     const input = psbt.data.inputs[index];
     const txInput = psbt.txInputs[index];
-    if (!input || !txInput || !validateFundingScope(input, txInput, policy.scriptPubKey)) return false;
+    if (!input || !txInput || !validateFundingScope(input, txInput, policy.scriptPubKey))
+      return false;
     if (input.finalScriptWitness) {
       if (policy.kind !== "p2wsh-single-key" || !validateFinalizedInput(psbt, index, input))
         return false;
@@ -475,9 +489,7 @@ function deterministicSigner(privateKey) {
 
 function taprootSigner() {
   const normalizedPrivateKey =
-    TEST_PUBLIC_KEY[0] === 3
-      ? Buffer.from(ecc.privateNegate(TEST_PRIVATE_KEY))
-      : TEST_PRIVATE_KEY;
+    TEST_PUBLIC_KEY[0] === 3 ? Buffer.from(ecc.privateNegate(TEST_PRIVATE_KEY)) : TEST_PRIVATE_KEY;
   const tweak = bitcoin.crypto.taggedHash("TapTweak", TEST_X_ONLY_PUBLIC_KEY);
   const tweakedPrivateKey = ecc.privateAdd(normalizedPrivateKey, tweak);
   if (!tweakedPrivateKey) throw new Error("fixture Taproot key tweak failed");
@@ -548,6 +560,14 @@ function handleHello(id, digest, payload) {
     roles: ["parser", "signer", "combiner", "finalizer"],
     psbtVersions: [0],
     scriptTypes: ["p2wpkh", "p2wsh", "p2tr-keypath"],
+    operationScriptTypes: {
+      inspect: ["p2wpkh", "p2wsh", "p2tr-keypath"],
+      roundtrip: ["p2wpkh", "p2wsh", "p2tr-keypath"],
+      sign: ["p2wpkh", "p2wsh", "p2tr-keypath"],
+      combine: ["p2wsh"],
+      finalize: ["p2wsh"],
+      "finalize-inputs": ["p2wsh"],
+    },
     features: ["fixture-commitment-sha256"],
   });
 }

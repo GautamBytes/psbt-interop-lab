@@ -34,6 +34,10 @@ export const adapterScriptTypes = [
 
 export type AdapterScriptType = (typeof adapterScriptTypes)[number];
 
+export type AdapterScriptOperation = Exclude<AdapterOperation, "hello">;
+
+export type OperationScriptTypes = Partial<Record<AdapterScriptOperation, AdapterScriptType[]>>;
+
 export type PsbtVersion = 0 | 2;
 
 export interface AdapterHelloCapabilities {
@@ -41,6 +45,7 @@ export interface AdapterHelloCapabilities {
   roles: AdapterRole[];
   psbtVersions: PsbtVersion[];
   scriptTypes: AdapterScriptType[];
+  operationScriptTypes?: OperationScriptTypes;
   features?: string[];
 }
 

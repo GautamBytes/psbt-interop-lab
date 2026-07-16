@@ -151,7 +151,14 @@ func (handler *Handler) HandleJSON(raw []byte, digest string) Response {
 			"roles":        []string{"parser", "signer", "finalizer"},
 			"psbtVersions": []int{0},
 			"scriptTypes":  []string{"p2wpkh", "p2wsh", "p2tr-keypath"},
-			"features":     []string{"fixture-commitment-sha256"},
+			"operationScriptTypes": map[string]any{
+				"inspect":         []string{"p2wpkh", "p2wsh", "p2tr-keypath"},
+				"roundtrip":       []string{"p2wpkh", "p2wsh", "p2tr-keypath"},
+				"sign":            []string{"p2wpkh", "p2wsh", "p2tr-keypath"},
+				"finalize":        []string{"p2wsh"},
+				"finalize-inputs": []string{"p2wsh"},
+			},
+			"features": []string{"fixture-commitment-sha256"},
 		})
 	case "roundtrip":
 		return roundtrip(value, digest)

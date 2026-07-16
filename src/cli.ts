@@ -19,7 +19,7 @@ import { verifyReplay } from "./runner/replay.js";
 import { PROOF_SCENARIOS, runProof } from "./scenarios/proof.js";
 import { runCommand } from "./system/command.js";
 
-const VERSION = "0.1.0";
+const VERSION = "0.2.0";
 const PROJECT_DIRECTORY = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const DEFAULT_RPC_URL = "http://127.0.0.1:18443";
 const DEFAULT_RPC_USER = "psbtlab";

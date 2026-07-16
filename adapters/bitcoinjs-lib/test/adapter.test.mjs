@@ -105,9 +105,7 @@ function deterministicSigner(privateKey) {
 
 function taprootSigner() {
   const normalizedPrivateKey =
-    TEST_PUBLIC_KEY[0] === 3
-      ? Buffer.from(ecc.privateNegate(TEST_PRIVATE_KEY))
-      : TEST_PRIVATE_KEY;
+    TEST_PUBLIC_KEY[0] === 3 ? Buffer.from(ecc.privateNegate(TEST_PRIVATE_KEY)) : TEST_PRIVATE_KEY;
   const tweak = bitcoin.crypto.taggedHash("TapTweak", TEST_X_ONLY_PUBLIC_KEY);
   const tweakedPrivateKey = ecc.privateAdd(normalizedPrivateKey, tweak);
   assert.ok(tweakedPrivateKey);
@@ -145,10 +143,7 @@ function profileConfig(fixtureId, psbt) {
 }
 
 function signProfile(psbt, fixtureId) {
-  return response(
-    request("sign", signingPayload(psbt, fixtureId)),
-    profileConfig(fixtureId, psbt),
-  );
+  return response(request("sign", signingPayload(psbt, fixtureId)), profileConfig(fixtureId, psbt));
 }
 
 function partialSignatureHex(input) {
@@ -183,6 +178,14 @@ test("hello advertises only proven PSBTv0 operations and script types", () => {
     roles: ["parser", "signer", "combiner", "finalizer"],
     psbtVersions: [0],
     scriptTypes: ["p2wpkh", "p2wsh", "p2tr-keypath"],
+    operationScriptTypes: {
+      inspect: ["p2wpkh", "p2wsh", "p2tr-keypath"],
+      roundtrip: ["p2wpkh", "p2wsh", "p2tr-keypath"],
+      sign: ["p2wpkh", "p2wsh", "p2tr-keypath"],
+      combine: ["p2wsh"],
+      finalize: ["p2wsh"],
+      "finalize-inputs": ["p2wsh"],
+    },
     features: ["fixture-commitment-sha256"],
   });
   assertSchemaShape(result);
@@ -412,9 +415,7 @@ test("scalar 2 contributes its deterministic signature to the exact ordered 2-of
   assert.deepEqual(
     bitcoin.script
       .decompile(signed.data.inputs[0].witnessScript)
-      .map((item) =>
-        item instanceof Uint8Array ? Buffer.from(item).toString("hex") : item,
-      ),
+      .map((item) => (item instanceof Uint8Array ? Buffer.from(item).toString("hex") : item)),
     [
       bitcoin.opcodes.OP_2,
       TEST_PUBLIC_KEY.toString("hex"),
@@ -534,7 +535,13 @@ test("rejects Taproot internal-key, script-path, and non-default sighash metadat
   const nonDefaultSighash = profilePsbt("p2tr-keypath").psbt;
   nonDefaultSighash.updateInput(0, { sighashType: bitcoin.Transaction.SIGHASH_ALL });
 
-  for (const psbt of [wrongInternalKey, merkleRoot, leafScript, scriptSignature, nonDefaultSighash]) {
+  for (const psbt of [
+    wrongInternalKey,
+    merkleRoot,
+    leafScript,
+    scriptSignature,
+    nonDefaultSighash,
+  ]) {
     const result = signProfile(psbt, "p2tr-keypath");
     assert.equal(result.status, "rejected");
     assert.equal(result.error.class, "policy.psbt_not_authorized");

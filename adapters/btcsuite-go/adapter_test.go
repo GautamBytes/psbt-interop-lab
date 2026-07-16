@@ -37,7 +37,14 @@ func TestHelloAdvertisesOnlyImplementedCapabilities(t *testing.T) {
 		"roles":        []any{"parser", "signer", "finalizer"},
 		"psbtVersions": []any{float64(0)},
 		"scriptTypes":  []any{"p2wpkh", "p2wsh", "p2tr-keypath"},
-		"features":     []any{"fixture-commitment-sha256"},
+		"operationScriptTypes": map[string]any{
+			"inspect":         []any{"p2wpkh", "p2wsh", "p2tr-keypath"},
+			"roundtrip":       []any{"p2wpkh", "p2wsh", "p2tr-keypath"},
+			"sign":            []any{"p2wpkh", "p2wsh", "p2tr-keypath"},
+			"finalize":        []any{"p2wsh"},
+			"finalize-inputs": []any{"p2wsh"},
+		},
+		"features": []any{"fixture-commitment-sha256"},
 	}
 	if !jsonEqual(response.Output, want) {
 		t.Fatalf("hello output = %#v, want %#v", response.Output, want)

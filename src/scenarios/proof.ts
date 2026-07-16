@@ -18,7 +18,12 @@ import {
 import type { ScenarioDefinition } from "./definition.js";
 import { runScenarioCatalog } from "./engine.js";
 import { classifyHappyPath, createHappyPathScenario } from "./happy-path.js";
-import { createParallelCombineScenario, createRoundtripChainScenario } from "./interop-matrix.js";
+import {
+  createParallelCombineScenario,
+  createRoundtripChainScenario,
+  createSameInputMultisigScenario,
+  createTransactionIntentScenario,
+} from "./interop-matrix.js";
 import { createInvalidInputScenario } from "./invalid-inputs.js";
 import { createMetadataPreservationScenario } from "./metadata-preservation.js";
 
@@ -68,6 +73,41 @@ export const PROOF_SCENARIOS: readonly ProofScenarioSummary[] = [
     category: "cross-library-signing",
   },
   {
+    id: "p2wpkh-sign-rust-bitcoin",
+    title: "P2WPKH signing through rust-bitcoin",
+    category: "cross-library-signing",
+  },
+  {
+    id: "p2wpkh-sign-btcsuite-go",
+    title: "P2WPKH signing through btcsuite",
+    category: "cross-library-signing",
+  },
+  {
+    id: "p2wpkh-sign-bitcoinjs-lib",
+    title: "P2WPKH signing through bitcoinjs-lib",
+    category: "cross-library-signing",
+  },
+  {
+    id: "p2tr-keypath-sign-rust-bitcoin",
+    title: "Taproot key-path signing through rust-bitcoin",
+    category: "taproot-key-path",
+  },
+  {
+    id: "p2tr-keypath-sign-btcsuite-go",
+    title: "Taproot key-path signing through btcsuite",
+    category: "taproot-key-path",
+  },
+  {
+    id: "p2tr-keypath-sign-bitcoinjs-lib",
+    title: "Taproot key-path signing through bitcoinjs-lib",
+    category: "taproot-key-path",
+  },
+  {
+    id: "same-input-2-of-3-multisig",
+    title: "Cross-library 2-of-3 multisig signing",
+    category: "cross-library-multisig",
+  },
+  {
     id: "four-library-roundtrip-chain",
     title: "Four-library roundtrip and signing chain",
     category: "multi-library-handoff",
@@ -76,6 +116,11 @@ export const PROOF_SCENARIOS: readonly ProofScenarioSummary[] = [
     id: "parallel-sign-and-combine",
     title: "Parallel rust-bitcoin and btcsuite signing",
     category: "parallel-signing",
+  },
+  {
+    id: "transaction-intent-preservation",
+    title: "Transaction intent preservation",
+    category: "transaction-intent",
   },
   {
     id: "invalid-and-unsupported-inputs",
@@ -235,8 +280,55 @@ export function createProofCatalog(
       id: "p2wsh-sign-bitcoinjs-lib",
       title: "Core to bitcoinjs-lib signing handoff",
     }),
+    createHappyPathScenario(fixtures.profiles.p2wpkh, {
+      adapter: "rust-bitcoin",
+      id: "p2wpkh-sign-rust-bitcoin",
+      title: "P2WPKH signing through rust-bitcoin",
+      scriptType: "p2wpkh",
+      signatureKeyTypes: [0x02],
+    }),
+    createHappyPathScenario(fixtures.profiles.p2wpkh, {
+      adapter: "btcsuite-go",
+      id: "p2wpkh-sign-btcsuite-go",
+      title: "P2WPKH signing through btcsuite",
+      scriptType: "p2wpkh",
+      signatureKeyTypes: [0x02],
+    }),
+    createHappyPathScenario(fixtures.profiles.p2wpkh, {
+      adapter: "bitcoinjs-lib",
+      id: "p2wpkh-sign-bitcoinjs-lib",
+      title: "P2WPKH signing through bitcoinjs-lib",
+      scriptType: "p2wpkh",
+      signatureKeyTypes: [0x02],
+    }),
+    createHappyPathScenario(fixtures.profiles["p2tr-keypath"], {
+      adapter: "rust-bitcoin",
+      id: "p2tr-keypath-sign-rust-bitcoin",
+      title: "Taproot key-path signing through rust-bitcoin",
+      category: "taproot-key-path",
+      scriptType: "p2tr-keypath",
+      signatureKeyTypes: [0x13],
+    }),
+    createHappyPathScenario(fixtures.profiles["p2tr-keypath"], {
+      adapter: "btcsuite-go",
+      id: "p2tr-keypath-sign-btcsuite-go",
+      title: "Taproot key-path signing through btcsuite",
+      category: "taproot-key-path",
+      scriptType: "p2tr-keypath",
+      signatureKeyTypes: [0x13],
+    }),
+    createHappyPathScenario(fixtures.profiles["p2tr-keypath"], {
+      adapter: "bitcoinjs-lib",
+      id: "p2tr-keypath-sign-bitcoinjs-lib",
+      title: "Taproot key-path signing through bitcoinjs-lib",
+      category: "taproot-key-path",
+      scriptType: "p2tr-keypath",
+      signatureKeyTypes: [0x13],
+    }),
+    createSameInputMultisigScenario(fixtures.profiles["p2wsh-2-of-3"]),
     createRoundtripChainScenario(fixtures.happy),
     createParallelCombineScenario(fixtures.regression),
+    createTransactionIntentScenario(fixtures.profiles["intent-rich-p2wpkh"]),
     createInvalidInputScenario(fixtures.happy),
     createMetadataPreservationScenario(fixtures.happy),
     createBdkRegressionScenario(fixtures.regression),
@@ -281,19 +373,30 @@ export async function runProofWithDependencies(
   const artifacts = await dependencies.createArtifacts(resolve(options.artifactRoot), runId);
   const fixtures = await dependencies.prepareFixtures(options.rpc);
   const timeoutMs = options.adapterTimeoutMs ?? 60_000;
-  const commitmentConfiguration = serializeFixtureCommitments([
+  const commonCommitmentConfiguration = serializeFixtureCommitments([
     fixtures.happy,
     fixtures.regression,
+    fixtures.profiles.p2wpkh,
+    fixtures.profiles["p2wsh-2-of-3"],
+    fixtures.profiles["p2tr-keypath"],
+  ] satisfies readonly PsbtFixture[]);
+  const rustCommitmentConfiguration = serializeFixtureCommitments([
+    fixtures.happy,
+    fixtures.regression,
+    fixtures.profiles.p2wpkh,
+    fixtures.profiles["p2wsh-2-of-3"],
+    fixtures.profiles["p2tr-keypath"],
+    fixtures.profiles["intent-rich-p2wpkh"],
   ] satisfies readonly PsbtFixture[]);
   const projectDirectory = resolve(options.projectDirectory);
   const rust = dependencies.createAdapter(RUST_IMAGE, projectDirectory, {
-    env: { [FIXTURE_COMMITMENTS_ENV]: commitmentConfiguration },
+    env: { [FIXTURE_COMMITMENTS_ENV]: rustCommitmentConfiguration },
   });
   const go = dependencies.createAdapter(GO_IMAGE, projectDirectory, {
-    env: { [FIXTURE_COMMITMENTS_ENV]: commitmentConfiguration },
+    env: { [FIXTURE_COMMITMENTS_ENV]: commonCommitmentConfiguration },
   });
   const bitcoinjs = dependencies.createAdapter(BITCOINJS_IMAGE, projectDirectory, {
-    env: { [FIXTURE_COMMITMENTS_ENV]: commitmentConfiguration },
+    env: { [FIXTURE_COMMITMENTS_ENV]: commonCommitmentConfiguration },
   });
   const bdk = dependencies.createAdapter(BDK_IMAGE, projectDirectory, {
     platform: "linux/amd64",

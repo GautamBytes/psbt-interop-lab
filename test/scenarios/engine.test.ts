@@ -19,6 +19,11 @@ const rustAdapter: NegotiatedAdapter = {
     roles: ["parser", "signer", "finalizer"],
     psbtVersions: [0],
     scriptTypes: ["p2wsh"],
+    operationScriptTypes: {
+      roundtrip: ["p2wsh"],
+      sign: ["p2wsh"],
+      "finalize-inputs": ["p2wsh"],
+    },
     features: ["fixture-commitment-sha256"],
   },
 };
@@ -104,6 +109,50 @@ describe("scenario engine", () => {
           adapter: "rust-bitcoin",
           kind: "feature",
           value: "taproot-sighash-validation",
+        },
+      ],
+    });
+  });
+
+  test("does not treat operation and script capabilities as an unrestricted cross-product", async () => {
+    const run = vi.fn(async () => ({ assertions: passingEvidence("unexpected-run") }));
+    const operationScopedAdapter = {
+      ...rustAdapter,
+      capabilities: {
+        ...rustAdapter.capabilities,
+        scriptTypes: ["p2wsh", "p2tr-keypath"],
+        operationScriptTypes: {
+          roundtrip: ["p2wsh", "p2tr-keypath"],
+          sign: ["p2wsh", "p2tr-keypath"],
+          "finalize-inputs": ["p2wsh"],
+        },
+      },
+    } as unknown as NegotiatedAdapter;
+
+    const [result] = await runScenarioCatalog(
+      [
+        scenario("taproot-finalize", run, {
+          requirements: [
+            {
+              adapter: "rust-bitcoin",
+              operations: ["finalize-inputs"],
+              scriptTypes: ["p2tr-keypath"],
+            },
+          ],
+        }),
+      ],
+      { calls: [] },
+      new Map([["rust-bitcoin", operationScopedAdapter]]),
+    );
+
+    expect(run).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      outcome: "unsupported",
+      missingCapabilities: [
+        {
+          adapter: "rust-bitcoin",
+          kind: "operationScriptType",
+          value: "finalize-inputs:p2tr-keypath",
         },
       ],
     });

@@ -279,6 +279,11 @@ fn negotiates_supported_operations() {
             "roles": ["parser", "signer", "finalizer"],
             "psbtVersions": [0],
             "scriptTypes": ["p2wpkh", "p2wsh", "p2tr-keypath"],
+            "operationScriptTypes": {
+                "roundtrip": ["p2wpkh", "p2wsh", "p2tr-keypath"],
+                "sign": ["p2wpkh", "p2wsh", "p2tr-keypath"],
+                "finalize-inputs": ["p2wsh"]
+            },
             "features": ["fixture-commitment-sha256"]
         })
     );

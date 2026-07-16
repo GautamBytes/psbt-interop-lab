@@ -80,6 +80,19 @@ function missingForRequirement(
     requirement.scriptTypes,
     capabilities.scriptTypes,
   );
+  for (const operation of requirement.operations ?? []) {
+    if (operation === "hello" || !capabilities.operations.includes(operation)) continue;
+    for (const scriptType of requirement.scriptTypes ?? []) {
+      if (!capabilities.scriptTypes.includes(scriptType)) continue;
+      if (!(capabilities.operationScriptTypes?.[operation]?.includes(scriptType) ?? false)) {
+        missing.push({
+          adapter: requirement.adapter,
+          kind: "operationScriptType",
+          value: `${operation}:${scriptType}`,
+        });
+      }
+    }
+  }
   appendMissing(
     missing,
     requirement.adapter,

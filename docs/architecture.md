@@ -34,8 +34,10 @@ IDs, and fixture preparation requires Bitcoin Core numeric version `310100`.
 
 ### Bitcoin Core fixture source and oracle
 
-Core 31.1 mines a local regtest chain, funds the known public P2WSH descriptor, creates PSBTv0 with
-`createpsbt`, and fills UTXO/script metadata with `utxoupdatepsbt`. At the end of each path,
+Core 31.1 mines a local regtest chain and funds deterministic public P2WPKH, single-key and 2-of-3
+P2WSH, and P2TR key-path descriptors. It creates PSBTv0 with `createpsbt` and fills UTXO/script
+metadata with `utxoupdatepsbt`. Intent fixtures add multiple outputs, RBF sequence, non-zero
+locktime, explicit sighash type, and derivation metadata. At the end of each signing path,
 `finalizepsbt` extracts the transaction and `testmempoolaccept` checks current consensus and mempool
 policy without broadcasting it.
 
@@ -55,6 +57,10 @@ supply any schema-valid self-reported digest; the runner does not compare a pinn
 These values are not cryptographic attestation of the running image. Dockerfile base digests,
 downloaded checksums, and dependency hashes support reproducible build selection rather than
 runtime provenance.
+
+Hello capabilities declare script support per operation. This prevents broad parsing or signing
+support from being interpreted as support for finalizing the same script type; scenarios with an
+unsupported operation/script pair are reported as unsupported before execution.
 
 The Rust, Go, and JavaScript adapters sign and finalize only known run-committed fixture inputs.
 The Python adapter freezes the affected `bdkpython` 2.3.1 wheel and exposes round-trip/finalize
@@ -101,10 +107,16 @@ The detailed assumptions, abuse paths, and residual risks are recorded in the
 
 ## Proof Scenarios
 
-The executable catalog currently contains ten scenarios. Three independent Core-to-library handoffs
-exercise rust-bitcoin, btcsuite, and bitcoinjs signing. A four-library chain proves byte-semantic
-preservation across BDK, Rust, Go, and JavaScript. A parallel path has Rust sign input zero and Go
-sign input one, then requires bitcoinjs to combine the union before Core accepts it.
+The executable catalog currently contains 18 scenarios. Nine independent Core-to-library handoffs
+exercise rust-bitcoin, btcsuite, and bitcoinjs signing for P2WSH, P2WPKH, and P2TR key-path inputs.
+A same-input 2-of-3 scenario has Rust and JavaScript sign independent PSBT copies, combines their
+partial signatures, and requires Core to finalize the union. A four-library chain proves
+byte-semantic preservation across BDK, Rust, Go, and JavaScript. A parallel path has Rust sign input
+zero and Go sign input one, then requires bitcoinjs to combine the union before Core accepts it.
+
+The transaction-intent scenario roundtrips a multi-output P2WPKH fixture through all three current
+adapters, signs it, and verifies transaction version, output amounts and scripts, RBF sequence,
+non-zero locktime, explicit `SIGHASH_ALL`, and BIP32 derivation metadata before Core finalization.
 
 The rejection matrix runs five malformed or undeclared PSBT cases through all four parsers. The
 metadata scenario injects valid BIP174 proprietary entries into every global, input, and output map

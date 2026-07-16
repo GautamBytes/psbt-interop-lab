@@ -144,6 +144,11 @@ def handle_request(value, digest):
                 "roles": ["parser", "finalizer"],
                 "psbtVersions": [0],
                 "scriptTypes": ["p2wsh"],
+                "operationScriptTypes": {
+                    "inspect": ["p2wsh"],
+                    "roundtrip": ["p2wsh"],
+                    "finalize": ["p2wsh"],
+                },
                 "features": ["historical-regression.bdk-wallet-488"],
             },
         )

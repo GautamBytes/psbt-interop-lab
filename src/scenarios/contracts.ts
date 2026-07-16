@@ -3,6 +3,7 @@ import type {
   AdapterOperation,
   AdapterResponse,
   AdapterRole,
+  AdapterScriptOperation,
   AdapterScriptType,
   AdapterSuccessResponse,
   NegotiatedAdapter,
@@ -18,6 +19,9 @@ export interface ExpectedAdapterContract {
   roles: readonly AdapterRole[];
   psbtVersions: readonly PsbtVersion[];
   scriptTypes: readonly AdapterScriptType[];
+  operationScriptTypes: Readonly<
+    Partial<Record<AdapterScriptOperation, readonly AdapterScriptType[]>>
+  >;
   features?: readonly string[];
 }
 
@@ -28,7 +32,12 @@ export const RUST_ADAPTER_CONTRACT = {
   operations: ["hello", "roundtrip", "sign", "finalize-inputs"],
   roles: ["parser", "signer", "finalizer"],
   psbtVersions: [0],
-  scriptTypes: ["p2wsh"],
+  scriptTypes: ["p2wpkh", "p2wsh", "p2tr-keypath"],
+  operationScriptTypes: {
+    roundtrip: ["p2wpkh", "p2wsh", "p2tr-keypath"],
+    sign: ["p2wpkh", "p2wsh", "p2tr-keypath"],
+    "finalize-inputs": ["p2wsh"],
+  },
   features: ["fixture-commitment-sha256"],
 } as const satisfies ExpectedAdapterContract;
 
@@ -39,7 +48,14 @@ export const GO_ADAPTER_CONTRACT = {
   operations: ["hello", "inspect", "roundtrip", "sign", "finalize", "finalize-inputs"],
   roles: ["parser", "signer", "finalizer"],
   psbtVersions: [0],
-  scriptTypes: ["p2wsh"],
+  scriptTypes: ["p2wpkh", "p2wsh", "p2tr-keypath"],
+  operationScriptTypes: {
+    inspect: ["p2wpkh", "p2wsh", "p2tr-keypath"],
+    roundtrip: ["p2wpkh", "p2wsh", "p2tr-keypath"],
+    sign: ["p2wpkh", "p2wsh", "p2tr-keypath"],
+    finalize: ["p2wsh"],
+    "finalize-inputs": ["p2wsh"],
+  },
   features: ["fixture-commitment-sha256"],
 } as const satisfies ExpectedAdapterContract;
 
@@ -50,7 +66,15 @@ export const BITCOINJS_ADAPTER_CONTRACT = {
   operations: ["hello", "inspect", "roundtrip", "sign", "combine", "finalize", "finalize-inputs"],
   roles: ["parser", "signer", "combiner", "finalizer"],
   psbtVersions: [0],
-  scriptTypes: ["p2wsh"],
+  scriptTypes: ["p2wpkh", "p2wsh", "p2tr-keypath"],
+  operationScriptTypes: {
+    inspect: ["p2wpkh", "p2wsh", "p2tr-keypath"],
+    roundtrip: ["p2wpkh", "p2wsh", "p2tr-keypath"],
+    sign: ["p2wpkh", "p2wsh", "p2tr-keypath"],
+    combine: ["p2wsh"],
+    finalize: ["p2wsh"],
+    "finalize-inputs": ["p2wsh"],
+  },
   features: ["fixture-commitment-sha256"],
 } as const satisfies ExpectedAdapterContract;
 
@@ -62,6 +86,11 @@ export const BDK_ADAPTER_CONTRACT = {
   roles: ["parser", "finalizer"],
   psbtVersions: [0],
   scriptTypes: ["p2wsh"],
+  operationScriptTypes: {
+    inspect: ["p2wsh"],
+    roundtrip: ["p2wsh"],
+    finalize: ["p2wsh"],
+  },
   features: ["historical-regression.bdk-wallet-488"],
 } as const satisfies ExpectedAdapterContract;
 
@@ -103,6 +132,14 @@ export function assertAdapterHello(
     capabilities.psbtVersions,
   );
   requireCapabilities(expected.name, "script type", expected.scriptTypes, capabilities.scriptTypes);
+  for (const [operation, scriptTypes] of Object.entries(expected.operationScriptTypes)) {
+    requireCapabilities(
+      expected.name,
+      `${operation} script type`,
+      scriptTypes,
+      capabilities.operationScriptTypes?.[operation as AdapterScriptOperation] ?? [],
+    );
+  }
   requireCapabilities(
     expected.name,
     "feature",

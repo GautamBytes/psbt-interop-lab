@@ -15,7 +15,8 @@ Python requirement.
   per-input/per-output transaction fields. The wire parser validates PSBTv2 and the rejection matrix
   uses the official required-fields vector, while signing scenarios use Core-created PSBTv0.
 - [BIP371: Taproot Fields for PSBT](https://bips.dev/371/) defines Taproot key, signature, leaf,
-  derivation, internal-key, and tree fields. The semantic parser validates their field layouts.
+  derivation, internal-key, and tree fields. The semantic parser validates their field layouts, and
+  active scenarios create, key-path sign, finalize, and policy-check Core-generated P2TR PSBTs.
 
 ## Bitcoin Core
 

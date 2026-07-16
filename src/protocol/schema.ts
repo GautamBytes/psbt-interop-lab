@@ -137,6 +137,49 @@ const helloCapabilitiesSchema = {
       uniqueItems: true,
       items: { type: "string", enum: [...adapterScriptTypes] },
     },
+    operationScriptTypes: {
+      type: "object",
+      additionalProperties: false,
+      required: [],
+      properties: {
+        inspect: {
+          type: "array",
+          maxItems: adapterScriptTypes.length,
+          uniqueItems: true,
+          items: { type: "string", enum: [...adapterScriptTypes] },
+        },
+        roundtrip: {
+          type: "array",
+          maxItems: adapterScriptTypes.length,
+          uniqueItems: true,
+          items: { type: "string", enum: [...adapterScriptTypes] },
+        },
+        sign: {
+          type: "array",
+          maxItems: adapterScriptTypes.length,
+          uniqueItems: true,
+          items: { type: "string", enum: [...adapterScriptTypes] },
+        },
+        combine: {
+          type: "array",
+          maxItems: adapterScriptTypes.length,
+          uniqueItems: true,
+          items: { type: "string", enum: [...adapterScriptTypes] },
+        },
+        finalize: {
+          type: "array",
+          maxItems: adapterScriptTypes.length,
+          uniqueItems: true,
+          items: { type: "string", enum: [...adapterScriptTypes] },
+        },
+        "finalize-inputs": {
+          type: "array",
+          maxItems: adapterScriptTypes.length,
+          uniqueItems: true,
+          items: { type: "string", enum: [...adapterScriptTypes] },
+        },
+      },
+    },
     features: {
       type: "array",
       maxItems: 64,
@@ -175,11 +218,36 @@ export function parseAdapterHelloCapabilities(value: unknown): AdapterHelloCapab
     const errors = describeErrors(validateHelloCapabilities.errors).join("; ");
     throw new Error(`Invalid adapter hello capabilities: ${errors}`);
   }
-  return {
+  const capabilities: AdapterHelloCapabilities = {
     operations: [...value.operations],
     roles: [...value.roles],
     psbtVersions: [...value.psbtVersions],
     scriptTypes: [...value.scriptTypes],
+    ...(value.operationScriptTypes === undefined
+      ? {}
+      : {
+          operationScriptTypes: Object.fromEntries(
+            Object.entries(value.operationScriptTypes).map(([operation, scriptTypes]) => [
+              operation,
+              [...scriptTypes],
+            ]),
+          ),
+        }),
     ...(value.features === undefined ? {} : { features: [...value.features] }),
   };
+  for (const [operation, scriptTypes] of Object.entries(capabilities.operationScriptTypes ?? {})) {
+    if (!capabilities.operations.includes(operation as (typeof capabilities.operations)[number])) {
+      throw new Error(
+        `Invalid adapter hello capabilities: operationScriptTypes declares unsupported operation ${operation}`,
+      );
+    }
+    for (const scriptType of scriptTypes ?? []) {
+      if (!capabilities.scriptTypes.includes(scriptType)) {
+        throw new Error(
+          `Invalid adapter hello capabilities: ${operation} declares undeclared script type ${scriptType}`,
+        );
+      }
+    }
+  }
+  return capabilities;
 }

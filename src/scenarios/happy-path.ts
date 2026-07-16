@@ -1,3 +1,4 @@
+import type { FixtureScriptType } from "../core/fixture-profiles.js";
 import type { PsbtFixture } from "../core/fixtures.js";
 import type { CorePolicyResult, ScenarioExecutionContext } from "./context.js";
 import type { ScenarioDefinition, ScenarioExecutionOutput } from "./definition.js";
@@ -21,6 +22,9 @@ export interface SigningHandoffScenarioOptions {
   readonly adapter: string;
   readonly id: string;
   readonly title: string;
+  readonly category?: string;
+  readonly scriptType?: FixtureScriptType;
+  readonly signatureKeyTypes?: readonly number[];
 }
 
 const DEFAULT_HANDOFF_OPTIONS: SigningHandoffScenarioOptions = {
@@ -34,18 +38,23 @@ export function createHappyPathScenario(
   options: SigningHandoffScenarioOptions = DEFAULT_HANDOFF_OPTIONS,
 ): ScenarioDefinition<ScenarioExecutionContext> {
   const assertionPrefix = options.adapter === "rust-bitcoin" ? "rust" : options.adapter;
+  const scriptType = options.scriptType ?? "p2wsh";
+  const signatureKeyTypes = options.signatureKeyTypes ?? [0x02, 0x13, 0x14];
+  if (!fixture.scriptTypes.includes(scriptType)) {
+    throw new Error(`Fixture ${fixture.id} does not contain declared script type ${scriptType}`);
+  }
   return {
     id: options.id,
     title: options.title,
-    category: "cross-library-signing",
-    summary: "A Core-created P2WSH PSBT survives rust-bitcoin signing and Core finalization.",
+    category: options.category ?? "cross-library-signing",
+    summary: `A Core-created ${scriptType} PSBT survives ${options.adapter} signing and Core finalization.`,
     requirements: [
       {
         adapter: options.adapter,
         operations: ["roundtrip", "sign"],
         roles: ["parser", "signer"],
         psbtVersions: [0],
-        scriptTypes: ["p2wsh"],
+        scriptTypes: [scriptType],
         features: ["fixture-commitment-sha256"],
       },
     ],
@@ -85,7 +94,7 @@ export function createHappyPathScenario(
           `${assertionPrefix}-added-signature`,
           roundtripPsbt,
           signedPsbt,
-          [0x02, 0x13, 0x14],
+          signatureKeyTypes,
         ),
       );
       await context.checkpoint(options.id, `${assertionPrefix}-signed`, signedPsbt);

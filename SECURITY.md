@@ -26,16 +26,24 @@ abuse paths and residual-risk calibration.
 
 ### Signing restrictions
 
-The Rust adapter has no generic private-key input. It recognizes only `network=regtest`, one of two
-fixture identifiers, the expected scalar-one public key, the expected witness script, matching
-funding scripts, and internally consistent full/witness UTXO data. A request outside that policy is
-rejected. The scalar-one WIF in the adapter is a widely known test value and must never hold funds.
+The Rust, Go, and JavaScript adapters have no generic private-key input. They recognize only
+`network=regtest`, declared suite fixture identifiers, run-scoped unsigned-transaction commitments,
+expected public keys and scripts, and internally consistent full/witness UTXO data. Each operation
+also enforces the exact fixture profile and supported script type. A request outside that policy is
+rejected.
+
+The adapters contain only deterministic private scalars one and two. These are widely known public
+test values used for single-key fixtures and the first two keys of the 2-of-3 fixture; they must
+never hold funds. The Taproot path uses only key-path signing with the fixture internal key and does
+not accept arbitrary keys or script paths. The Go adapter retains the full-previous-transaction
+requirement for SegWit v0 signing to avoid the incomplete-UTXO safety issue described by
+CVE-2020-14199.
 
 The fixture identifier is not an authentication credential, and the image does not prove that an
 accepted PSBT came from this particular CLI run. Its safety comes from using a public valueless test
 key on regtest, not from protecting that key. Do not place real funds on the fixture script.
 
-Bitcoin Core receives only the public descriptor. It does not receive the fixture private key.
+Bitcoin Core receives only public descriptors. It does not receive fixture private keys.
 
 ### Process isolation
 

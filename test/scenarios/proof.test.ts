@@ -113,15 +113,23 @@ describe("proof scenario classification", () => {
 
 function fixture(id: PsbtFixture["id"]): PsbtFixture {
   const commitmentByte = id === "happy-path" ? "c" : "d";
+  const scriptTypes =
+    id === "p2wpkh" || id === "intent-rich-p2wpkh"
+      ? (["p2wpkh"] as const)
+      : id === "p2tr-keypath"
+        ? (["p2tr-keypath"] as const)
+        : id === "mixed-p2wpkh-p2tr"
+          ? (["p2wpkh", "p2tr-keypath"] as const)
+          : (["p2wsh"] as const);
   return {
     id,
     initialPsbt:
       "cHNidP8BADwCAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/////wD/////AQAAAAAAAAAAAAAAAAAAAAA=",
     outpoints: [],
     inputCount: id === "bdk-finalize-regression" ? 2 : 1,
-    outputCount: 1,
+    outputCount: id === "intent-rich-p2wpkh" ? 2 : 1,
     feeSats: 1_000,
-    scriptTypes: ["p2wsh"],
+    scriptTypes,
     inputDescriptors: ["wsh(pk(...))#fixture"],
     outputDescriptor: "wsh(pk(...))#fixture",
     psbtVersion: 0,
@@ -138,7 +146,14 @@ function preparedFixtures(): PreparedFixtures {
     core: { version: 310100, subversion: "/Satoshi:31.1.0/", blocks: 109, connections: 0 },
     happy: fixture("happy-path"),
     regression: fixture("bdk-finalize-regression"),
-    profiles: {},
+    profiles: {
+      p2wpkh: fixture("p2wpkh"),
+      "p2wsh-single-key": fixture("p2wsh-single-key"),
+      "p2wsh-2-of-3": fixture("p2wsh-2-of-3"),
+      "p2tr-keypath": fixture("p2tr-keypath"),
+      "mixed-p2wpkh-p2tr": fixture("mixed-p2wpkh-p2tr"),
+      "intent-rich-p2wpkh": fixture("intent-rich-p2wpkh"),
+    },
   } as PreparedFixtures;
 }
 
@@ -164,6 +179,12 @@ function runtimeAdapter(contract: ExpectedAdapterContract): ProofRuntimeAdapter 
           roles: [...contract.roles],
           psbtVersions: [...contract.psbtVersions],
           scriptTypes: [...contract.scriptTypes],
+          operationScriptTypes: Object.fromEntries(
+            Object.entries(contract.operationScriptTypes).map(([operation, scriptTypes]) => [
+              operation,
+              [...scriptTypes],
+            ]),
+          ),
           features: [...(contract.features ?? [])],
         },
       }),
@@ -228,6 +249,29 @@ function proofHarness(failScenario = false): {
 }
 
 describe("proof runtime", () => {
+  test("publishes every pre-application coverage scenario", () => {
+    expect(PROOF_SCENARIOS.map(({ id }) => id)).toEqual([
+      "happy-path",
+      "p2wsh-sign-btcsuite-go",
+      "p2wsh-sign-bitcoinjs-lib",
+      "p2wpkh-sign-rust-bitcoin",
+      "p2wpkh-sign-btcsuite-go",
+      "p2wpkh-sign-bitcoinjs-lib",
+      "p2tr-keypath-sign-rust-bitcoin",
+      "p2tr-keypath-sign-btcsuite-go",
+      "p2tr-keypath-sign-bitcoinjs-lib",
+      "same-input-2-of-3-multisig",
+      "four-library-roundtrip-chain",
+      "parallel-sign-and-combine",
+      "transaction-intent-preservation",
+      "invalid-and-unsupported-inputs",
+      "proprietary-metadata-preservation",
+      "bdk-finalize-regression",
+      "bdk-regression-btcsuite-go",
+      "bdk-regression-bitcoinjs-lib",
+    ]);
+  });
+
   test("keeps the public scenario listing synchronized with the executable catalog", () => {
     expect(
       createProofCatalog(preparedFixtures()).map(({ id, title, category }) => ({
@@ -271,29 +315,41 @@ describe("proof runtime", () => {
     expect(result.manifest.outcome).toBe("passed");
     expect(harness.adapters).toHaveLength(4);
     for (const adapter of harness.adapters) expect(adapter.close).toHaveBeenCalledTimes(1);
-    const commitments = JSON.stringify({
+    const commonCommitments = JSON.stringify({
       "happy-path": `sha256:${"c".repeat(64)}`,
       "bdk-finalize-regression": `sha256:${"d".repeat(64)}`,
+      p2wpkh: `sha256:${"d".repeat(64)}`,
+      "p2wsh-2-of-3": `sha256:${"d".repeat(64)}`,
+      "p2tr-keypath": `sha256:${"d".repeat(64)}`,
+    });
+    const rustCommitments = JSON.stringify({
+      "happy-path": `sha256:${"c".repeat(64)}`,
+      "bdk-finalize-regression": `sha256:${"d".repeat(64)}`,
+      p2wpkh: `sha256:${"d".repeat(64)}`,
+      "p2wsh-2-of-3": `sha256:${"d".repeat(64)}`,
+      "p2tr-keypath": `sha256:${"d".repeat(64)}`,
+      "intent-rich-p2wpkh": `sha256:${"d".repeat(64)}`,
     });
     expect(harness.created).toEqual([
       {
         image: "psbt-interop-lab/rust-bitcoin:0.1.0",
-        options: { env: { PSBT_LAB_FIXTURE_COMMITMENTS: commitments } },
+        options: { env: { PSBT_LAB_FIXTURE_COMMITMENTS: rustCommitments } },
       },
       {
         image: "psbt-interop-lab/btcsuite-go:1.2.0",
-        options: { env: { PSBT_LAB_FIXTURE_COMMITMENTS: commitments } },
+        options: { env: { PSBT_LAB_FIXTURE_COMMITMENTS: commonCommitments } },
       },
       {
         image: "psbt-interop-lab/bitcoinjs-lib:7.0.1",
-        options: { env: { PSBT_LAB_FIXTURE_COMMITMENTS: commitments } },
+        options: { env: { PSBT_LAB_FIXTURE_COMMITMENTS: commonCommitments } },
       },
       {
         image: "psbt-interop-lab/bdkpython:2.3.1",
         options: { platform: "linux/amd64" },
       },
     ]);
-    expect(commitments).not.toContain("cHNidP8");
+    expect(rustCommitments).not.toContain("cHNidP8");
+    expect(commonCommitments).not.toContain("cHNidP8");
   });
 
   test("closes every adapter exactly once after an infrastructure failure", async () => {

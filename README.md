@@ -46,11 +46,16 @@ docker compose stop core
 
 ## Current Coverage
 
-The suite currently runs ten scenarios:
+The suite currently runs 18 scenarios:
 
-- Core-created P2WSH signing handoffs through rust-bitcoin, btcsuite, and bitcoinjs-lib
+- Core-created P2WPKH, P2WSH, and Taproot key-path signing handoffs through rust-bitcoin,
+  btcsuite, and bitcoinjs-lib
+- Same-input 2-of-3 multisig where Rust and JavaScript sign independent copies, JavaScript
+  combines them, and Core finalizes the result
 - A four-library BDK to Rust to Go to JavaScript roundtrip and signing chain
 - Parallel signing where Rust and Go contribute different inputs before bitcoinjs combines them
+- Transaction-intent preservation across multiple outputs, RBF sequence, non-zero locktime,
+  explicit sighash type, and BIP32 derivation metadata
 - Twenty invalid-input cells across four parsers and five malformed or undeclared PSBT cases
 - BIP174 proprietary-field preservation in every global, input, and output map
 - BDK issue #488 reproduction after Rust, Go, and JavaScript finalization workflows
@@ -86,7 +91,8 @@ This is test infrastructure, not a wallet or signer:
 
 - Only suite-generated regtest fixtures are accepted for signing.
 - Signers require a run-scoped SHA256 commitment to the exact unsigned transaction.
-- The only private key is Bitcoin scalar one, a public test key with no economic value.
+- The only private keys are deterministic Bitcoin scalars one and two, public test values with no
+  economic value.
 - Core requires version 31.1, zero peers, and disabled networking; RPC binds to host loopback.
 - Adapter containers have no network, read-only roots, dropped capabilities, memory/process limits,
   and `no-new-privileges`.

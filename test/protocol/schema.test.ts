@@ -110,6 +110,9 @@ describe("adapter protocol schemas", () => {
         roles: ["parser"],
         psbtVersions: [0, 2],
         scriptTypes: ["p2wsh", "p2tr-keypath"],
+        operationScriptTypes: {
+          roundtrip: ["p2wsh", "p2tr-keypath"],
+        },
         features: ["historical-regression.bdk-wallet-488"],
       }),
     ).toEqual({
@@ -117,8 +120,26 @@ describe("adapter protocol schemas", () => {
       roles: ["parser"],
       psbtVersions: [0, 2],
       scriptTypes: ["p2wsh", "p2tr-keypath"],
+      operationScriptTypes: {
+        roundtrip: ["p2wsh", "p2tr-keypath"],
+      },
       features: ["historical-regression.bdk-wallet-488"],
     });
+  });
+
+  test.each([
+    ["an undeclared operation", { sign: ["p2wsh"] }],
+    ["an undeclared script type", { roundtrip: ["p2tr-keypath"] }],
+  ])("rejects operation-scoped capabilities with %s", (_label, operationScriptTypes) => {
+    expect(() =>
+      parseAdapterHelloCapabilities({
+        operations: ["hello", "roundtrip"],
+        roles: ["parser"],
+        psbtVersions: [0],
+        scriptTypes: ["p2wsh"],
+        operationScriptTypes,
+      }),
+    ).toThrow(/hello capabilities/i);
   });
 
   test.each([

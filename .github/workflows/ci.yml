@@ -73,7 +73,7 @@ jobs:
       - run: pnpm build
       - run: mkdir -p /tmp/psbt-package /tmp/psbt-install
       - run: npm pack --ignore-scripts --pack-destination /tmp/psbt-package
-      - run: npm install --prefix /tmp/psbt-install /tmp/psbt-package/psbt-interop-lab-0.1.0.tgz --ignore-scripts
+      - run: npm install --prefix /tmp/psbt-install /tmp/psbt-package/psbt-interop-lab-0.2.0.tgz --ignore-scripts
       - run: /tmp/psbt-install/node_modules/.bin/psbt-lab self-test
       - run: test -f /tmp/psbt-install/node_modules/psbt-interop-lab/compose.yaml
       - run: test -f /tmp/psbt-install/node_modules/psbt-interop-lab/adapters/rust-bitcoin/Dockerfile
