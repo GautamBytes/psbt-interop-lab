@@ -14,6 +14,8 @@ const COINBASE_MATURITY_BLOCKS = 100;
 const LEGACY_SINGLE_KEY_UTXOS = 3;
 const LEGACY_DESCRIPTOR_ID = "p2wsh-single-key" as const;
 const DEFAULT_GENERATE_MAX_TRIES = 1_000_000;
+const DEFAULT_SEQUENCE = 0xffff_fffd;
+const MAX_UINT32 = 0xffff_ffff;
 const SINGLE_KEY_WITNESS_SCRIPT = `21${FIXTURE_PUBLIC_KEYS.scalar1}ac`;
 const MULTISIG_WITNESS_SCRIPT =
   `5221${FIXTURE_PUBLIC_KEYS.scalar1}21${FIXTURE_PUBLIC_KEYS.scalar2}` +
@@ -55,6 +57,19 @@ export interface FixtureOutpoint {
 
 export type FixtureId = "happy-path" | "bdk-finalize-regression" | FixtureProfileId;
 
+export interface FixtureOutputIntent {
+  readonly descriptor: string;
+  readonly amountSats: number;
+}
+
+export interface FixtureTransactionIntent {
+  readonly version: number;
+  readonly locktime: number;
+  readonly sequences: readonly number[];
+  readonly outputCount: number;
+  readonly outputs: readonly FixtureOutputIntent[];
+}
+
 export interface PsbtFixture {
   id: FixtureId;
   initialPsbt: string;
@@ -69,6 +84,11 @@ export interface PsbtFixture {
   transactionId: string;
   psbtSha256: string;
   unsignedTxSha256: `sha256:${string}`;
+  readonly transactionIntent?: FixtureTransactionIntent;
+}
+
+export interface PreparedPsbtFixture extends PsbtFixture {
+  readonly transactionIntent: FixtureTransactionIntent;
 }
 
 export interface PreparedFixtures {
@@ -80,9 +100,9 @@ export interface PreparedFixtures {
     blocks: number;
     connections: number;
   };
-  happy: PsbtFixture;
-  regression: PsbtFixture;
-  profiles: Record<FixtureProfileId, PsbtFixture>;
+  happy: PreparedPsbtFixture;
+  regression: PreparedPsbtFixture;
+  profiles: Record<FixtureProfileId, PreparedPsbtFixture>;
 }
 
 interface BlockchainInfo {
@@ -125,7 +145,10 @@ interface FixturePlan {
   id: FixtureId;
   scriptTypes: readonly FixtureScriptType[];
   inputDescriptorIds: readonly FixtureDescriptorId[];
-  outputDescriptorId: FixtureDescriptorId;
+  outputDescriptorIds: readonly FixtureDescriptorId[];
+  sequences: readonly number[];
+  locktime: number;
+  transactionVersion: number;
   feeSats: number;
 }
 
@@ -384,29 +407,75 @@ async function scanFixtureUtxos(
 }
 
 function fixturePlans(): readonly FixturePlan[] {
-  return [
+  const plans: readonly FixturePlan[] = [
     {
       id: "happy-path",
       scriptTypes: ["p2wsh"],
       inputDescriptorIds: [LEGACY_DESCRIPTOR_ID],
-      outputDescriptorId: LEGACY_DESCRIPTOR_ID,
+      outputDescriptorIds: [LEGACY_DESCRIPTOR_ID],
+      sequences: [DEFAULT_SEQUENCE],
+      locktime: 0,
+      transactionVersion: 2,
       feeSats: 10_000,
     },
     {
       id: "bdk-finalize-regression",
       scriptTypes: ["p2wsh"],
       inputDescriptorIds: [LEGACY_DESCRIPTOR_ID, LEGACY_DESCRIPTOR_ID],
-      outputDescriptorId: LEGACY_DESCRIPTOR_ID,
+      outputDescriptorIds: [LEGACY_DESCRIPTOR_ID],
+      sequences: [DEFAULT_SEQUENCE, DEFAULT_SEQUENCE],
+      locktime: 0,
+      transactionVersion: 2,
       feeSats: 20_000,
     },
     ...FIXTURE_PROFILES.map((profile) => ({
       id: profile.id,
       scriptTypes: profile.scriptTypes,
       inputDescriptorIds: profile.inputDescriptorIds,
-      outputDescriptorId: profile.outputDescriptorId,
+      outputDescriptorIds: profile.outputDescriptorIds,
+      sequences: profile.sequences,
+      locktime: profile.locktime,
+      transactionVersion: profile.transactionVersion,
       feeSats: profile.feeSats,
     })),
   ];
+  for (const plan of plans) assertFixturePlan(plan);
+  return plans;
+}
+
+function assertFixturePlan(plan: FixturePlan): void {
+  if (
+    plan.inputDescriptorIds.length === 0 ||
+    plan.scriptTypes.length === 0 ||
+    plan.sequences.length !== plan.inputDescriptorIds.length
+  ) {
+    throw new Error(`Fixture ${plan.id} has inconsistent input intent`);
+  }
+  if (plan.outputDescriptorIds.length === 0) {
+    throw new Error(`Fixture ${plan.id} must declare at least one output`);
+  }
+  if (
+    plan.transactionVersion !== 2 ||
+    !Number.isSafeInteger(plan.locktime) ||
+    plan.locktime < 0 ||
+    plan.locktime > MAX_UINT32
+  ) {
+    throw new Error(`Fixture ${plan.id} has invalid transaction intent`);
+  }
+  if (
+    plan.sequences.some(
+      (sequence) =>
+        !Number.isSafeInteger(sequence) ||
+        sequence < 0 ||
+        sequence > MAX_UINT32 ||
+        sequence >= 0xffff_fffe,
+    )
+  ) {
+    throw new Error(`Fixture ${plan.id} must declare one exact RBF sequence per input`);
+  }
+  if (!Number.isSafeInteger(plan.feeSats) || plan.feeSats <= 0) {
+    throw new Error(`Fixture ${plan.id} has an invalid exact-satoshi fee`);
+  }
 }
 
 function requiredUtxos(plans: readonly FixturePlan[]): Record<FixtureDescriptorId, number> {
@@ -517,48 +586,91 @@ function unsignedTransactionSha256(encoded: string, id: FixtureId): `sha256:${st
   return `sha256:${createHash("sha256").update(unsignedTransaction.value).digest("hex")}`;
 }
 
+function allocateOutputSats(inputSats: number, plan: FixturePlan): readonly number[] {
+  const spendableSats = inputSats - plan.feeSats;
+  const outputCount = plan.outputDescriptorIds.length;
+  if (
+    !Number.isSafeInteger(inputSats) ||
+    !Number.isSafeInteger(spendableSats) ||
+    spendableSats < outputCount
+  ) {
+    throw new Error(`Fixture ${plan.id} has an invalid amount or fee`);
+  }
+  const amountPerOutput = Math.floor(spendableSats / outputCount);
+  const remainder = spendableSats % outputCount;
+  return Array.from(
+    { length: outputCount },
+    (_, index) => amountPerOutput + (index < remainder ? 1 : 0),
+  );
+}
+
 function assertDecodedFixture(
   value: unknown,
   plan: FixturePlan,
   outpoints: readonly FixtureOutpoint[],
-  outputSats: number,
+  outputSats: readonly number[],
   descriptors: Record<FixtureDescriptorId, CanonicalDescriptor>,
 ): string {
   const decoded = assertObject(value, "decodepsbt");
   const transaction = assertObject(decoded["tx"], `Fixture ${plan.id} decoded transaction`);
   const transactionId = assertHex(transaction["txid"], 32, `Fixture ${plan.id} transaction id`);
+  if (transaction["version"] !== plan.transactionVersion) {
+    throw new Error(`Fixture ${plan.id} decoded transaction version does not match intent`);
+  }
+  if (transaction["locktime"] !== plan.locktime) {
+    throw new Error(`Fixture ${plan.id} decoded transaction locktime does not match intent`);
+  }
   if (!Array.isArray(transaction["vin"]) || transaction["vin"].length !== outpoints.length) {
     throw new Error(`Fixture ${plan.id} has invalid decoded transaction inputs`);
   }
-  if (!Array.isArray(transaction["vout"]) || transaction["vout"].length !== 1) {
+  if (
+    !Array.isArray(transaction["vout"]) ||
+    transaction["vout"].length !== plan.outputDescriptorIds.length ||
+    outputSats.length !== plan.outputDescriptorIds.length
+  ) {
     throw new Error(`Fixture ${plan.id} has invalid decoded transaction outputs`);
   }
   for (const [index, rawVin] of transaction["vin"].entries()) {
     const vin = assertObject(rawVin, `Fixture ${plan.id} decoded transaction input ${index}`);
     const outpoint = outpoints[index];
-    if (!outpoint || vin["txid"] !== outpoint.txid || vin["vout"] !== outpoint.vout) {
+    const sequence = plan.sequences[index];
+    if (
+      !outpoint ||
+      sequence === undefined ||
+      vin["txid"] !== outpoint.txid ||
+      vin["vout"] !== outpoint.vout
+    ) {
       throw new Error(
         `Fixture ${plan.id} decoded transaction input ${index} does not match selection`,
       );
     }
+    if (vin["sequence"] !== sequence) {
+      throw new Error(`Fixture ${plan.id} decoded input ${index} sequence does not match intent`);
+    }
   }
-  const output = assertObject(
-    transaction["vout"][0],
-    `Fixture ${plan.id} decoded transaction output`,
-  );
-  if (
-    (typeof output["value"] !== "string" && typeof output["value"] !== "number") ||
-    btcToSats(output["value"]) !== outputSats
-  ) {
-    throw new Error(`Fixture ${plan.id} decoded transaction output amount is invalid`);
-  }
-  if (
-    parseDecodedScript(
-      output["scriptPubKey"],
-      `Fixture ${plan.id} decoded transaction output scriptPubKey`,
-    ) !== descriptors[plan.outputDescriptorId].scriptPubKey
-  ) {
-    throw new Error(`Fixture ${plan.id} decoded output script does not match descriptor`);
+  for (const [index, rawOutput] of transaction["vout"].entries()) {
+    const output = assertObject(
+      rawOutput,
+      `Fixture ${plan.id} decoded transaction output ${index}`,
+    );
+    const amountSats = outputSats[index];
+    const descriptorId = plan.outputDescriptorIds[index];
+    if (
+      amountSats === undefined ||
+      !descriptorId ||
+      (typeof output["value"] !== "string" && typeof output["value"] !== "number") ||
+      btcToSats(output["value"]) !== amountSats
+    ) {
+      throw new Error(`Fixture ${plan.id} decoded transaction output ${index} amount is invalid`);
+    }
+    if (
+      parseDecodedScript(
+        output["scriptPubKey"],
+        `Fixture ${plan.id} decoded transaction output ${index} scriptPubKey`,
+      ) !== descriptors[descriptorId].scriptPubKey
+    ) {
+      throw new Error(`Fixture ${plan.id} decoded output script does not match descriptor`);
+    }
   }
   if (!Array.isArray(decoded["inputs"]) || decoded["inputs"].length !== outpoints.length) {
     throw new Error(`Fixture ${plan.id} has invalid decoded inputs`);
@@ -619,38 +731,70 @@ function assertDecodedFixture(
   return transactionId;
 }
 
+function freezeTransactionIntent(
+  plan: FixturePlan,
+  outputDescriptors: readonly CanonicalDescriptor[],
+  outputSats: readonly number[],
+): FixtureTransactionIntent {
+  const outputs = Object.freeze(
+    outputDescriptors.map((descriptor, index) => {
+      const amountSats = outputSats[index];
+      if (amountSats === undefined) {
+        throw new Error(`Fixture ${plan.id} lacks output amount ${index}`);
+      }
+      return Object.freeze({
+        descriptor: descriptor.descriptor,
+        amountSats,
+      });
+    }),
+  );
+  return Object.freeze({
+    version: plan.transactionVersion,
+    locktime: plan.locktime,
+    sequences: Object.freeze([...plan.sequences]),
+    outputCount: outputs.length,
+    outputs,
+  });
+}
+
 async function buildFixture(
   rpc: RpcCaller,
   plan: FixturePlan,
   outpoints: FixtureOutpoint[],
   descriptors: Record<FixtureDescriptorId, CanonicalDescriptor>,
-): Promise<PsbtFixture> {
+): Promise<PreparedPsbtFixture> {
   const inputSats = outpoints.reduce((sum, outpoint) => sum + outpoint.amountSats, 0);
-  const outputSats = inputSats - plan.feeSats;
-  if (!Number.isSafeInteger(inputSats) || !Number.isSafeInteger(outputSats) || outputSats <= 0) {
-    throw new Error(`Fixture ${plan.id} has an invalid amount or fee`);
-  }
-  const outputDescriptor = descriptors[plan.outputDescriptorId];
+  const outputSats = allocateOutputSats(inputSats, plan);
+  const outputDescriptors = plan.outputDescriptorIds.map((id) => descriptors[id]);
+  const outputDescriptor = outputDescriptors[0];
+  if (!outputDescriptor) throw new Error(`Fixture ${plan.id} has no output descriptor`);
   const inputDescriptors = [
     ...new Set(plan.inputDescriptorIds.map((id) => descriptors[id].descriptor)),
   ];
   const created = await rpc.call<string>("createpsbt", {
-    inputs: outpoints.map((outpoint) => ({
-      txid: outpoint.txid,
-      vout: outpoint.vout,
-      sequence: 0xffff_fffd,
-    })),
-    outputs: [{ [outputDescriptor.address]: satsToBtcString(outputSats) }],
-    locktime: 0,
+    inputs: outpoints.map((outpoint, index) => {
+      const sequence = plan.sequences[index];
+      if (sequence === undefined)
+        throw new Error(`Fixture ${plan.id} lacks input sequence ${index}`);
+      return { txid: outpoint.txid, vout: outpoint.vout, sequence };
+    }),
+    outputs: outputDescriptors.map((descriptor, index) => {
+      const amountSats = outputSats[index];
+      if (amountSats === undefined) {
+        throw new Error(`Fixture ${plan.id} lacks output amount ${index}`);
+      }
+      return { [descriptor.address]: satsToBtcString(amountSats) };
+    }),
+    locktime: plan.locktime,
     replaceable: true,
-    version: 2,
+    version: plan.transactionVersion,
   });
-  assertPsbtFacts(created, plan.id, outpoints.length, 1);
+  assertPsbtFacts(created, plan.id, outpoints.length, outputDescriptors.length);
   const updated = await rpc.call<string>("utxoupdatepsbt", {
     psbt: created,
     descriptors: inputDescriptors,
   });
-  const facts = assertPsbtFacts(updated, plan.id, outpoints.length, 1);
+  const facts = assertPsbtFacts(updated, plan.id, outpoints.length, outputDescriptors.length);
   const transactionId = assertDecodedFixture(
     await rpc.call("decodepsbt", { psbt: updated }),
     plan,
@@ -672,6 +816,7 @@ async function buildFixture(
     transactionId,
     psbtSha256: facts.sha256,
     unsignedTxSha256: unsignedTransactionSha256(updated, plan.id),
+    transactionIntent: freezeTransactionIntent(plan, outputDescriptors, outputSats),
   };
 }
 
@@ -709,7 +854,7 @@ export async function prepareFixtures(rpc: RpcCaller): Promise<PreparedFixtures>
   const available = Object.fromEntries(
     (Object.keys(funded.utxos) as FixtureDescriptorId[]).map((id) => [id, [...funded.utxos[id]]]),
   ) as Record<FixtureDescriptorId, FixtureOutpoint[]>;
-  const fixtures = new Map<FixtureId, PsbtFixture>();
+  const fixtures = new Map<FixtureId, PreparedPsbtFixture>();
   for (const plan of plans) {
     const outpoints = plan.inputDescriptorIds.map((id) => takeOutpoint(available, id));
     fixtures.set(plan.id, await buildFixture(rpc, plan, outpoints, descriptors));
@@ -723,7 +868,7 @@ export async function prepareFixtures(rpc: RpcCaller): Promise<PreparedFixtures>
       if (!fixture) throw new Error(`Profile fixture construction failed for ${profile.id}`);
       return [profile.id, fixture] as const;
     }),
-  ) as Record<FixtureProfileId, PsbtFixture>;
+  ) as Record<FixtureProfileId, PreparedPsbtFixture>;
   return {
     descriptor: descriptors[LEGACY_DESCRIPTOR_ID].descriptor,
     address: descriptors[LEGACY_DESCRIPTOR_ID].address,
