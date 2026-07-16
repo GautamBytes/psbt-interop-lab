@@ -147,7 +147,7 @@ fn unsigned_profile_fixture(fixture_id: &str, input_count: usize) -> String {
     let secp = Secp256k1::new();
     let fixture_public_key = scalar_public_key(1);
     let (script_pubkey, witness_script, tap_internal_key) = match fixture_id {
-        "p2wpkh" => (
+        "p2wpkh" | "intent-rich-p2wpkh" => (
             ScriptBuf::new_p2wpkh(&fixture_public_key.wpubkey_hash().expect("compressed key")),
             None,
             None,
@@ -366,6 +366,65 @@ fn signs_p2wpkh_without_derivation_metadata() {
 }
 
 #[test]
+fn signs_intent_rich_p2wpkh_with_its_matching_commitment() {
+    let encoded = unsigned_profile_fixture("intent-rich-p2wpkh", 1);
+    let response = sign_profile("intent-rich-p2wpkh", &encoded, None);
+
+    assert_eq!(response["status"], "ok", "{response}");
+    assert_eq!(response["output"]["signedInputs"], 1);
+    assert_valid_ecdsa_signature(&response_psbt(&response), 0);
+}
+
+#[test]
+fn intent_rich_p2wpkh_requires_its_matching_run_scoped_commitment() {
+    let encoded = unsigned_profile_fixture("intent-rich-p2wpkh", 1);
+    let request_value = request(
+        "sign",
+        json!({
+            "psbt": encoded,
+            "network": "regtest",
+            "fixtureId": "intent-rich-p2wpkh"
+        }),
+    );
+
+    let missing = handle_value(request_value.clone(), "sha256:deadbeef");
+    assert_eq!(missing["status"], "rejected", "{missing}");
+    assert_eq!(
+        missing["error"]["class"],
+        "policy.fixture_commitment_missing"
+    );
+
+    let wrong = FixtureCommitments::from_json(Some(&format!(
+        r#"{{"intent-rich-p2wpkh":"sha256:{}"}}"#,
+        "00".repeat(32)
+    )))
+    .expect("valid mismatched intent-rich commitment config");
+    let mismatched = handle_value_with_commitments(request_value, "sha256:deadbeef", &wrong);
+    assert_eq!(mismatched["status"], "rejected", "{mismatched}");
+    assert_eq!(
+        mismatched["error"]["class"],
+        "policy.fixture_commitment_mismatch"
+    );
+}
+
+#[test]
+fn intent_rich_p2wpkh_rejects_a_mismatched_funding_script() {
+    let mut psbt = decode_psbt(&unsigned_profile_fixture("intent-rich-p2wpkh", 1));
+    psbt.inputs[0]
+        .witness_utxo
+        .as_mut()
+        .expect("witness UTXO")
+        .script_pubkey =
+        ScriptBuf::new_p2wpkh(&scalar_public_key(2).wpubkey_hash().expect("compressed key"));
+    let encoded = STANDARD.encode(psbt.serialize());
+    let response = sign_profile("intent-rich-p2wpkh", &encoded, None);
+
+    assert_eq!(response["status"], "rejected", "{response}");
+    assert_eq!(response["error"]["class"], "policy.psbt_not_authorized");
+    assert!(response.get("output").is_none());
+}
+
+#[test]
 fn contributes_scalar_one_to_the_exact_ordered_two_of_three_script() {
     let encoded = unsigned_profile_fixture("p2wsh-2-of-3", 1);
     let response = sign_profile("p2wsh-2-of-3", &encoded, None);
@@ -394,7 +453,7 @@ fn signs_exact_p2tr_keypath_with_default_sighash() {
 
 #[test]
 fn rejects_non_all_ecdsa_sighashes() {
-    for fixture_id in ["p2wpkh", "p2wsh-2-of-3"] {
+    for fixture_id in ["p2wpkh", "intent-rich-p2wpkh", "p2wsh-2-of-3"] {
         let mut psbt = decode_psbt(&unsigned_profile_fixture(fixture_id, 1));
         psbt.inputs[0].sighash_type = Some(PsbtSighashType::from(EcdsaSighashType::Single));
         let encoded = STANDARD.encode(psbt.serialize());

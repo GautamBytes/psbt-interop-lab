@@ -20,10 +20,11 @@ const SCALAR_TWO_PUBLIC_KEY: &str =
     "02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5";
 const SCALAR_THREE_PUBLIC_KEY: &str =
     "02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9";
-const ALLOWED_FIXTURES: [&str; 5] = [
+const ALLOWED_FIXTURES: [&str; 6] = [
     "happy-path",
     "bdk-finalize-regression",
     "p2wpkh",
+    "intent-rich-p2wpkh",
     "p2wsh-2-of-3",
     "p2tr-keypath",
 ];
@@ -341,7 +342,7 @@ impl SigningProfile {
                     witness_script,
                 })
             }
-            "p2wpkh" => Ok(Self::P2wpkh {
+            "p2wpkh" | "intent-rich-p2wpkh" => Ok(Self::P2wpkh {
                 script_pubkey: ScriptBuf::new_p2wpkh(
                     &public_key
                         .wpubkey_hash()
