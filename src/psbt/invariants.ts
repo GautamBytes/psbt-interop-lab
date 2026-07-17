@@ -5,6 +5,7 @@ import {
   type PsbtEntrySummary,
 } from "./diff.js";
 import type { PsbtDocument, PsbtMapLocation } from "./document.js";
+import { describePsbtField, type PsbtFieldMetadata } from "./fields.js";
 
 export type PsbtTransitionPolicy = "roundtrip" | "sign" | "combine" | "finalize";
 
@@ -20,15 +21,35 @@ export interface PsbtValueFingerprint {
   readonly valueBytes: number;
 }
 
+export type PsbtSafeGuidanceCode =
+  | "TRANSACTION_INTENT_CHANGED"
+  | "RESTORE_TX_MODIFIABLE_FLAGS"
+  | "RESTORE_EXTENSION_METADATA"
+  | "RESTORE_AND_RESIGN"
+  | "RESTORE_REMOVED_FIELD"
+  | "REJECT_CHANGED_FIELD"
+  | "REVIEW_UNEXPECTED_FIELD";
+
+export interface PsbtSafeGuidance {
+  readonly code: PsbtSafeGuidanceCode;
+  readonly severity: "stop" | "review";
+  readonly summary: string;
+  readonly nextSteps: readonly string[];
+}
+
 export interface PsbtTransitionFailure {
   readonly code: PsbtTransitionFailureCode;
   readonly location: PsbtMapLocation;
   readonly keyType: number;
   readonly completeKeySha256: string;
   readonly keyBytes: number;
+  readonly field?: PsbtFieldMetadata;
+  readonly guidance?: PsbtSafeGuidance;
   readonly before?: PsbtValueFingerprint;
   readonly after?: PsbtValueFingerprint;
 }
+
+type BarePsbtTransitionFailure = Omit<PsbtTransitionFailure, "field" | "guidance">;
 
 export interface PsbtTransitionResult {
   readonly ok: boolean;
@@ -46,7 +67,7 @@ const FINALIZE_REMOVABLE_INPUT_TYPES = new Set([
 function addedFailure(
   entry: PsbtEntrySummary,
   code: PsbtTransitionFailureCode = "ENTRY_ADDED",
-): PsbtTransitionFailure {
+): BarePsbtTransitionFailure {
   return {
     code,
     location: entry.location,
@@ -60,7 +81,7 @@ function addedFailure(
 function removedFailure(
   entry: PsbtEntrySummary,
   code: PsbtTransitionFailureCode = "ENTRY_REMOVED",
-): PsbtTransitionFailure {
+): BarePsbtTransitionFailure {
   return {
     code,
     location: entry.location,
@@ -74,7 +95,7 @@ function removedFailure(
 function changedFailure(
   entry: PsbtChangedEntry,
   code: PsbtTransitionFailureCode = "ENTRY_CHANGED",
-): PsbtTransitionFailure {
+): BarePsbtTransitionFailure {
   return {
     code,
     location: entry.location,
@@ -150,7 +171,7 @@ function roundtripFailures(
   added: readonly PsbtEntrySummary[],
   removed: readonly PsbtEntrySummary[],
   changed: readonly PsbtChangedEntry[],
-): PsbtTransitionFailure[] {
+): BarePsbtTransitionFailure[] {
   return [
     ...added.map((entry) => addedFailure(entry)),
     ...removed.map((entry) => removedFailure(entry)),
@@ -165,8 +186,8 @@ function signFailures(
   removed: readonly PsbtEntrySummary[],
   changed: readonly PsbtChangedEntry[],
   identityChanged: boolean,
-): PsbtTransitionFailure[] {
-  const failures: PsbtTransitionFailure[] = [];
+): BarePsbtTransitionFailure[] {
+  const failures: BarePsbtTransitionFailure[] = [];
   for (const entry of added) {
     if (isChangedIdentityEntry(before, after, entry.location, entry.keyType, identityChanged)) {
       failures.push(addedFailure(entry, "TRANSACTION_IDENTITY_CHANGED"));
@@ -207,8 +228,8 @@ function combineFailures(
   removed: readonly PsbtEntrySummary[],
   changed: readonly PsbtChangedEntry[],
   identityChanged: boolean,
-): PsbtTransitionFailure[] {
-  const failures: PsbtTransitionFailure[] = [];
+): BarePsbtTransitionFailure[] {
+  const failures: BarePsbtTransitionFailure[] = [];
   for (const entry of added) {
     if (isChangedIdentityEntry(before, after, entry.location, entry.keyType, identityChanged)) {
       failures.push(addedFailure(entry, "TRANSACTION_IDENTITY_CHANGED"));
@@ -248,8 +269,8 @@ function finalizeFailures(
   removed: readonly PsbtEntrySummary[],
   changed: readonly PsbtChangedEntry[],
   identityChanged: boolean,
-): PsbtTransitionFailure[] {
-  const failures: PsbtTransitionFailure[] = [];
+): BarePsbtTransitionFailure[] {
+  const failures: BarePsbtTransitionFailure[] = [];
   for (const entry of added) {
     if (isChangedIdentityEntry(before, after, entry.location, entry.keyType, identityChanged)) {
       failures.push(addedFailure(entry, "TRANSACTION_IDENTITY_CHANGED"));
@@ -279,6 +300,104 @@ function finalizeFailures(
   return failures;
 }
 
+function safeGuidance(
+  policy: PsbtTransitionPolicy,
+  failure: BarePsbtTransitionFailure,
+  field: PsbtFieldMetadata,
+): PsbtSafeGuidance {
+  if (failure.code === "TRANSACTION_IDENTITY_CHANGED") {
+    return {
+      code: "TRANSACTION_INTENT_CHANGED",
+      severity: "stop",
+      summary: `The transaction being authorized changed during the ${policy} transition.`,
+      nextSteps: [
+        "Do not sign or broadcast the changed PSBT.",
+        "Return to the previous checkpoint and verify recipients, amounts, inputs, sequences, and locktime.",
+        "Recreate the PSBT from the original transaction intent before retrying the handoff.",
+      ],
+    };
+  }
+  if (failure.code === "TX_MODIFIABLE_INVALID_CHANGE") {
+    return {
+      code: "RESTORE_TX_MODIFIABLE_FLAGS",
+      severity: "stop",
+      summary: `Transaction modifiable flags changed in a direction BIP370 does not permit during the ${policy} transition.`,
+      nextSteps: [
+        "Do not continue with the changed PSBT.",
+        "Restore the flags from the previous checkpoint and report the non-monotonic change.",
+      ],
+    };
+  }
+  if (
+    failure.code === "ENTRY_REMOVED" &&
+    (field.kind === "unknown" || field.kind === "proprietary")
+  ) {
+    return {
+      code: "RESTORE_EXTENSION_METADATA",
+      severity: "stop",
+      summary: `An extension field was removed during the ${policy} transition.`,
+      nextSteps: [
+        "Return to the previous checkpoint.",
+        "Use an implementation that preserves unknown and proprietary fields.",
+        "Report the removed field to the implementation maintainer before retrying.",
+      ],
+    };
+  }
+  if (
+    failure.code === "ENTRY_REMOVED" &&
+    ["PSBT_IN_PARTIAL_SIG", "PSBT_IN_TAP_KEY_SIG", "PSBT_IN_TAP_SCRIPT_SIG"].includes(field.symbol)
+  ) {
+    return {
+      code: "RESTORE_AND_RESIGN",
+      severity: "stop",
+      summary: `A signature was removed during the ${policy} transition.`,
+      nextSteps: [
+        "Return to the previous checkpoint and do not treat the changed PSBT as fully signed.",
+        "Correct the lossy handoff before asking the signer to sign again.",
+      ],
+    };
+  }
+  if (failure.code === "ENTRY_REMOVED") {
+    return {
+      code: "RESTORE_REMOVED_FIELD",
+      severity: "stop",
+      summary: `${field.displayName} was removed during the ${policy} transition.`,
+      nextSteps: [
+        "Return to the previous checkpoint.",
+        "Restore the missing field at its source instead of reconstructing it from incomplete data.",
+      ],
+    };
+  }
+  if (failure.code === "ENTRY_CHANGED") {
+    return {
+      code: "REJECT_CHANGED_FIELD",
+      severity: "stop",
+      summary: `${field.displayName} changed during the ${policy} transition.`,
+      nextSteps: [
+        "Reject the changed PSBT and return to the previous checkpoint.",
+        "Compare the field fingerprints and report which implementation changed the value.",
+      ],
+    };
+  }
+  return {
+    code: "REVIEW_UNEXPECTED_FIELD",
+    severity: "review",
+    summary: `${field.displayName} was added unexpectedly during the ${policy} transition.`,
+    nextSteps: [
+      "Review why the field was added before accepting the PSBT.",
+      "Continue only when the field is expected for this transition and transaction intent.",
+    ],
+  };
+}
+
+function enrichFailure(
+  policy: PsbtTransitionPolicy,
+  failure: BarePsbtTransitionFailure,
+): PsbtTransitionFailure {
+  const field = describePsbtField(failure.location.kind, failure.keyType);
+  return { ...failure, field, guidance: safeGuidance(policy, failure, field) };
+}
+
 export function assertPsbtTransition(
   policy: PsbtTransitionPolicy,
   before: PsbtDocument,
@@ -287,7 +406,7 @@ export function assertPsbtTransition(
   const diff = diffPsbtDocuments(before, after);
   const identityChanged =
     extractTransactionIdentity(before).sha256 !== extractTransactionIdentity(after).sha256;
-  let failures: PsbtTransitionFailure[];
+  let failures: BarePsbtTransitionFailure[];
 
   switch (policy) {
     case "roundtrip":
@@ -329,6 +448,6 @@ export function assertPsbtTransition(
     ok: failures.length === 0,
     policy,
     exactBytesEqual: diff.exactBytesEqual,
-    failures,
+    failures: failures.map((failure) => enrichFailure(policy, failure)),
   };
 }

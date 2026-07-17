@@ -103,6 +103,23 @@ export class ScenarioExecutionContext {
   readonly #checkpoints: CheckpointRecord[] = [];
   #requestCounter = 0;
 
+  #likelyImplementation(name: string): string | undefined {
+    const normalized = name.toLowerCase();
+    const adapters = [...this.#adapters.keys()].sort((left, right) => right.length - left.length);
+    const exact = adapters.find((adapter) => normalized.includes(adapter.toLowerCase()));
+    if (exact) return exact;
+    const aliases: Readonly<Record<string, string>> = {
+      rust: "rust-bitcoin",
+      bdk: "bdkpython",
+      btcsuite: "btcsuite-go",
+      bitcoinjs: "bitcoinjs-lib",
+    };
+    const prefix = normalized.split("-")[0];
+    const aliased = prefix ? aliases[prefix] : undefined;
+    if (aliased && this.#adapters.has(aliased)) return aliased;
+    return normalized.startsWith("core-") ? "bitcoin-core" : undefined;
+  }
+
   constructor(options: ScenarioExecutionContextOptions) {
     if (!Number.isSafeInteger(options.adapterTimeoutMs) || options.adapterTimeoutMs <= 0) {
       throw new TypeError("Adapter timeout must be a positive safe integer");
@@ -183,12 +200,14 @@ export class ScenarioExecutionContext {
       parsePsbtDocument(beforePsbt),
       parsePsbtDocument(afterPsbt),
     );
+    const likelyImplementation = this.#likelyImplementation(name);
     return {
       name,
       policy,
       passed: result.ok,
       exactBytesEqual: result.exactBytesEqual,
       failures: result.failures,
+      ...(likelyImplementation ? { likelyImplementation } : {}),
     };
   }
 

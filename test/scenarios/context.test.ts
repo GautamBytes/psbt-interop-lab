@@ -142,6 +142,17 @@ describe("ScenarioExecutionContext", () => {
     expect(JSON.stringify(evidence)).not.toContain("private metadata");
   });
 
+  test("identifies the likely implementation from a transition assertion name", () => {
+    const evidence = context().transitionEvidence(
+      "roundtrip",
+      "rust-bitcoin-preserved-metadata",
+      psbt([unsignedTxEntry, proprietaryEntry]),
+      psbt([unsignedTxEntry]),
+    );
+
+    expect(evidence.likelyImplementation).toBe("rust-bitcoin");
+  });
+
   test("turns a semantic transition failure into a normal scenario assertion", () => {
     expect(() =>
       context().requireTransition(

@@ -1,6 +1,10 @@
 import { describe, expect, test } from "vitest";
 import type { RunManifest } from "../../src/runner/artifacts.js";
-import { generateHtmlReport } from "../../src/runner/report.js";
+import {
+  generateHtmlReport,
+  generateMarkdownReport,
+  redactValue,
+} from "../../src/runner/report.js";
 
 const MINIMAL_PSBT =
   "cHNidP8BADwCAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/////wD/////AQAAAAAAAAAAAAAAAAAAAAA=";
@@ -44,6 +48,7 @@ function manifest(): RunManifest {
             policy: "roundtrip",
             passed: false,
             exactBytesEqual: false,
+            likelyImplementation: "rust-bitcoin",
             failures: [
               {
                 code: "ENTRY_REMOVED",
@@ -52,6 +57,24 @@ function manifest(): RunManifest {
                 completeKeySha256: "b".repeat(64),
                 keyBytes: 10,
                 before: { valueSha256: "c".repeat(64), valueBytes: 14 },
+                field: {
+                  scope: "input",
+                  keyType: 252,
+                  keyTypeHex: "0xfc",
+                  symbol: "PSBT_IN_PROPRIETARY",
+                  displayName: "Proprietary input field",
+                  bip: "BIP174",
+                  kind: "proprietary",
+                },
+                guidance: {
+                  code: "RESTORE_EXTENSION_METADATA",
+                  severity: "stop",
+                  summary: "An extension field was removed during the roundtrip transition.",
+                  nextSteps: [
+                    "Return to the previous checkpoint.",
+                    "Use an implementation that preserves unknown and proprietary fields.",
+                  ],
+                },
               },
             ],
           },
@@ -88,6 +111,13 @@ describe("HTML report", () => {
     expect(html).toContain("PSBT Interop Lab");
     expect(html).toContain("Metadata &lt;script&gt;alert(1)&lt;/script&gt;");
     expect(html).toContain("ENTRY_REMOVED");
+    expect(html).toContain("PSBT_IN_PROPRIETARY");
+    expect(html).toContain("Proprietary input field");
+    expect(html).toContain("BIP174");
+    expect(html).toContain("Likely implementation");
+    expect(html).toContain("rust-bitcoin");
+    expect(html).toContain("RESTORE_EXTENSION_METADATA");
+    expect(html).toContain("Return to the previous checkpoint.");
     expect(html).toContain("UNSUPPORTED");
     expect(html).toContain("Compatibility findings");
     expect(html).toContain("Accepted a duplicate global key");
@@ -99,5 +129,20 @@ describe("HTML report", () => {
     expect(html).not.toContain(MINIMAL_PSBT);
     expect(html).toContain("[redacted:secret]");
     expect(html).toContain("[redacted:psbt]");
+  });
+
+  test("renders structured diagnostics in JSON and Markdown", () => {
+    const value = manifest();
+    const json = JSON.stringify(redactValue(value));
+    const markdown = generateMarkdownReport(value);
+
+    for (const report of [json, markdown]) {
+      expect(report).toContain("PSBT_IN_PROPRIETARY");
+      expect(report).toContain("Proprietary input field");
+      expect(report).toContain("BIP174");
+      expect(report).toContain("rust-bitcoin");
+      expect(report).toContain("RESTORE_EXTENSION_METADATA");
+      expect(report).toContain("Return to the previous checkpoint.");
+    }
   });
 });

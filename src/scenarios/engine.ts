@@ -132,6 +132,29 @@ function copyFailure(failure: PsbtTransitionFailure): PsbtTransitionFailure {
     keyType: failure.keyType,
     completeKeySha256: failure.completeKeySha256,
     keyBytes: failure.keyBytes,
+    ...(failure.field
+      ? {
+          field: {
+            scope: failure.field.scope,
+            keyType: failure.field.keyType,
+            keyTypeHex: failure.field.keyTypeHex,
+            symbol: failure.field.symbol,
+            displayName: failure.field.displayName,
+            ...(failure.field.bip ? { bip: failure.field.bip } : {}),
+            kind: failure.field.kind,
+          },
+        }
+      : {}),
+    ...(failure.guidance
+      ? {
+          guidance: {
+            code: failure.guidance.code,
+            severity: failure.guidance.severity,
+            summary: redactSensitiveText(failure.guidance.summary),
+            nextSteps: failure.guidance.nextSteps.map((step) => redactSensitiveText(step)),
+          },
+        }
+      : {}),
     ...(failure.before
       ? {
           before: {
@@ -161,6 +184,9 @@ function copyAssertion(assertion: ScenarioAssertionEvidence): ScenarioAssertionE
       : {}),
     ...(assertion.failures !== undefined
       ? { failures: assertion.failures.map((failure) => copyFailure(failure)) }
+      : {}),
+    ...(assertion.likelyImplementation !== undefined
+      ? { likelyImplementation: redactSensitiveText(assertion.likelyImplementation) }
       : {}),
     ...(assertion.summary !== undefined ? { summary: redactSensitiveText(assertion.summary) } : {}),
   };

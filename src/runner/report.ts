@@ -90,6 +90,9 @@ export function generateMarkdownReport(manifest: RunManifest): string {
           assertion.exactBytesEqual !== undefined
             ? `exact-bytes=${assertion.exactBytesEqual ? "yes" : "no"}`
             : undefined,
+          assertion.likelyImplementation
+            ? `likely-implementation=${assertion.likelyImplementation}`
+            : undefined,
         ].filter((value): value is string => value !== undefined);
         lines.push(
           `- **${assertion.passed ? "PASS" : "FAIL"}** \`${assertion.name}\`${diagnostics.length > 0 ? ` (${diagnostics.join(", ")})` : ""}`,
@@ -99,9 +102,18 @@ export function generateMarkdownReport(manifest: RunManifest): string {
             failure.location.kind === "global"
               ? "global"
               : `${failure.location.kind}[${failure.location.index}]`;
+          const field = failure.field;
           lines.push(
-            `  - \`${failure.code}\` at ${location}, key type \`0x${failure.keyType.toString(16).padStart(2, "0")}\``,
+            field
+              ? `  - \`${failure.code}\` at ${location}: \`${field.symbol}\` (${field.displayName}, \`${field.keyTypeHex}\`${field.bip ? `, ${field.bip}` : ""})`
+              : `  - \`${failure.code}\` at ${location}, key type \`0x${failure.keyType.toString(16).padStart(2, "0")}\``,
           );
+          if (failure.guidance) {
+            lines.push(
+              `    - Guidance **${failure.guidance.severity.toUpperCase()}** \`${failure.guidance.code}\`: ${failure.guidance.summary}`,
+              ...failure.guidance.nextSteps.map((step) => `      - ${step}`),
+            );
+          }
         }
       }
       lines.push("");
@@ -183,12 +195,21 @@ export function generateHtmlReport(manifest: RunManifest): string {
             assertion.exactBytesEqual !== undefined
               ? `exact bytes ${assertion.exactBytesEqual ? "yes" : "no"}`
               : undefined,
+            assertion.likelyImplementation
+              ? `Likely implementation ${assertion.likelyImplementation}`
+              : undefined,
           ].filter((value): value is string => value !== undefined);
           const failures = (assertion.failures ?? [])
-            .map(
-              (failure) =>
-                `<li><code>${escapeHtml(failure.code)}</code> at ${escapeHtml(failureLocation(failure.location))}, key <code>0x${escapeHtml(failure.keyType.toString(16).padStart(2, "0"))}</code></li>`,
-            )
+            .map((failure) => {
+              const field = failure.field;
+              const fieldDescription = field
+                ? `<code>${escapeHtml(field.symbol)}</code> (${escapeHtml(field.displayName)}, <code>${escapeHtml(field.keyTypeHex)}</code>${field.bip ? `, ${escapeHtml(field.bip)}` : ""})`
+                : `key <code>0x${escapeHtml(failure.keyType.toString(16).padStart(2, "0"))}</code>`;
+              const guidance = failure.guidance
+                ? `<div class="guidance"><strong>${escapeHtml(failure.guidance.severity.toUpperCase())}</strong> <code>${escapeHtml(failure.guidance.code)}</code>: ${escapeHtml(failure.guidance.summary)}<ul>${failure.guidance.nextSteps.map((step) => `<li>${escapeHtml(step)}</li>`).join("")}</ul></div>`
+                : "";
+              return `<li><code>${escapeHtml(failure.code)}</code> at ${escapeHtml(failureLocation(failure.location))}: ${fieldDescription}${guidance}</li>`;
+            })
             .join("");
           return `<li class="assertion ${assertion.passed ? "pass" : "fail"}">
             <div><strong>${assertion.passed ? "PASS" : "FAIL"}</strong> <code>${escapeHtml(assertion.name)}</code>${diagnostics.length > 0 ? ` <span>${escapeHtml(diagnostics.join(" · "))}</span>` : ""}</div>
@@ -284,7 +305,9 @@ export function generateHtmlReport(manifest: RunManifest): string {
     .assertion { border-top: 1px solid var(--line); padding: 9px 0; }
     .assertion:first-child { border-top: 0; }
     .assertion p { color: var(--muted); margin: 4px 0; }
-    .failures li { margin: 4px 0; color: var(--fail); }
+    .failures > li { margin: 6px 0; color: var(--fail); }
+    .guidance { color: var(--text); margin: 6px 0 10px 16px; }
+    .guidance ul { margin: 4px 0 0; padding-left: 20px; }
     .table-wrap { overflow-x: auto; border: 1px solid var(--line); background: var(--surface); }
     table { width: 100%; border-collapse: collapse; min-width: 720px; }
     th, td { padding: 10px 12px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }

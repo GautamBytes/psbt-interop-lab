@@ -23,6 +23,7 @@ export interface ScenarioAssertionEvidence {
   readonly policy?: PsbtTransitionPolicy;
   readonly exactBytesEqual?: boolean;
   readonly failures?: readonly PsbtTransitionFailure[];
+  readonly likelyImplementation?: string;
   readonly summary?: string;
 }
 

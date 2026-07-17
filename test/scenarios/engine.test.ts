@@ -279,6 +279,7 @@ describe("scenario engine", () => {
           policy: "roundtrip",
           passed: false,
           exactBytesEqual: false,
+          likelyImplementation: "rust-bitcoin",
           failures: [
             {
               code: "ENTRY_REMOVED",
@@ -287,6 +288,21 @@ describe("scenario engine", () => {
               completeKeySha256: "b".repeat(64),
               keyBytes: 5,
               before: { valueSha256: "c".repeat(64), valueBytes: 12 },
+              field: {
+                scope: "global",
+                keyType: 252,
+                keyTypeHex: "0xfc",
+                symbol: "PSBT_GLOBAL_PROPRIETARY",
+                displayName: "Proprietary global field",
+                bip: "BIP174",
+                kind: "proprietary",
+              },
+              guidance: {
+                code: "RESTORE_EXTENSION_METADATA",
+                severity: "stop",
+                summary: "An extension field was removed during the roundtrip transition.",
+                nextSteps: ["Return to the previous checkpoint."],
+              },
               rawPsbt: Buffer.from(MINIMAL_PSBT, "base64"),
             },
           ],
@@ -315,6 +331,7 @@ describe("scenario engine", () => {
           name: "roundtrip-preserves-fields",
           policy: "roundtrip",
           passed: false,
+          likelyImplementation: "rust-bitcoin",
           summary: "Metadata exposed [redacted:psbt]; wif=[redacted:secret]",
           failures: [
             {
@@ -324,6 +341,21 @@ describe("scenario engine", () => {
               completeKeySha256: "b".repeat(64),
               keyBytes: 5,
               before: { valueSha256: "c".repeat(64), valueBytes: 12 },
+              field: {
+                scope: "global",
+                keyType: 252,
+                keyTypeHex: "0xfc",
+                symbol: "PSBT_GLOBAL_PROPRIETARY",
+                displayName: "Proprietary global field",
+                bip: "BIP174",
+                kind: "proprietary",
+              },
+              guidance: {
+                code: "RESTORE_EXTENSION_METADATA",
+                severity: "stop",
+                summary: "An extension field was removed during the roundtrip transition.",
+                nextSteps: ["Return to the previous checkpoint."],
+              },
             },
           ],
         },

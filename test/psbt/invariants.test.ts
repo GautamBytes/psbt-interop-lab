@@ -118,6 +118,16 @@ describe("roundtrip policy", () => {
       code: "ENTRY_REMOVED",
       location: { kind: "global" },
       keyType: 0xfc,
+      field: {
+        symbol: "PSBT_GLOBAL_PROPRIETARY",
+        displayName: "Proprietary global field",
+        bip: "BIP174",
+        kind: "proprietary",
+      },
+      guidance: {
+        code: "RESTORE_EXTENSION_METADATA",
+        severity: "stop",
+      },
       before: { valueBytes: 15 },
     });
     expect(JSON.stringify(result)).not.toContain("secret metadata");
@@ -202,6 +212,21 @@ describe("sign policy", () => {
         code: "TRANSACTION_IDENTITY_CHANGED",
         location: { kind: "global" },
         keyType: 0x00,
+        field: expect.objectContaining({
+          symbol: "PSBT_GLOBAL_UNSIGNED_TX",
+          displayName: "Unsigned transaction",
+          bip: "BIP174",
+        }),
+        guidance: {
+          code: "TRANSACTION_INTENT_CHANGED",
+          severity: "stop",
+          summary: "The transaction being authorized changed during the sign transition.",
+          nextSteps: [
+            "Do not sign or broadcast the changed PSBT.",
+            "Return to the previous checkpoint and verify recipients, amounts, inputs, sequences, and locktime.",
+            "Recreate the PSBT from the original transaction intent before retrying the handoff.",
+          ],
+        },
       }),
     );
   });
@@ -334,7 +359,22 @@ describe("finalize policy", () => {
     );
 
     expect(removed.failures).toContainEqual(
-      expect.objectContaining({ code: "ENTRY_REMOVED", keyType: 0x50 }),
+      expect.objectContaining({
+        code: "ENTRY_REMOVED",
+        keyType: 0x50,
+        field: {
+          scope: "input",
+          keyType: 0x50,
+          keyTypeHex: "0x50",
+          symbol: "PSBT_IN_UNKNOWN",
+          displayName: "Unknown input field",
+          kind: "unknown",
+        },
+        guidance: expect.objectContaining({
+          code: "RESTORE_EXTENSION_METADATA",
+          severity: "stop",
+        }),
+      }),
     );
     expect(changedGlobal.failures).toContainEqual(
       expect.objectContaining({
