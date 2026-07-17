@@ -1634,6 +1634,54 @@ svg {
   height: 16px;
 }
 
+.mermaid-diagram {
+  min-height: 360px;
+  margin: 28px 0 36px;
+  overflow-x: auto;
+  border: 1px solid var(--border-strong);
+  background: #07090b;
+  border-radius: 6px;
+}
+
+.mermaid-diagram__canvas {
+  display: grid;
+  min-width: 760px;
+  min-height: 360px;
+  padding: 26px;
+  place-items: center;
+}
+
+.mermaid-diagram__canvas svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-width: none;
+}
+
+.mermaid-diagram__loading {
+  display: grid;
+  min-height: 360px;
+  place-items: center;
+  color: var(--text-dim);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.mermaid-diagram--error {
+  min-height: 0;
+  padding: 20px;
+}
+
+.mermaid-diagram--error > p {
+  margin: 0 0 14px;
+  color: var(--red);
+  font-size: 13px;
+}
+
+.mermaid-diagram--error .markdown-code-block {
+  margin: 0;
+}
+
 .markdown-body pre code {
   padding: 0;
   border: 0;
@@ -2055,6 +2103,17 @@ svg {
   .markdown-body .markdown-code-block pre {
     padding: 16px 52px 16px 16px;
     font-size: 11px;
+  }
+
+  .mermaid-diagram,
+  .mermaid-diagram__canvas,
+  .mermaid-diagram__loading {
+    min-height: 300px;
+  }
+
+  .mermaid-diagram__canvas {
+    min-width: 700px;
+    padding: 18px;
   }
 
   .not-found h1 {

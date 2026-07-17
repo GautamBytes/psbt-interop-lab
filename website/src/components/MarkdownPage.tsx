@@ -1,11 +1,12 @@
 import { ArrowSquareOut } from "@phosphor-icons/react/ArrowSquareOut";
-import type { ReactNode } from "react";
+import { isValidElement, type ReactNode } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { repositoryUrl } from "../content";
 import { findDocumentBySourcePath, type WebsiteDocument } from "../pages/documents";
 import { findRepositoryResourceBySourcePath } from "../pages/repository-resources";
 import { MarkdownCodeBlock } from "./MarkdownCodeBlock";
+import { MermaidDiagram } from "./MermaidDiagram";
 import { SiteLink } from "./SiteLink";
 
 interface MarkdownPageProps {
@@ -21,7 +22,17 @@ interface TocItem {
 function textFromChildren(children: ReactNode): string {
   if (typeof children === "string" || typeof children === "number") return String(children);
   if (Array.isArray(children)) return children.map(textFromChildren).join("");
+  if (isValidElement<{ children?: ReactNode }>(children)) return textFromChildren(children.props.children);
   return "";
+}
+
+function fencedCode(children: ReactNode): { language?: string; value: string } | undefined {
+  if (!isValidElement<{ className?: string; children?: ReactNode }>(children)) return undefined;
+  const language = children.props.className?.match(/(?:^|\s)language-([^\s]+)/)?.[1];
+  return {
+    language,
+    value: textFromChildren(children.props.children).replace(/\n$/, ""),
+  };
 }
 
 function slugify(value: string): string {
@@ -116,6 +127,10 @@ export function MarkdownPage({ document }: MarkdownPageProps) {
     },
     pre: ({ children, node }) => {
       void node;
+      const code = fencedCode(children);
+      if (code?.language === "mermaid") {
+        return <MermaidDiagram definition={code.value} label={`${document.label} diagram`} />;
+      }
       return <MarkdownCodeBlock>{children}</MarkdownCodeBlock>;
     },
   };
