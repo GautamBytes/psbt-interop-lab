@@ -7,6 +7,8 @@ import {
   type RpcCaller,
   satsToBtcString,
 } from "../../src/core/fixtures.js";
+import { compileUserFixturePlans } from "../../src/custom/fixtures.js";
+import type { UserFixtureSpec } from "../../src/custom/manifest.js";
 import { parsePsbtDocument } from "../../src/psbt/document.js";
 
 const COINBASE_SATS = 5_000_000_000;
@@ -18,29 +20,38 @@ const TXIDS = {
   wpkh1: "55".repeat(32),
   wpkh2: "66".repeat(32),
   wpkh3: "aa".repeat(32),
+  nested: "bb".repeat(32),
   multisig: "77".repeat(32),
   tr1: "88".repeat(32),
   tr2: "99".repeat(32),
+  trScript: "cc".repeat(32),
 } as const;
 
+const P2WPKH_REDEEM_SCRIPT = "0014751e76e8199196d454941c45d1b3a323f1433bd6";
 const SINGLE_KEY_WITNESS_SCRIPT = `21${FIXTURE_PUBLIC_KEYS.scalar1}ac`;
 const MULTISIG_WITNESS_SCRIPT =
   `5221${FIXTURE_PUBLIC_KEYS.scalar1}21${FIXTURE_PUBLIC_KEYS.scalar2}` +
   `21${FIXTURE_PUBLIC_KEYS.scalar3}53ae`;
 const FIXTURE_ADDRESSES = {
   [FIXTURE_DESCRIPTORS.p2wpkh]: "bcrt1qfixturep2wpkh",
+  [FIXTURE_DESCRIPTORS["p2sh-p2wpkh"]]: "2NAUYAHhujozruyzpsFRP63mbrdaU5wnEpN",
   [FIXTURE_DESCRIPTORS["p2wsh-single-key"]]: "bcrt1qfixturesingle",
   [FIXTURE_DESCRIPTORS["p2wsh-2-of-3"]]: "bcrt1qfixturemultisig",
   [FIXTURE_DESCRIPTORS["p2tr-keypath"]]: "bcrt1pfixturetaproot",
+  [FIXTURE_DESCRIPTORS["p2tr-scriptpath"]]:
+    "bcrt1pg44et8f66qnjn5fd0hu6dnnx7tczqslmt3dkzpccjlzeg99psshqfkkdep",
 } as const;
 const FIXTURE_SCRIPT_PUBKEYS = {
   [FIXTURE_DESCRIPTORS.p2wpkh]: "0014751e76e8199196d454941c45d1b3a323f1433bd6",
+  [FIXTURE_DESCRIPTORS["p2sh-p2wpkh"]]: "a914bcfeb728b584253d5f3f70bcb780e9ef218a68f487",
   [FIXTURE_DESCRIPTORS["p2wsh-single-key"]]:
     "00201863143c14c5166804bd19203356da136c985678cd4d27a1b8c6329604903262",
   [FIXTURE_DESCRIPTORS["p2wsh-2-of-3"]]:
     "002012c2ffbc6ec1cf5d746dfbd49b1063356212ea55f43023ffc0145934af20c572",
   [FIXTURE_DESCRIPTORS["p2tr-keypath"]]:
     "5120da4710964f7852695de2da025290e24af6d8c281de5a0b902b7135fd9fd74d21",
+  [FIXTURE_DESCRIPTORS["p2tr-scriptpath"]]:
+    "5120456b959d3ad02729d12d7df9a6ce66f2f02043fb5c5b61071897c59414a1842e",
 } as const;
 const BIP370_VALID_PSBT_V2 =
   "cHNidP8BAgQCAAAAAQQBAQEFAQIB+wQCAAAAAAEOIAsK2SFBnByHGXNdctxzn56p4GONH+TB7vD5lECEgV/IAQ8EAAAAAAABAwgACK8vAAAAAAEEFgAUxDD2TEdW2jENvRoIVXLvKZkmJywAAQMIi73rCwAAAAABBBYAFE3Rk6yWSlasG54cyoRU/i9HT4UTAA==";
@@ -122,8 +133,8 @@ function readCompactSize(buffer: Buffer, offset: number): { value: number; nextO
   return { value, nextOffset: offset + 1 };
 }
 
-function psbtEntry(keyType: number, value: Buffer): Buffer {
-  const key = Buffer.from([keyType]);
+function psbtEntry(keyType: number, value: Buffer, keyData = Buffer.alloc(0)): Buffer {
+  const key = Buffer.concat([Buffer.from([keyType]), keyData]);
   return Buffer.concat([
     encodeCompactSize(key.length),
     key,
@@ -319,6 +330,9 @@ function createFixtureRpc(options: FakeRpcOptions = {}): {
       { txid: TXIDS.wpkh2, vout: 0, amount: "50.00000000", height: 6 },
       { txid: TXIDS.wpkh1, vout: 0, amount: "50.00000000", height: 5 },
     ],
+    [FIXTURE_DESCRIPTORS["p2sh-p2wpkh"]]: [
+      { txid: TXIDS.nested, vout: 0, amount: "50.00000000", height: 11 },
+    ],
     [FIXTURE_DESCRIPTORS["p2wsh-single-key"]]: [
       { txid: TXIDS.single4, vout: 0, amount: "50.00000000", height: 4 },
       { txid: TXIDS.single2, vout: 0, amount: "50.00000000", height: 2 },
@@ -331,6 +345,9 @@ function createFixtureRpc(options: FakeRpcOptions = {}): {
     [FIXTURE_DESCRIPTORS["p2tr-keypath"]]: [
       { txid: TXIDS.tr2, vout: 0, amount: "50.00000000", height: 9 },
       { txid: TXIDS.tr1, vout: 0, amount: "50.00000000", height: 8 },
+    ],
+    [FIXTURE_DESCRIPTORS["p2tr-scriptpath"]]: [
+      { txid: TXIDS.trScript, vout: 0, amount: "50.00000000", height: 12 },
     ],
   };
   if (options.emptyUtxos) {
@@ -375,8 +392,16 @@ function createFixtureRpc(options: FakeRpcOptions = {}): {
           isvalid: true,
           address,
           scriptPubKey: coreScriptPubKey(descriptor),
-          iswitness: true,
-          witness_version: descriptor === FIXTURE_DESCRIPTORS["p2tr-keypath"] ? 1 : 0,
+          iswitness: descriptor !== FIXTURE_DESCRIPTORS["p2sh-p2wpkh"],
+          ...(descriptor === FIXTURE_DESCRIPTORS["p2sh-p2wpkh"]
+            ? {}
+            : {
+                witness_version:
+                  descriptor === FIXTURE_DESCRIPTORS["p2tr-keypath"] ||
+                  descriptor === FIXTURE_DESCRIPTORS["p2tr-scriptpath"]
+                    ? 1
+                    : 0,
+              }),
         } as T;
       }
       if (method === "scantxoutset") {
@@ -568,7 +593,23 @@ function createFixtureRpc(options: FakeRpcOptions = {}): {
                   ),
                 ]
               : []),
-            ...(descriptor === FIXTURE_DESCRIPTORS["p2tr-keypath"]
+            ...(descriptor === FIXTURE_DESCRIPTORS["p2sh-p2wpkh"]
+              ? [psbtEntry(0x04, Buffer.from(P2WPKH_REDEEM_SCRIPT, "hex"))]
+              : []),
+            ...(descriptor === FIXTURE_DESCRIPTORS["p2tr-scriptpath"]
+              ? [
+                  psbtEntry(
+                    0x15,
+                    Buffer.from(`20${FIXTURE_PUBLIC_KEYS.scalar2.slice(2)}acc0`, "hex"),
+                    Buffer.concat([
+                      Buffer.from([0xc0]),
+                      Buffer.from(FIXTURE_PUBLIC_KEYS.scalar1.slice(2), "hex"),
+                    ]),
+                  ),
+                ]
+              : []),
+            ...(descriptor === FIXTURE_DESCRIPTORS["p2tr-keypath"] ||
+            descriptor === FIXTURE_DESCRIPTORS["p2tr-scriptpath"]
               ? [psbtEntry(0x17, Buffer.from(FIXTURE_PUBLIC_KEYS.scalar1.slice(2), "hex"))]
               : []),
           ];
@@ -586,6 +627,7 @@ function createFixtureRpc(options: FakeRpcOptions = {}): {
           if (!witnessUtxo) throw new Error("Fake PSBT input lacks witness UTXO");
           const decodedWitnessUtxo = parseTxOut(witnessUtxo);
           const witnessScript = inputEntryValue(psbt, index, 0x05);
+          const redeemScript = inputEntryValue(psbt, index, 0x04);
           const taprootInternalKey = inputEntryValue(psbt, index, 0x17);
           return {
             witness_utxo: {
@@ -593,6 +635,7 @@ function createFixtureRpc(options: FakeRpcOptions = {}): {
               scriptPubKey: { hex: decodedWitnessUtxo.scriptPubKey },
             },
             ...(witnessScript ? { witness_script: { hex: witnessScript.toString("hex") } } : {}),
+            ...(redeemScript ? { redeem_script: { hex: redeemScript.toString("hex") } } : {}),
             ...(taprootInternalKey
               ? { taproot_internal_key: taprootInternalKey.toString("hex") }
               : {}),
@@ -734,9 +777,9 @@ describe("prepareFixtures", () => {
         const request = paramObject(call.params);
         return { version: request["version"], psbtVersion: request["psbt_version"] };
       });
-    expect(versions).toHaveLength(8);
+    expect(versions).toHaveLength(10);
     expect(versions).toEqual(
-      Array.from({ length: 8 }, () => ({ version: 2, psbtVersion: undefined })),
+      Array.from({ length: 10 }, () => ({ version: 2, psbtVersion: undefined })),
     );
   });
 
@@ -786,6 +829,50 @@ describe("prepareFixtures", () => {
     expect(Object.isFrozen(fixture.transactionIntent.sequences)).toBe(true);
     expect(Object.isFrozen(fixture.transactionIntent.outputs)).toBe(true);
     expect(fixture.transactionIntent.outputs.every(Object.isFrozen)).toBe(true);
+  });
+
+  test("builds user-defined public-template fixtures with exact amounts and fee", async () => {
+    const spec: UserFixtureSpec = {
+      id: "merchant-refund",
+      inputs: [{ descriptor: "p2wpkh", sequence: 0xffff_fffc }],
+      outputs: [
+        { descriptor: "p2wpkh", amountSats: 100_000 },
+        { descriptor: "p2tr-keypath", remainder: true },
+      ],
+      feeSats: 15_000,
+      locktime: 42,
+      transactionVersion: 2,
+    };
+    const plans = compileUserFixturePlans([spec]);
+
+    const fixtures = await prepareFixtures(createFixtureRpc().rpc, plans);
+
+    const fixture = fixtures.custom["merchant-refund"];
+    expect(fixture).toMatchObject({
+      id: "merchant-refund",
+      inputCount: 1,
+      outputCount: 2,
+      feeSats: 15_000,
+      scriptTypes: ["p2wpkh"],
+      specSha256: plans[0]?.specSha256,
+      transactionIntent: {
+        version: 2,
+        locktime: 42,
+        sequences: [0xffff_fffc],
+        outputCount: 2,
+        outputs: [
+          { descriptor: FIXTURE_DESCRIPTORS.p2wpkh, amountSats: 100_000 },
+          {
+            descriptor: FIXTURE_DESCRIPTORS["p2tr-keypath"],
+            amountSats: 4_999_885_000,
+          },
+        ],
+      },
+    });
+    expect(parseUnsignedTransaction(fixture?.initialPsbt ?? "").outputs).toMatchObject([
+      { amountSats: 100_000 },
+      { amountSats: 4_999_885_000 },
+    ]);
   });
 
   test("rejects a PSBTv2 createpsbt response", async () => {
@@ -848,11 +935,15 @@ describe("prepareFixtures", () => {
         .map((map) => map.entries.map((entry) => entry.keyType));
 
     expect(inputKeyTypes(fixtures.profiles.p2wpkh.initialPsbt)).toEqual([[0x01]]);
+    expect(inputKeyTypes(fixtures.profiles["p2sh-p2wpkh"].initialPsbt)).toEqual([[0x01, 0x04]]);
     expect(inputKeyTypes(fixtures.profiles["p2wsh-single-key"].initialPsbt)).toEqual([
       [0x01, 0x05],
     ]);
     expect(inputKeyTypes(fixtures.profiles["p2wsh-2-of-3"].initialPsbt)).toEqual([[0x01, 0x05]]);
     expect(inputKeyTypes(fixtures.profiles["p2tr-keypath"].initialPsbt)).toEqual([[0x01, 0x17]]);
+    expect(inputKeyTypes(fixtures.profiles["p2tr-scriptpath"].initialPsbt)).toEqual([
+      [0x01, 0x15, 0x17],
+    ]);
     expect(inputKeyTypes(fixtures.profiles["mixed-p2wpkh-p2tr"].initialPsbt)).toEqual([
       [0x01],
       [0x01, 0x17],
@@ -909,9 +1000,11 @@ describe("prepareFixtures", () => {
       [FIXTURE_DESCRIPTORS["p2wsh-single-key"]],
       [FIXTURE_DESCRIPTORS["p2wsh-single-key"]],
       [FIXTURE_DESCRIPTORS.p2wpkh],
+      [FIXTURE_DESCRIPTORS["p2sh-p2wpkh"]],
       [FIXTURE_DESCRIPTORS["p2wsh-single-key"]],
       [FIXTURE_DESCRIPTORS["p2wsh-2-of-3"]],
       [FIXTURE_DESCRIPTORS["p2tr-keypath"]],
+      [FIXTURE_DESCRIPTORS["p2tr-scriptpath"]],
       [FIXTURE_DESCRIPTORS.p2wpkh, FIXTURE_DESCRIPTORS["p2tr-keypath"]],
       [FIXTURE_DESCRIPTORS.p2wpkh],
     ]);
@@ -928,8 +1021,8 @@ describe("prepareFixtures", () => {
       calls
         .filter((call) => call.method === "generatetoaddress")
         .map((call) => paramObject(call.params)["nblocks"]),
-    ).toEqual([3, 4, 1, 2, 100]);
-    expect(fixtures.core.blocks).toBe(610);
+    ).toEqual([3, 1, 4, 1, 2, 1, 100]);
+    expect(fixtures.core.blocks).toBe(612);
     for (const fixture of [
       fixtures.happy,
       fixtures.regression,

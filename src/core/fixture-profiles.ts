@@ -1,4 +1,9 @@
-export type FixtureScriptType = "p2wpkh" | "p2wsh" | "p2tr-keypath";
+export type FixtureScriptType =
+  | "p2wpkh"
+  | "p2sh-p2wpkh"
+  | "p2wsh"
+  | "p2tr-keypath"
+  | "p2tr-scriptpath";
 
 export const FIXTURE_PUBLIC_KEYS = {
   scalar1: "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
@@ -8,12 +13,23 @@ export const FIXTURE_PUBLIC_KEYS = {
 
 export const FIXTURE_DESCRIPTORS = {
   p2wpkh: `wpkh(${FIXTURE_PUBLIC_KEYS.scalar1})`,
+  "p2sh-p2wpkh": `sh(wpkh(${FIXTURE_PUBLIC_KEYS.scalar1}))`,
   "p2wsh-single-key": `wsh(pk(${FIXTURE_PUBLIC_KEYS.scalar1}))`,
   "p2wsh-2-of-3": `wsh(multi(2,${FIXTURE_PUBLIC_KEYS.scalar1},${FIXTURE_PUBLIC_KEYS.scalar2},${FIXTURE_PUBLIC_KEYS.scalar3}))`,
   "p2tr-keypath": `tr(${FIXTURE_PUBLIC_KEYS.scalar1.slice(2)})`,
+  "p2tr-scriptpath": `tr(${FIXTURE_PUBLIC_KEYS.scalar1.slice(2)},pk(${FIXTURE_PUBLIC_KEYS.scalar2.slice(2)}))`,
 } as const;
 
 export type FixtureDescriptorId = keyof typeof FIXTURE_DESCRIPTORS;
+
+export const FIXTURE_DESCRIPTOR_SCRIPT_TYPES = {
+  p2wpkh: "p2wpkh",
+  "p2sh-p2wpkh": "p2sh-p2wpkh",
+  "p2wsh-single-key": "p2wsh",
+  "p2wsh-2-of-3": "p2wsh",
+  "p2tr-keypath": "p2tr-keypath",
+  "p2tr-scriptpath": "p2tr-scriptpath",
+} as const satisfies Record<FixtureDescriptorId, FixtureScriptType>;
 
 export interface FixtureProfileDefinition {
   id: FixtureProfileId;
@@ -29,9 +45,11 @@ export interface FixtureProfileDefinition {
 
 export type FixtureProfileId =
   | "p2wpkh"
+  | "p2sh-p2wpkh"
   | "p2wsh-single-key"
   | "p2wsh-2-of-3"
   | "p2tr-keypath"
+  | "p2tr-scriptpath"
   | "mixed-p2wpkh-p2tr"
   | "intent-rich-p2wpkh";
 
@@ -46,6 +64,17 @@ export const FIXTURE_PROFILES = [
     transactionVersion: 2,
     descriptors: [FIXTURE_DESCRIPTORS.p2wpkh],
     feeSats: 11_000,
+  },
+  {
+    id: "p2sh-p2wpkh",
+    scriptTypes: ["p2sh-p2wpkh"],
+    inputDescriptorIds: ["p2sh-p2wpkh"],
+    outputDescriptorIds: ["p2sh-p2wpkh"],
+    sequences: [0xffff_fffd],
+    locktime: 0,
+    transactionVersion: 2,
+    descriptors: [FIXTURE_DESCRIPTORS["p2sh-p2wpkh"]],
+    feeSats: 11_500,
   },
   {
     id: "p2wsh-single-key",
@@ -79,6 +108,17 @@ export const FIXTURE_PROFILES = [
     transactionVersion: 2,
     descriptors: [FIXTURE_DESCRIPTORS["p2tr-keypath"]],
     feeSats: 14_000,
+  },
+  {
+    id: "p2tr-scriptpath",
+    scriptTypes: ["p2tr-scriptpath"],
+    inputDescriptorIds: ["p2tr-scriptpath"],
+    outputDescriptorIds: ["p2tr-scriptpath"],
+    sequences: [0xffff_fffd],
+    locktime: 0,
+    transactionVersion: 2,
+    descriptors: [FIXTURE_DESCRIPTORS["p2tr-scriptpath"]],
+    feeSats: 14_500,
   },
   {
     id: "mixed-p2wpkh-p2tr",

@@ -12,6 +12,9 @@ const root = resolve(import.meta.dirname, "..");
 const manifestSchema = JSON.parse(
   await readFile(resolve(root, "src/conformance/adapter-manifest.schema.json"), "utf8"),
 ) as Record<string, unknown>;
+const customSuiteManifestSchema = JSON.parse(
+  await readFile(resolve(root, "src/custom/suite-manifest.schema.json"), "utf8"),
+) as Record<string, unknown>;
 
 const ajv = new Ajv({
   allErrors: true,
@@ -23,15 +26,19 @@ ajv.addSchema(requestSchema, "adapter-request");
 ajv.addSchema(responseSchema, "adapter-response");
 ajv.addSchema(helloCapabilitiesSchema, "adapter-hello-capabilities");
 ajv.addSchema(manifestSchema, "adapter-manifest");
+ajv.addSchema(customSuiteManifestSchema, "custom-suite-manifest");
 
-const ajvRuntimeUnicodeLength = 'const func2 = require("ajv/dist/runtime/ucs2length").default;';
-const inlineUnicodeLength = `function func2(value){let length=0;for(let index=0;index<value.length;index++){length++;const code=value.charCodeAt(index);if(code>=0xd800&&code<=0xdbff&&index+1<value.length){const next=value.charCodeAt(index+1);if((next&0xfc00)===0xdc00){index++;}}}return length;}`;
+const ajvRuntimeUnicodeLength =
+  /const (func\d+) = require\("ajv\/dist\/runtime\/ucs2length"\)\.default;/g;
+const inlineUnicodeLength = (name: string) =>
+  `function ${name}(value){let length=0;for(let index=0;index<value.length;index++){length++;const code=value.charCodeAt(index);if(code>=0xd800&&code<=0xdbff&&index+1<value.length){const next=value.charCodeAt(index+1);if((next&0xfc00)===0xdc00){index++;}}}return length;}`;
 const generated = standaloneCode(ajv, {
   validateAdapterRequest: "adapter-request",
   validateAdapterResponse: "adapter-response",
   validateAdapterHelloCapabilities: "adapter-hello-capabilities",
   validateAdapterManifest: "adapter-manifest",
-}).replace(ajvRuntimeUnicodeLength, inlineUnicodeLength);
+  validateCustomSuiteManifest: "custom-suite-manifest",
+}).replace(ajvRuntimeUnicodeLength, (_match, name: string) => inlineUnicodeLength(name));
 
 if (generated.includes('require("ajv/')) {
   throw new Error("Generated validators contain an unexpected Ajv runtime dependency");

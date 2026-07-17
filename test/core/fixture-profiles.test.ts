@@ -11,9 +11,11 @@ describe("fixture profile definitions", () => {
     expect(JSON.stringify(FIXTURE_PUBLIC_KEYS)).not.toMatch(/priv|secret|["']0{63}[1-3]["']/i);
     expect(FIXTURE_PROFILES.map((profile) => profile.id)).toEqual([
       "p2wpkh",
+      "p2sh-p2wpkh",
       "p2wsh-single-key",
       "p2wsh-2-of-3",
       "p2tr-keypath",
+      "p2tr-scriptpath",
       "mixed-p2wpkh-p2tr",
       "intent-rich-p2wpkh",
     ]);
@@ -25,6 +27,11 @@ describe("fixture profile definitions", () => {
         id: "p2wpkh",
         scriptTypes: ["p2wpkh"],
         inputDescriptorIds: ["p2wpkh"],
+      },
+      {
+        id: "p2sh-p2wpkh",
+        scriptTypes: ["p2sh-p2wpkh"],
+        inputDescriptorIds: ["p2sh-p2wpkh"],
       },
       {
         id: "p2wsh-single-key",
@@ -40,6 +47,11 @@ describe("fixture profile definitions", () => {
         id: "p2tr-keypath",
         scriptTypes: ["p2tr-keypath"],
         inputDescriptorIds: ["p2tr-keypath"],
+      },
+      {
+        id: "p2tr-scriptpath",
+        scriptTypes: ["p2tr-scriptpath"],
+        inputDescriptorIds: ["p2tr-scriptpath"],
       },
       {
         id: "mixed-p2wpkh-p2tr",
@@ -59,11 +71,15 @@ describe("fixture profile definitions", () => {
 
     const descriptors = FIXTURE_PROFILES.flatMap((profile) => profile.descriptors);
     expect(descriptors).toContain(`wpkh(${FIXTURE_PUBLIC_KEYS.scalar1})`);
+    expect(descriptors).toContain(`sh(wpkh(${FIXTURE_PUBLIC_KEYS.scalar1}))`);
     expect(descriptors).toContain(`wsh(pk(${FIXTURE_PUBLIC_KEYS.scalar1}))`);
     expect(descriptors).toContain(
       `wsh(multi(2,${FIXTURE_PUBLIC_KEYS.scalar1},${FIXTURE_PUBLIC_KEYS.scalar2},${FIXTURE_PUBLIC_KEYS.scalar3}))`,
     );
     expect(descriptors).toContain(`tr(${FIXTURE_PUBLIC_KEYS.scalar1.slice(2)})`);
+    expect(descriptors).toContain(
+      `tr(${FIXTURE_PUBLIC_KEYS.scalar1.slice(2)},pk(${FIXTURE_PUBLIC_KEYS.scalar2.slice(2)}))`,
+    );
     expect(descriptors.join("\n")).not.toMatch(/xprv|tprv|priv|secret/i);
   });
 });

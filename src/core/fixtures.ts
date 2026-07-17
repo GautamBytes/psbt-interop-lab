@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import type { CompiledUserFixturePlan } from "../custom/fixtures.js";
 import { parsePsbtDocument } from "../psbt/document.js";
 import { extractWireFacts } from "../psbt/wire-facts.js";
 import {
@@ -16,10 +17,17 @@ const LEGACY_DESCRIPTOR_ID = "p2wsh-single-key" as const;
 const DEFAULT_GENERATE_MAX_TRIES = 1_000_000;
 const DEFAULT_SEQUENCE = 0xffff_fffd;
 const MAX_UINT32 = 0xffff_ffff;
+const P2WPKH_REDEEM_SCRIPT = `0014${createHash("ripemd160")
+  .update(createHash("sha256").update(Buffer.from(FIXTURE_PUBLIC_KEYS.scalar1, "hex")).digest())
+  .digest("hex")}`;
 const SINGLE_KEY_WITNESS_SCRIPT = `21${FIXTURE_PUBLIC_KEYS.scalar1}ac`;
 const MULTISIG_WITNESS_SCRIPT =
   `5221${FIXTURE_PUBLIC_KEYS.scalar1}21${FIXTURE_PUBLIC_KEYS.scalar2}` +
   `21${FIXTURE_PUBLIC_KEYS.scalar3}53ae`;
+const TAPROOT_SINGLE_KEY_LEAF_SCRIPT = `20${FIXTURE_PUBLIC_KEYS.scalar2.slice(2)}ac`;
+const EXPECTED_REDEEM_SCRIPTS = {
+  "p2sh-p2wpkh": P2WPKH_REDEEM_SCRIPT,
+} as const satisfies Partial<Record<FixtureDescriptorId, string>>;
 const EXPECTED_WITNESS_SCRIPTS = {
   "p2wsh-single-key": SINGLE_KEY_WITNESS_SCRIPT,
   "p2wsh-2-of-3": MULTISIG_WITNESS_SCRIPT,
@@ -28,6 +36,9 @@ const EXPECTED_SCRIPT_PUBKEYS = {
   p2wpkh: `0014${createHash("ripemd160")
     .update(createHash("sha256").update(Buffer.from(FIXTURE_PUBLIC_KEYS.scalar1, "hex")).digest())
     .digest("hex")}`,
+  "p2sh-p2wpkh": `a914${createHash("ripemd160")
+    .update(createHash("sha256").update(Buffer.from(P2WPKH_REDEEM_SCRIPT, "hex")).digest())
+    .digest("hex")}87`,
   "p2wsh-single-key": `0020${createHash("sha256")
     .update(Buffer.from(SINGLE_KEY_WITNESS_SCRIPT, "hex"))
     .digest("hex")}`,
@@ -36,6 +47,8 @@ const EXPECTED_SCRIPT_PUBKEYS = {
     .digest("hex")}`,
   // BIP341 TapTweak output key for the scalar-1 x-only internal key.
   "p2tr-keypath": "5120da4710964f7852695de2da025290e24af6d8c281de5a0b902b7135fd9fd74d21",
+  // BIP341 output key for scalar-1 with pk(scalar-2) as its only tapscript leaf.
+  "p2tr-scriptpath": "5120456b959d3ad02729d12d7df9a6ce66f2f02043fb5c5b61071897c59414a1842e",
 } as const satisfies Record<FixtureDescriptorId, string>;
 let scanLockTail = Promise.resolve();
 export const BITCOIN_CORE_VERSION = 310100;
@@ -55,7 +68,8 @@ export interface FixtureOutpoint {
   height: number;
 }
 
-export type FixtureId = "happy-path" | "bdk-finalize-regression" | FixtureProfileId;
+export type BuiltInFixtureId = "happy-path" | "bdk-finalize-regression" | FixtureProfileId;
+export type FixtureId = string;
 
 export interface FixtureOutputIntent {
   readonly descriptor: string;
@@ -84,6 +98,7 @@ export interface PsbtFixture {
   transactionId: string;
   psbtSha256: string;
   unsignedTxSha256: `sha256:${string}`;
+  readonly specSha256?: `sha256:${string}`;
   readonly transactionIntent?: FixtureTransactionIntent;
 }
 
@@ -103,6 +118,7 @@ export interface PreparedFixtures {
   happy: PreparedPsbtFixture;
   regression: PreparedPsbtFixture;
   profiles: Record<FixtureProfileId, PreparedPsbtFixture>;
+  custom: Readonly<Record<string, PreparedPsbtFixture>>;
 }
 
 interface BlockchainInfo {
@@ -150,6 +166,8 @@ interface FixturePlan {
   locktime: number;
   transactionVersion: number;
   feeSats: number;
+  outputAmounts?: readonly (number | null)[];
+  specSha256?: `sha256:${string}`;
 }
 
 function assertObject(value: unknown, label: string): Record<string, unknown> {
@@ -223,7 +241,7 @@ function parseDescriptorInfo(value: unknown): DescriptorInfo {
 }
 
 function parseAddress(value: unknown, label: string): string {
-  if (typeof value !== "string" || !/^bcrt1[qp]/i.test(value)) {
+  if (typeof value !== "string" || !/^(?:bcrt1[qp]|2)[A-Za-z0-9]+$/.test(value)) {
     throw new Error(`${label} did not return one regtest witness address`);
   }
   return value;
@@ -236,9 +254,12 @@ function parseValidatedScriptPubKey(
 ): string {
   const object = assertObject(value, `validateaddress ${id}`);
   const scriptPubKey = object["scriptPubKey"];
-  const witnessVersion = id === "p2tr-keypath" ? 1 : 0;
-  const expectedScriptPattern =
-    id === "p2tr-keypath"
+  const isNestedSegwit = id === "p2sh-p2wpkh";
+  const isTaproot = id === "p2tr-keypath" || id === "p2tr-scriptpath";
+  const witnessVersion = isTaproot ? 1 : 0;
+  const expectedScriptPattern = isNestedSegwit
+    ? /^a914[0-9a-f]{40}87$/i
+    : isTaproot
       ? /^5120[0-9a-f]{64}$/i
       : id === "p2wpkh"
         ? /^0014[0-9a-f]{40}$/i
@@ -246,8 +267,8 @@ function parseValidatedScriptPubKey(
   if (
     object["isvalid"] !== true ||
     object["address"] !== address ||
-    object["iswitness"] !== true ||
-    object["witness_version"] !== witnessVersion ||
+    object["iswitness"] !== !isNestedSegwit ||
+    (!isNestedSegwit && object["witness_version"] !== witnessVersion) ||
     typeof scriptPubKey !== "string" ||
     !expectedScriptPattern.test(scriptPubKey)
   ) {
@@ -406,7 +427,7 @@ async function scanFixtureUtxos(
   return selected;
 }
 
-function fixturePlans(): readonly FixturePlan[] {
+function fixturePlans(customPlans: readonly CompiledUserFixturePlan[]): readonly FixturePlan[] {
   const plans: readonly FixturePlan[] = [
     {
       id: "happy-path",
@@ -438,7 +459,24 @@ function fixturePlans(): readonly FixturePlan[] {
       transactionVersion: profile.transactionVersion,
       feeSats: profile.feeSats,
     })),
+    ...customPlans.map((plan) => ({
+      id: plan.id,
+      scriptTypes: plan.scriptTypes,
+      inputDescriptorIds: plan.inputDescriptorIds,
+      outputDescriptorIds: plan.outputDescriptorIds,
+      sequences: plan.sequences,
+      locktime: plan.locktime,
+      transactionVersion: plan.transactionVersion,
+      feeSats: plan.feeSats,
+      outputAmounts: plan.outputAmounts,
+      specSha256: plan.specSha256,
+    })),
   ];
+  const ids = new Set<string>();
+  for (const plan of plans) {
+    if (ids.has(plan.id)) throw new Error(`Duplicate fixture plan id ${plan.id}`);
+    ids.add(plan.id);
+  }
   for (const plan of plans) assertFixturePlan(plan);
   return plans;
 }
@@ -475,6 +513,20 @@ function assertFixturePlan(plan: FixturePlan): void {
   }
   if (!Number.isSafeInteger(plan.feeSats) || plan.feeSats <= 0) {
     throw new Error(`Fixture ${plan.id} has an invalid exact-satoshi fee`);
+  }
+  if (plan.outputAmounts) {
+    if (
+      plan.outputAmounts.length !== plan.outputDescriptorIds.length ||
+      plan.outputAmounts.filter((amount) => amount === null).length !== 1 ||
+      plan.outputAmounts.some(
+        (amount) => amount !== null && (!Number.isSafeInteger(amount) || amount <= 0),
+      )
+    ) {
+      throw new Error(`Fixture ${plan.id} has invalid custom output amounts`);
+    }
+  }
+  if (plan.specSha256 && !/^sha256:[0-9a-f]{64}$/.test(plan.specSha256)) {
+    throw new Error(`Fixture ${plan.id} has an invalid specification commitment`);
   }
 }
 
@@ -596,6 +648,17 @@ function allocateOutputSats(inputSats: number, plan: FixturePlan): readonly numb
   ) {
     throw new Error(`Fixture ${plan.id} has an invalid amount or fee`);
   }
+  if (plan.outputAmounts) {
+    const fixedTotal = plan.outputAmounts.reduce<number>(
+      (sum, amount) => sum + (amount === null ? 0 : amount),
+      0,
+    );
+    const remainder = spendableSats - fixedTotal;
+    if (!Number.isSafeInteger(remainder) || remainder <= 0) {
+      throw new Error(`Fixture ${plan.id} fixed outputs and fee exceed its selected inputs`);
+    }
+    return plan.outputAmounts.map((amount) => amount ?? remainder);
+  }
   const amountPerOutput = Math.floor(spendableSats / outputCount);
   const remainder = spendableSats % outputCount;
   return Array.from(
@@ -606,11 +669,13 @@ function allocateOutputSats(inputSats: number, plan: FixturePlan): readonly numb
 
 function assertDecodedFixture(
   value: unknown,
+  encoded: string,
   plan: FixturePlan,
   outpoints: readonly FixtureOutpoint[],
   outputSats: readonly number[],
   descriptors: Record<FixtureDescriptorId, CanonicalDescriptor>,
 ): string {
+  const inputMaps = parsePsbtDocument(encoded).maps.filter((map) => map.location.kind === "input");
   const decoded = assertObject(value, "decodepsbt");
   const transaction = assertObject(decoded["tx"], `Fixture ${plan.id} decoded transaction`);
   const transactionId = assertHex(transaction["txid"], 32, `Fixture ${plan.id} transaction id`);
@@ -684,8 +749,10 @@ function assertDecodedFixture(
     const outpoint = outpoints[index];
     const descriptorId = plan.inputDescriptorIds[index];
     const scriptType = plan.scriptTypes[index] ?? plan.scriptTypes[0];
+    const inputMap = inputMaps[index];
     if (
       !outpoint ||
+      !inputMap ||
       !descriptorId ||
       (typeof witnessUtxo["amount"] !== "string" && typeof witnessUtxo["amount"] !== "number") ||
       btcToSats(witnessUtxo["amount"]) !== outpoint.amountSats
@@ -704,6 +771,8 @@ function assertDecodedFixture(
     }
     const expectedWitnessScript =
       EXPECTED_WITNESS_SCRIPTS[descriptorId as keyof typeof EXPECTED_WITNESS_SCRIPTS];
+    const expectedRedeemScript =
+      EXPECTED_REDEEM_SCRIPTS[descriptorId as keyof typeof EXPECTED_REDEEM_SCRIPTS];
     if (scriptType === "p2wsh" && !expectedWitnessScript) {
       throw new Error(`Fixture ${plan.id} input ${index} has no declared witness script`);
     }
@@ -716,9 +785,39 @@ function assertDecodedFixture(
     ) {
       throw new Error(`Fixture ${plan.id} input ${index} witness script does not match descriptor`);
     }
-    if (scriptType === "p2tr-keypath") {
+    if (
+      expectedRedeemScript &&
+      parseDecodedScript(
+        input["redeem_script"],
+        `Fixture ${plan.id} input ${index} redeem script`,
+      ) !== expectedRedeemScript
+    ) {
+      throw new Error(`Fixture ${plan.id} input ${index} redeem script does not match descriptor`);
+    }
+    if (scriptType === "p2tr-keypath" || scriptType === "p2tr-scriptpath") {
       if (input["taproot_internal_key"] !== FIXTURE_PUBLIC_KEYS.scalar1.slice(2)) {
         throw new Error(`Fixture ${plan.id} input ${index} lacks Taproot internal-key metadata`);
+      }
+    }
+    if (scriptType === "p2tr-scriptpath") {
+      const leafEntries = inputMap.entries.filter((entry) => entry.keyType === 0x15);
+      const internalKeyEntries = inputMap.entries.filter((entry) => entry.keyType === 0x17);
+      const leaf = leafEntries[0];
+      const internalKey = internalKeyEntries[0];
+      if (
+        leafEntries.length !== 1 ||
+        internalKeyEntries.length !== 1 ||
+        !leaf ||
+        !internalKey ||
+        leaf.keyData.byteLength < 33 ||
+        (leaf.keyData[0] as number) >> 1 !== 0x60 ||
+        leaf.keyData.subarray(1, 33).toString("hex") !== FIXTURE_PUBLIC_KEYS.scalar1.slice(2) ||
+        leaf.value.toString("hex") !== `${TAPROOT_SINGLE_KEY_LEAF_SCRIPT}c0` ||
+        internalKey.value.toString("hex") !== FIXTURE_PUBLIC_KEYS.scalar1.slice(2)
+      ) {
+        throw new Error(
+          `Fixture ${plan.id} input ${index} lacks exact Taproot script-path metadata`,
+        );
       }
     }
   }
@@ -797,6 +896,7 @@ async function buildFixture(
   const facts = assertPsbtFacts(updated, plan.id, outpoints.length, outputDescriptors.length);
   const transactionId = assertDecodedFixture(
     await rpc.call("decodepsbt", { psbt: updated }),
+    updated,
     plan,
     outpoints,
     outputSats,
@@ -816,6 +916,7 @@ async function buildFixture(
     transactionId,
     psbtSha256: facts.sha256,
     unsignedTxSha256: unsignedTransactionSha256(updated, plan.id),
+    ...(plan.specSha256 ? { specSha256: plan.specSha256 } : {}),
     transactionIntent: freezeTransactionIntent(plan, outputDescriptors, outputSats),
   };
 }
@@ -829,7 +930,10 @@ function takeOutpoint(
   return outpoint;
 }
 
-export async function prepareFixtures(rpc: RpcCaller): Promise<PreparedFixtures> {
+export async function prepareFixtures(
+  rpc: RpcCaller,
+  customPlans: readonly CompiledUserFixturePlan[] = [],
+): Promise<PreparedFixtures> {
   let blockchain = parseBlockchainInfo(await rpc.call("getblockchaininfo"));
   if (blockchain.chain !== "regtest") {
     throw new Error("PSBT Interop Lab refuses to run outside Bitcoin Core regtest");
@@ -848,13 +952,13 @@ export async function prepareFixtures(rpc: RpcCaller): Promise<PreparedFixtures>
   }
 
   const descriptors = await canonicalizeDescriptors(rpc);
-  const plans = fixturePlans();
+  const plans = fixturePlans(customPlans);
   const funded = await ensureMatureUtxos(rpc, blockchain, descriptors, plans);
   blockchain = funded.blockchain;
   const available = Object.fromEntries(
     (Object.keys(funded.utxos) as FixtureDescriptorId[]).map((id) => [id, [...funded.utxos[id]]]),
   ) as Record<FixtureDescriptorId, FixtureOutpoint[]>;
-  const fixtures = new Map<FixtureId, PreparedPsbtFixture>();
+  const fixtures = new Map<string, PreparedPsbtFixture>();
   for (const plan of plans) {
     const outpoints = plan.inputDescriptorIds.map((id) => takeOutpoint(available, id));
     fixtures.set(plan.id, await buildFixture(rpc, plan, outpoints, descriptors));
@@ -869,6 +973,13 @@ export async function prepareFixtures(rpc: RpcCaller): Promise<PreparedFixtures>
       return [profile.id, fixture] as const;
     }),
   ) as Record<FixtureProfileId, PreparedPsbtFixture>;
+  const custom = Object.fromEntries(
+    customPlans.map((plan) => {
+      const fixture = fixtures.get(plan.id);
+      if (!fixture) throw new Error(`Custom fixture construction failed for ${plan.id}`);
+      return [plan.id, fixture] as const;
+    }),
+  );
   return {
     descriptor: descriptors[LEGACY_DESCRIPTOR_ID].descriptor,
     address: descriptors[LEGACY_DESCRIPTOR_ID].address,
@@ -881,5 +992,6 @@ export async function prepareFixtures(rpc: RpcCaller): Promise<PreparedFixtures>
     happy,
     regression,
     profiles,
+    custom,
   };
 }
