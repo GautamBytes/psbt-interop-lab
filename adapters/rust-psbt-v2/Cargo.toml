@@ -1,0 +1,21 @@
+[package]
+name = "psbt-lab-rust-psbt-v2-adapter"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.97"
+license = "MIT"
+publish = false
+
+[dependencies]
+base64 = "=0.22.1"
+psbt-v2 = { version = "=0.3.0", features = ["base64"] }
+serde = { version = "=1.0.228", features = ["derive"] }
+serde_json = "=1.0.150"
+sha2 = "=0.10.9"
+
+[profile.release]
+codegen-units = 1
+lto = "thin"
+panic = "abort"
+strip = true
+
