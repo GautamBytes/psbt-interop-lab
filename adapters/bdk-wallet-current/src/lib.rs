@@ -17,7 +17,7 @@ const MAX_PSBT_BYTES: usize = (MAX_LINE_BYTES - RESPONSE_LINE_RESERVE) * 3 / 4;
 const MAX_COMMITMENTS_BYTES: usize = 4 * 1024;
 const MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
 const SOURCE_REVISION: &str = "bdk-wallet-v3.1.0+bitcoin-0.32.102+miniscript-12.3.7";
-const ALLOWED_FIXTURES: [&str; 7] = [
+const ALLOWED_FIXTURES: [&str; 8] = [
     "happy-path",
     "bdk-finalize-regression",
     "p2wpkh",
@@ -25,6 +25,7 @@ const ALLOWED_FIXTURES: [&str; 7] = [
     "p2wsh-single-key",
     "p2wsh-2-of-3",
     "p2tr-keypath",
+    "p2tr-scriptpath",
 ];
 
 #[derive(Clone, Debug)]
@@ -621,8 +622,8 @@ pub fn handle_value_with_commitments(
                 "operationScriptTypes": {
                     "inspect": ["p2wpkh", "p2sh-p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
                     "roundtrip": ["p2wpkh", "p2sh-p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
-                    "sign": ["p2wpkh", "p2wsh", "p2tr-keypath"],
-                    "finalize": ["p2wpkh", "p2wsh", "p2tr-keypath"]
+                    "sign": ["p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
+                    "finalize": ["p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"]
                 },
                 "features": [
                     "fixture-commitment-sha256",

@@ -89,6 +89,17 @@ describe("adapter contracts", () => {
       version: "3.1.0",
       psbtVersions: [0],
       scriptTypes: ["p2wpkh", "p2sh-p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
+      operationScriptTypes: {
+        sign: ["p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
+        finalize: ["p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
+      },
+    });
+  });
+
+  test("declares native Taproot script-path signing and finalization in rust-bitcoin", () => {
+    expect(RUST_ADAPTER_CONTRACT.operationScriptTypes).toMatchObject({
+      sign: ["p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
+      "finalize-inputs": ["p2wsh", "p2tr-scriptpath"],
     });
   });
 

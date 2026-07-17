@@ -1,11 +1,13 @@
 use std::collections::BTreeSet;
 
 use bdk_wallet::Wallet;
+use bdk_wallet::bitcoin::bip32::{DerivationPath, Fingerprint};
 use bdk_wallet::bitcoin::key::{PrivateKey, TapTweak};
 use bdk_wallet::bitcoin::opcodes::all::{OP_CHECKMULTISIG, OP_CHECKSIG};
 use bdk_wallet::bitcoin::script::Builder;
-use bdk_wallet::bitcoin::secp256k1::{Keypair, Message, Secp256k1, XOnlyPublicKey};
+use bdk_wallet::bitcoin::secp256k1::{Keypair, Message, Secp256k1, SecretKey, XOnlyPublicKey};
 use bdk_wallet::bitcoin::sighash::{EcdsaSighashType, Prevouts, SighashCache, TapSighashType};
+use bdk_wallet::bitcoin::taproot::{ControlBlock, LeafVersion, TapLeafHash, TaprootBuilder};
 use bdk_wallet::bitcoin::{Network, Psbt, PublicKey, ScriptBuf, TxOut, ecdsa, taproot};
 use bdk_wallet::signer::{SignOptions, TapLeavesOptions};
 
@@ -21,6 +23,7 @@ enum ProfileKind {
     P2wshSingle,
     P2wshMultisig,
     P2trKeypath,
+    P2trScriptpath,
 }
 
 #[derive(Clone, Debug)]
@@ -32,6 +35,10 @@ struct FixtureProfile {
     fixture_public_key: PublicKey,
     allowed_public_keys: BTreeSet<PublicKey>,
     tap_internal_key: Option<XOnlyPublicKey>,
+    tap_leaf_key: Option<XOnlyPublicKey>,
+    tap_leaf_script: Option<ScriptBuf>,
+    tap_control_block: Option<ControlBlock>,
+    tap_leaf_hash: Option<TapLeafHash>,
 }
 
 #[derive(Debug)]
@@ -56,69 +63,144 @@ impl FixtureProfile {
             .parse::<PublicKey>()
             .map_err(|error| WalletOperationError::Internal(error.to_string()))?;
 
-        let (kind, descriptor, script_pubkey, witness_script, tap_internal_key, allowed) =
-            match fixture_id {
-                "happy-path" | "bdk-finalize-regression" | "p2wsh-single-key" => {
-                    let witness_script = Builder::new()
-                        .push_key(&fixture_public_key)
-                        .push_opcode(OP_CHECKSIG)
-                        .into_script();
-                    (
-                        ProfileKind::P2wshSingle,
-                        format!("wsh(pk({FIXTURE_WIF}))"),
-                        witness_script.to_p2wsh(),
-                        Some(witness_script),
-                        None,
-                        BTreeSet::from([fixture_public_key]),
-                    )
-                }
-                "p2wpkh" | "intent-rich-p2wpkh" => (
-                    ProfileKind::P2wpkh,
-                    format!("wpkh({FIXTURE_WIF})"),
-                    ScriptBuf::new_p2wpkh(
-                        &fixture_public_key
-                            .wpubkey_hash()
-                            .map_err(|error| WalletOperationError::Internal(error.to_string()))?,
-                    ),
+        let mut scalar_two_bytes = [0_u8; 32];
+        scalar_two_bytes[31] = 2;
+        let scalar_two_private = PrivateKey::new(
+            SecretKey::from_slice(&scalar_two_bytes)
+                .map_err(|error| WalletOperationError::Internal(error.to_string()))?,
+            bdk_wallet::bitcoin::NetworkKind::Test,
+        );
+
+        let (
+            kind,
+            descriptor,
+            script_pubkey,
+            witness_script,
+            tap_internal_key,
+            tap_leaf_key,
+            tap_leaf_script,
+            tap_control_block,
+            tap_leaf_hash,
+            allowed,
+        ) = match fixture_id {
+            "happy-path" | "bdk-finalize-regression" | "p2wsh-single-key" => {
+                let witness_script = Builder::new()
+                    .push_key(&fixture_public_key)
+                    .push_opcode(OP_CHECKSIG)
+                    .into_script();
+                (
+                    ProfileKind::P2wshSingle,
+                    format!("wsh(pk({FIXTURE_WIF}))"),
+                    witness_script.to_p2wsh(),
+                    Some(witness_script),
+                    None,
+                    None,
+                    None,
                     None,
                     None,
                     BTreeSet::from([fixture_public_key]),
+                )
+            }
+            "p2wpkh" | "intent-rich-p2wpkh" => (
+                ProfileKind::P2wpkh,
+                format!("wpkh({FIXTURE_WIF})"),
+                ScriptBuf::new_p2wpkh(
+                    &fixture_public_key
+                        .wpubkey_hash()
+                        .map_err(|error| WalletOperationError::Internal(error.to_string()))?,
                 ),
-                "p2wsh-2-of-3" => {
-                    let witness_script = Builder::new()
-                        .push_int(2)
-                        .push_key(&fixture_public_key)
-                        .push_key(&scalar_two)
-                        .push_key(&scalar_three)
-                        .push_int(3)
-                        .push_opcode(OP_CHECKMULTISIG)
-                        .into_script();
-                    (
-                        ProfileKind::P2wshMultisig,
-                        format!(
-                            "wsh(multi(2,{FIXTURE_WIF},{SCALAR_TWO_PUBLIC_KEY},{SCALAR_THREE_PUBLIC_KEY}))"
-                        ),
-                        witness_script.to_p2wsh(),
-                        Some(witness_script),
-                        None,
-                        BTreeSet::from([fixture_public_key, scalar_two, scalar_three]),
-                    )
-                }
-                "p2tr-keypath" => {
-                    let internal_key = Keypair::from_secret_key(&secp, &private_key.inner)
-                        .x_only_public_key()
-                        .0;
-                    (
-                        ProfileKind::P2trKeypath,
-                        format!("tr({FIXTURE_WIF})"),
-                        ScriptBuf::new_p2tr(&secp, internal_key, None),
-                        None,
-                        Some(internal_key),
-                        BTreeSet::new(),
-                    )
-                }
-                _ => return Err(WalletOperationError::Policy("Unknown signing fixture")),
-            };
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                BTreeSet::from([fixture_public_key]),
+            ),
+            "p2wsh-2-of-3" => {
+                let witness_script = Builder::new()
+                    .push_int(2)
+                    .push_key(&fixture_public_key)
+                    .push_key(&scalar_two)
+                    .push_key(&scalar_three)
+                    .push_int(3)
+                    .push_opcode(OP_CHECKMULTISIG)
+                    .into_script();
+                (
+                    ProfileKind::P2wshMultisig,
+                    format!(
+                        "wsh(multi(2,{FIXTURE_WIF},{SCALAR_TWO_PUBLIC_KEY},{SCALAR_THREE_PUBLIC_KEY}))"
+                    ),
+                    witness_script.to_p2wsh(),
+                    Some(witness_script),
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    BTreeSet::from([fixture_public_key, scalar_two, scalar_three]),
+                )
+            }
+            "p2tr-keypath" => {
+                let internal_key = Keypair::from_secret_key(&secp, &private_key.inner)
+                    .x_only_public_key()
+                    .0;
+                (
+                    ProfileKind::P2trKeypath,
+                    format!("tr({FIXTURE_WIF})"),
+                    ScriptBuf::new_p2tr(&secp, internal_key, None),
+                    None,
+                    Some(internal_key),
+                    None,
+                    None,
+                    None,
+                    None,
+                    BTreeSet::new(),
+                )
+            }
+            "p2tr-scriptpath" => {
+                let internal_key = Keypair::from_secret_key(&secp, &private_key.inner)
+                    .x_only_public_key()
+                    .0;
+                let leaf_key = Keypair::from_secret_key(&secp, &scalar_two_private.inner)
+                    .x_only_public_key()
+                    .0;
+                let leaf_script = Builder::new()
+                    .push_x_only_key(&leaf_key)
+                    .push_opcode(OP_CHECKSIG)
+                    .into_script();
+                let spend_info = TaprootBuilder::new()
+                    .add_leaf(0, leaf_script.clone())
+                    .map_err(|error| WalletOperationError::Internal(error.to_string()))?
+                    .finalize(&secp, internal_key)
+                    .map_err(|_| {
+                        WalletOperationError::Internal(
+                            "Built-in Taproot tree is incomplete".to_owned(),
+                        )
+                    })?;
+                let control_block = spend_info
+                    .control_block(&(leaf_script.clone(), LeafVersion::TapScript))
+                    .ok_or_else(|| {
+                        WalletOperationError::Internal(
+                            "Built-in Taproot control block is unavailable".to_owned(),
+                        )
+                    })?;
+                let leaf_hash = TapLeafHash::from_script(&leaf_script, LeafVersion::TapScript);
+                (
+                    ProfileKind::P2trScriptpath,
+                    format!("tr({FIXTURE_WIF},pk({}))", scalar_two_private.to_wif()),
+                    ScriptBuf::new_p2tr_tweaked(spend_info.output_key()),
+                    None,
+                    Some(internal_key),
+                    Some(leaf_key),
+                    Some(leaf_script),
+                    Some(control_block),
+                    Some(leaf_hash),
+                    BTreeSet::new(),
+                )
+            }
+            _ => return Err(WalletOperationError::Policy("Unknown signing fixture")),
+        };
 
         Ok(Self {
             kind,
@@ -128,6 +210,10 @@ impl FixtureProfile {
             fixture_public_key,
             allowed_public_keys: allowed,
             tap_internal_key,
+            tap_leaf_key,
+            tap_leaf_script,
+            tap_control_block,
+            tap_leaf_hash,
         })
     }
 
@@ -231,6 +317,48 @@ impl FixtureProfile {
                         ));
                     }
                 }
+                ProfileKind::P2trScriptpath => {
+                    let leaf_key = self.tap_leaf_key.expect("Taproot script-path profile");
+                    let leaf_hash = self.tap_leaf_hash.expect("Taproot script-path profile");
+                    let exact_leaf = !finalized
+                        && input.tap_scripts.len() == 1
+                        && input.tap_scripts.get(
+                            self.tap_control_block
+                                .as_ref()
+                                .expect("Taproot script-path profile"),
+                        ) == Some(&(
+                            self.tap_leaf_script
+                                .clone()
+                                .expect("Taproot script-path profile"),
+                            LeafVersion::TapScript,
+                        ));
+                    let exact_signatures = input
+                        .tap_script_sigs
+                        .keys()
+                        .all(|key| key == &(leaf_key, leaf_hash));
+                    if input.witness_script.is_some()
+                        || input.redeem_script.is_some()
+                        || !input.partial_sigs.is_empty()
+                        || input.tap_key_sig.is_some()
+                        || (!finalized && input.tap_internal_key != self.tap_internal_key)
+                        || (!finalized && !input.tap_key_origins.is_empty())
+                        || (!finalized && input.tap_merkle_root.is_some())
+                        || (!finalized && !exact_leaf)
+                        || (!finalized && !exact_signatures)
+                        || (finalized
+                            && (input.tap_internal_key.is_some()
+                                || input.tap_merkle_root.is_some()
+                                || !input.tap_scripts.is_empty()
+                                || !input.tap_key_origins.is_empty()))
+                        || input
+                            .sighash_type
+                            .is_some_and(|value| value != TapSighashType::Default.into())
+                    {
+                        return Err(WalletOperationError::Policy(
+                            "Taproot script-path input metadata is outside the exact fixture policy",
+                        ));
+                    }
+                }
             }
         }
         Ok(())
@@ -269,6 +397,20 @@ impl FixtureProfile {
                     "A Taproot key-path signature is invalid",
                 ));
             }
+            for ((public_key, leaf_hash), signature) in &input.tap_script_sigs {
+                if !self.verify_taproot_script_signature(
+                    psbt,
+                    &prevouts,
+                    index,
+                    *public_key,
+                    *leaf_hash,
+                    signature,
+                ) {
+                    return Err(WalletOperationError::InvalidSignature(
+                        "A Taproot script-path signature is invalid",
+                    ));
+                }
+            }
         }
         Ok(())
     }
@@ -304,7 +446,7 @@ impl FixtureProfile {
                     signature.sighash_type,
                 )
                 .ok(),
-            ProfileKind::P2trKeypath => return false,
+            ProfileKind::P2trKeypath | ProfileKind::P2trScriptpath => return false,
         };
         let Some(sighash) = sighash else {
             return false;
@@ -345,6 +487,35 @@ impl FixtureProfile {
             .0
             .to_x_only_public_key();
         secp.verify_schnorr(&signature.signature, &Message::from(sighash), &output_key)
+            .is_ok()
+    }
+
+    fn verify_taproot_script_signature(
+        &self,
+        psbt: &Psbt,
+        prevouts: &[TxOut],
+        index: usize,
+        public_key: XOnlyPublicKey,
+        leaf_hash: TapLeafHash,
+        signature: &taproot::Signature,
+    ) -> bool {
+        if self.kind != ProfileKind::P2trScriptpath
+            || Some(public_key) != self.tap_leaf_key
+            || Some(leaf_hash) != self.tap_leaf_hash
+            || signature.sighash_type != TapSighashType::Default
+        {
+            return false;
+        }
+        let Ok(sighash) = SighashCache::new(&psbt.unsigned_tx).taproot_script_spend_signature_hash(
+            index,
+            &Prevouts::All(prevouts),
+            leaf_hash,
+            signature.sighash_type,
+        ) else {
+            return false;
+        };
+        Secp256k1::verification_only()
+            .verify_schnorr(&signature.signature, &Message::from(sighash), &public_key)
             .is_ok()
     }
 
@@ -432,6 +603,34 @@ impl FixtureProfile {
                 };
                 self.verify_taproot_signature(psbt, prevouts, index, &signature)
             }
+            ProfileKind::P2trScriptpath => {
+                if items.len() != 3
+                    || Some(items[1])
+                        != self
+                            .tap_leaf_script
+                            .as_ref()
+                            .map(|script| script.as_bytes())
+                    || Some(items[2])
+                        != self
+                            .tap_control_block
+                            .as_ref()
+                            .map(|control_block| control_block.serialize())
+                            .as_deref()
+                {
+                    return false;
+                }
+                let Ok(signature) = taproot::Signature::from_slice(items[0]) else {
+                    return false;
+                };
+                self.verify_taproot_script_signature(
+                    psbt,
+                    prevouts,
+                    index,
+                    self.tap_leaf_key.expect("Taproot script-path profile"),
+                    self.tap_leaf_hash.expect("Taproot script-path profile"),
+                    &signature,
+                )
+            }
         }
     }
 
@@ -442,6 +641,10 @@ impl FixtureProfile {
                 .partial_sigs
                 .contains_key(&self.fixture_public_key),
             ProfileKind::P2trKeypath => psbt.inputs[index].tap_key_sig.is_some(),
+            ProfileKind::P2trScriptpath => psbt.inputs[index].tap_script_sigs.contains_key(&(
+                self.tap_leaf_key.expect("Taproot script-path profile"),
+                self.tap_leaf_hash.expect("Taproot script-path profile"),
+            )),
         }
     }
 }
@@ -487,11 +690,16 @@ fn has_any_taproot_metadata(input: &bdk_wallet::bitcoin::psbt::Input) -> bool {
         || input.tap_merkle_root.is_some()
 }
 
-fn signing_options() -> SignOptions {
+fn signing_options(kind: ProfileKind) -> SignOptions {
     SignOptions {
         trust_witness_utxo: true,
         try_finalize: false,
-        tap_leaves_options: TapLeavesOptions::None,
+        tap_leaves_options: if kind == ProfileKind::P2trScriptpath {
+            TapLeavesOptions::All
+        } else {
+            TapLeavesOptions::None
+        },
+        sign_with_tap_internal_key: kind != ProfileKind::P2trScriptpath,
         ..SignOptions::default()
     }
 }
@@ -521,14 +729,30 @@ pub(crate) fn sign(
     }
 
     let original_inputs = psbt.inputs.clone();
+    if profile.kind == ProfileKind::P2trScriptpath {
+        let leaf_key = profile.tap_leaf_key.expect("Taproot script-path profile");
+        let leaf_hash = profile.tap_leaf_hash.expect("Taproot script-path profile");
+        for &index in input_indexes {
+            psbt.inputs[index].tap_key_origins.insert(
+                leaf_key,
+                (
+                    vec![leaf_hash],
+                    (Fingerprint::default(), DerivationPath::default()),
+                ),
+            );
+        }
+    }
     let wallet = profile.wallet()?;
     wallet
-        .sign(psbt, signing_options())
+        .sign(psbt, signing_options(profile.kind))
         .map_err(|error| WalletOperationError::Signing(error.to_string()))?;
     let selected = input_indexes.iter().copied().collect::<BTreeSet<_>>();
     for (index, original) in original_inputs.into_iter().enumerate() {
         if !selected.contains(&index) {
             psbt.inputs[index] = original;
+        } else if profile.kind == ProfileKind::P2trScriptpath {
+            psbt.inputs[index].tap_key_origins = original.tap_key_origins;
+            psbt.inputs[index].tap_merkle_root = original.tap_merkle_root;
         }
     }
     profile.validate(psbt)?;

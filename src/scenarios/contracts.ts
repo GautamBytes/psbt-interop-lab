@@ -35,8 +35,8 @@ export const RUST_ADAPTER_CONTRACT = {
   scriptTypes: ["p2wpkh", "p2sh-p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
   operationScriptTypes: {
     roundtrip: ["p2wpkh", "p2sh-p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
-    sign: ["p2wpkh", "p2wsh", "p2tr-keypath"],
-    "finalize-inputs": ["p2wsh"],
+    sign: ["p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
+    "finalize-inputs": ["p2wsh", "p2tr-scriptpath"],
   },
   features: ["fixture-commitment-sha256"],
 } as const satisfies ExpectedAdapterContract;
@@ -136,8 +136,8 @@ export const BDK_CURRENT_ADAPTER_CONTRACT = {
   operationScriptTypes: {
     inspect: ["p2wpkh", "p2sh-p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
     roundtrip: ["p2wpkh", "p2sh-p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
-    sign: ["p2wpkh", "p2wsh", "p2tr-keypath"],
-    finalize: ["p2wpkh", "p2wsh", "p2tr-keypath"],
+    sign: ["p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
+    finalize: ["p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
   },
   features: [
     "fixture-commitment-sha256",

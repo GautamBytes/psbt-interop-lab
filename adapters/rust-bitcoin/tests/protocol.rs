@@ -12,6 +12,7 @@ use bitcoin::psbt::PsbtSighashType;
 use bitcoin::script::Builder;
 use bitcoin::secp256k1::{Keypair, Message, Secp256k1, SecretKey};
 use bitcoin::sighash::{EcdsaSighashType, Prevouts, SighashCache, TapSighashType};
+use bitcoin::taproot::{ControlBlock, LeafVersion, TapLeafHash, TaprootBuilder};
 use bitcoin::transaction::Version;
 use bitcoin::{
     Amount, OutPoint, Psbt, ScriptBuf, Sequence, Transaction, TxIn, TxOut, Txid, Witness,
@@ -143,18 +144,42 @@ fn multisig_witness_script() -> ScriptBuf {
         .into_script()
 }
 
+fn taproot_script_path() -> (ScriptBuf, ScriptBuf, ControlBlock, TapLeafHash) {
+    let secp = Secp256k1::new();
+    let leaf_script = Builder::new()
+        .push_x_only_key(&scalar_xonly(2))
+        .push_opcode(OP_CHECKSIG)
+        .into_script();
+    let spend_info = TaprootBuilder::new()
+        .add_leaf(0, leaf_script.clone())
+        .expect("single Taproot leaf")
+        .finalize(&secp, scalar_xonly(1))
+        .expect("complete Taproot tree");
+    let control_block = spend_info
+        .control_block(&(leaf_script.clone(), LeafVersion::TapScript))
+        .expect("fixture control block");
+    let leaf_hash = TapLeafHash::from_script(&leaf_script, LeafVersion::TapScript);
+    (
+        ScriptBuf::new_p2tr_tweaked(spend_info.output_key()),
+        leaf_script,
+        control_block,
+        leaf_hash,
+    )
+}
+
 fn unsigned_profile_fixture(fixture_id: &str, input_count: usize) -> String {
     let secp = Secp256k1::new();
     let fixture_public_key = scalar_public_key(1);
-    let (script_pubkey, witness_script, tap_internal_key) = match fixture_id {
+    let (script_pubkey, witness_script, tap_internal_key, tap_script) = match fixture_id {
         "p2wpkh" | "intent-rich-p2wpkh" => (
             ScriptBuf::new_p2wpkh(&fixture_public_key.wpubkey_hash().expect("compressed key")),
+            None,
             None,
             None,
         ),
         "p2wsh-2-of-3" => {
             let witness_script = multisig_witness_script();
-            (witness_script.to_p2wsh(), Some(witness_script), None)
+            (witness_script.to_p2wsh(), Some(witness_script), None, None)
         }
         "p2tr-keypath" => {
             let internal_key = scalar_xonly(1);
@@ -162,6 +187,16 @@ fn unsigned_profile_fixture(fixture_id: &str, input_count: usize) -> String {
                 ScriptBuf::new_p2tr(&secp, internal_key, None),
                 None,
                 Some(internal_key),
+                None,
+            )
+        }
+        "p2tr-scriptpath" => {
+            let (script_pubkey, leaf_script, control_block, _) = taproot_script_path();
+            (
+                script_pubkey,
+                None,
+                Some(scalar_xonly(1)),
+                Some((control_block, (leaf_script, LeafVersion::TapScript))),
             )
         }
         _ => panic!("unsupported profile fixture"),
@@ -196,6 +231,9 @@ fn unsigned_profile_fixture(fixture_id: &str, input_count: usize) -> String {
         input.witness_utxo = Some(funding_output.clone());
         input.witness_script = witness_script.clone();
         input.tap_internal_key = tap_internal_key;
+        if let Some((control_block, script)) = tap_script.clone() {
+            input.tap_scripts.insert(control_block, script);
+        }
         assert!(input.bip32_derivation.is_empty());
         assert!(input.tap_key_origins.is_empty());
     }
@@ -266,6 +304,36 @@ fn assert_valid_taproot_signature(psbt: &Psbt, input_index: usize) {
         .expect("valid tweaked scalar-1 Schnorr signature");
 }
 
+fn assert_valid_taproot_script_signature(psbt: &Psbt, input_index: usize) {
+    let (_, leaf_script, _, leaf_hash) = taproot_script_path();
+    let signature = psbt.inputs[input_index]
+        .tap_script_sigs
+        .get(&(scalar_xonly(2), leaf_hash))
+        .expect("scalar-2 Taproot script-path signature");
+    assert_eq!(signature.sighash_type, TapSighashType::Default);
+    assert_eq!(signature.to_vec().len(), 64);
+    let prevouts = psbt
+        .inputs
+        .iter()
+        .map(|input| input.witness_utxo.clone().expect("validated prevout"))
+        .collect::<Vec<_>>();
+    let sighash = SighashCache::new(&psbt.unsigned_tx)
+        .taproot_script_spend_signature_hash(
+            input_index,
+            &Prevouts::All(&prevouts),
+            TapLeafHash::from_script(&leaf_script, LeafVersion::TapScript),
+            TapSighashType::Default,
+        )
+        .expect("Taproot script-path sighash");
+    Secp256k1::verification_only()
+        .verify_schnorr(
+            &signature.signature,
+            &Message::from(sighash),
+            &scalar_xonly(2),
+        )
+        .expect("valid scalar-2 Schnorr signature");
+}
+
 #[test]
 fn negotiates_supported_operations() {
     let response = handle_value(request("hello", json!({})), "sha256:deadbeef");
@@ -281,8 +349,8 @@ fn negotiates_supported_operations() {
             "scriptTypes": ["p2wpkh", "p2sh-p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
             "operationScriptTypes": {
                 "roundtrip": ["p2wpkh", "p2sh-p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
-                "sign": ["p2wpkh", "p2wsh", "p2tr-keypath"],
-                "finalize-inputs": ["p2wsh"]
+                "sign": ["p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
+                "finalize-inputs": ["p2wsh", "p2tr-scriptpath"]
             },
             "features": ["fixture-commitment-sha256"]
         })
@@ -474,6 +542,102 @@ fn signs_exact_p2tr_keypath_with_default_sighash() {
     assert_eq!(response["output"]["signedInputs"], 1);
     let signed = response_psbt(&response);
     assert_valid_taproot_signature(&signed, 0);
+}
+
+#[test]
+fn signs_and_finalizes_exact_p2tr_scriptpath_while_preserving_bip371_fields() {
+    let encoded = unsigned_profile_fixture("p2tr-scriptpath", 1);
+    let original = decode_psbt(&encoded);
+    let signed_response = sign_profile("p2tr-scriptpath", &encoded, None);
+
+    assert_eq!(signed_response["status"], "ok", "{signed_response}");
+    assert_eq!(signed_response["output"]["signedInputs"], 1);
+    let signed = response_psbt(&signed_response);
+    assert_eq!(signed.inputs[0].tap_scripts, original.inputs[0].tap_scripts);
+    assert_eq!(
+        signed.inputs[0].tap_internal_key,
+        original.inputs[0].tap_internal_key
+    );
+    assert_eq!(
+        signed.inputs[0].tap_key_origins,
+        original.inputs[0].tap_key_origins
+    );
+    assert_valid_taproot_script_signature(&signed, 0);
+
+    let signed_encoded = STANDARD.encode(signed.serialize());
+    let finalized_response = handle_authorized(
+        request(
+            "finalize-inputs",
+            json!({
+                "psbt": signed_encoded,
+                "network": "regtest",
+                "fixtureId": "p2tr-scriptpath",
+                "inputIndexes": [0]
+            }),
+        ),
+        "p2tr-scriptpath",
+        &signed_encoded,
+    );
+    assert_eq!(finalized_response["status"], "ok", "{finalized_response}");
+    let finalized = response_psbt(&finalized_response);
+    let witness = finalized.inputs[0]
+        .final_script_witness
+        .as_ref()
+        .expect("final Taproot script-path witness")
+        .iter()
+        .collect::<Vec<_>>();
+    let (_, leaf_script, control_block, _) = taproot_script_path();
+    assert_eq!(witness.len(), 3);
+    assert_eq!(witness[1], leaf_script.as_bytes());
+    assert_eq!(witness[2], control_block.serialize());
+    assert!(finalized.inputs[0].tap_script_sigs.is_empty());
+    assert!(finalized.inputs[0].tap_scripts.is_empty());
+}
+
+#[test]
+fn rejects_wrong_or_missing_p2tr_scriptpath_metadata() {
+    let fixture = unsigned_profile_fixture("p2tr-scriptpath", 1);
+    let original = decode_psbt(&fixture);
+
+    let mut wrong_leaf = original.clone();
+    let control_block = wrong_leaf.inputs[0]
+        .tap_scripts
+        .keys()
+        .next()
+        .expect("control block")
+        .clone();
+    wrong_leaf.inputs[0].tap_scripts.insert(
+        control_block,
+        (
+            Builder::new()
+                .push_x_only_key(&scalar_xonly(3))
+                .push_opcode(OP_CHECKSIG)
+                .into_script(),
+            LeafVersion::TapScript,
+        ),
+    );
+
+    let mut wrong_control = original.clone();
+    let (control_block, script) = wrong_control.inputs[0]
+        .tap_scripts
+        .pop_first()
+        .expect("Taproot leaf");
+    let mut altered_control = control_block;
+    altered_control.internal_key = scalar_xonly(3);
+    wrong_control.inputs[0]
+        .tap_scripts
+        .insert(altered_control, script);
+
+    let mut dropped_metadata = original;
+    dropped_metadata.inputs[0].tap_scripts.clear();
+
+    for psbt in [wrong_leaf, wrong_control, dropped_metadata] {
+        let encoded = STANDARD.encode(psbt.serialize());
+        let response = sign_profile("p2tr-scriptpath", &encoded, None);
+        assert_eq!(response["status"], "rejected", "{response}");
+        assert_eq!(response["error"]["class"], "policy.psbt_not_authorized");
+        assert!(response.get("output").is_none());
+    }
 }
 
 #[test]
