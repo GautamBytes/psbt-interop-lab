@@ -11,6 +11,15 @@
 !docs/future-work.md
 !docs/sources.md
 
+!examples
+!examples/custom-suite.json
+
+!src
+!src/conformance
+!src/conformance/adapter-manifest.schema.json
+!src/custom
+!src/custom/suite-manifest.schema.json
+
 !website
 !website/**
 website/.npm-cache
