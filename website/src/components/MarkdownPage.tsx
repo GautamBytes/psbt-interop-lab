@@ -4,6 +4,7 @@ import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { repositoryUrl } from "../content";
 import { findDocumentBySourcePath, type WebsiteDocument } from "../pages/documents";
+import { findRepositoryResourceBySourcePath } from "../pages/repository-resources";
 import { MarkdownCodeBlock } from "./MarkdownCodeBlock";
 import { SiteLink } from "./SiteLink";
 
@@ -67,7 +68,7 @@ function normalizeRepoPath(baseDir: string, href: string): string {
   return normalized.join("/");
 }
 
-function resolveDocumentHref(href: string | undefined, baseDir: string): string {
+export function resolveDocumentHref(href: string | undefined, baseDir: string): string {
   if (!href || href.startsWith("#") || /^(https?:|mailto:)/.test(href)) return href ?? "#";
 
   const hash = href.includes("#") ? `#${href.split("#").slice(1).join("#")}` : "";
@@ -75,6 +76,9 @@ function resolveDocumentHref(href: string | undefined, baseDir: string): string 
 
   const internalDocument = findDocumentBySourcePath(path);
   if (internalDocument) return `${internalDocument.route}${hash}`;
+
+  const internalResource = findRepositoryResourceBySourcePath(path);
+  if (internalResource) return `${internalResource.route}${hash}`;
 
   return `${repositoryUrl}/blob/main/${path}${hash}`;
 }

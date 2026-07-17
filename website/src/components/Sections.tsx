@@ -60,9 +60,9 @@ export function Sections() {
               Every supported cell runs against a pinned implementation. Unsupported capabilities
               remain visible instead of turning into false passes.
             </p>
-            <a className="inline-link" href={`${repositoryUrl}#current-coverage`}>
+            <SiteLink className="inline-link" href="/docs#current-coverage">
               Read the full scenario list <ArrowSquareOut aria-hidden="true" />
-            </a>
+            </SiteLink>
           </div>
           <ul className="coverage-list">
             {coverage.map((item) => (
@@ -120,9 +120,9 @@ export function Sections() {
                 <BracketsCurly aria-hidden="true" />
                 Build an adapter
               </SiteLink>
-              <a className="button button--text" href={`${repositoryUrl}/blob/main/src/conformance/adapter-manifest.schema.json`}>
+              <SiteLink className="button button--text" href="/files/src/conformance/adapter-manifest.schema.json">
                 View the schema <ArrowSquareOut aria-hidden="true" />
-              </a>
+              </SiteLink>
             </div>
           </div>
           <div className="adapter-terminal" aria-label="Adapter command example">

@@ -165,4 +165,8 @@ export const docLinks = [
   { label: "Official sources", detail: "Check specifications, versions, and pinned artifacts", href: "/docs/sources" },
   { label: "Security", detail: "Read the safety model", href: "/security" },
   { label: "Threat model", detail: "Inspect runtime and CI security boundaries", href: "/security/threat-model" },
+  { label: "Adapter manifest schema", detail: "Inspect the third-party adapter contract", href: "/files/src/conformance/adapter-manifest.schema.json" },
+  { label: "Custom suite schema", detail: "Inspect the fixture and scenario contract", href: "/files/src/custom/suite-manifest.schema.json" },
+  { label: "Custom suite example", detail: "Start from a complete custom roundtrip", href: "/files/examples/custom-suite.json" },
+  { label: "Website source", detail: "Browse the website application structure", href: "/files/website" },
 ] as const;

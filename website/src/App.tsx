@@ -11,6 +11,8 @@ import { findDocument } from "./pages/documents";
 import { NotFoundPage } from "./pages/NotFoundPage";
 import { routes } from "./routes";
 import { MarkdownPage } from "./components/MarkdownPage";
+import { RepositoryResourcePage } from "./components/RepositoryResourcePage";
+import { findRepositoryResource } from "./pages/repository-resources";
 
 type Theme = "dark" | "light";
 
@@ -27,6 +29,7 @@ export function App() {
   const [menuOpen, setMenuOpen] = useState(false);
   const pathname = useRoute();
   const activeDocument = findDocument(pathname);
+  const activeResource = findRepositoryResource(pathname);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -48,9 +51,9 @@ export function App() {
 
   useEffect(() => {
     setMenuOpen(false);
-    const title = activeDocument?.label ?? (pathname === routes.home ? "PSBT Interop Lab" : "Page not found");
+    const title = activeDocument?.label ?? activeResource?.label ?? (pathname === routes.home ? "PSBT Interop Lab" : "Page not found");
     window.document.title = title === "PSBT Interop Lab" ? title : `${title} | PSBT Interop Lab`;
-  }, [activeDocument, pathname]);
+  }, [activeDocument, activeResource, pathname]);
 
   const page = pathname === routes.home ? (
     <>
@@ -60,6 +63,8 @@ export function App() {
     </>
   ) : activeDocument ? (
     <MarkdownPage document={activeDocument} />
+  ) : activeResource ? (
+    <RepositoryResourcePage resource={activeResource} />
   ) : (
     <NotFoundPage />
   );

@@ -2,6 +2,8 @@ import { act, cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
+import { resolveDocumentHref } from "./components/MarkdownPage";
+import { documents } from "./pages/documents";
 
 describe("website documentation routes", () => {
   beforeEach(() => {
@@ -70,6 +72,61 @@ describe("website documentation routes", () => {
     expect(screen.getByRole("link", { name: "future work" })).toHaveAttribute("href", "/docs/future-work");
     expect(screen.getByRole("link", { name: "official source ledger" })).toHaveAttribute("href", "/docs/sources");
     expect(screen.getByRole("link", { name: "threat model" })).toHaveAttribute("href", "/security/threat-model");
+  });
+
+  it("keeps every local repository link in mirrored Markdown inside the website", () => {
+    const markdownLink = /\[[^\]]+\]\(([^)]+)\)/g;
+
+    for (const document of documents) {
+      for (const match of document.markdown.matchAll(markdownLink)) {
+        const href = match[1];
+        if (/^(?:https?:|mailto:|#)/.test(href)) continue;
+
+        expect(
+          resolveDocumentHref(href, document.baseDir),
+          `${document.sourcePath} should keep ${href} inside the website`,
+        ).toMatch(/^\//);
+        expect(resolveDocumentHref(href, document.baseDir)).not.toContain("github.com");
+      }
+    }
+  });
+
+  it.each([
+    ["manifest schema", "/files/src/conformance/adapter-manifest.schema.json"],
+    ["example", "/files/examples/custom-suite.json"],
+    ["schema", "/files/src/custom/suite-manifest.schema.json"],
+    ["website/", "/files/website"],
+  ])("routes the README %s reference to its internal file page", (name, href) => {
+    window.history.replaceState({}, "", "/docs");
+    render(<App />);
+
+    expect(screen.getByRole("link", { name })).toHaveAttribute("href", href);
+  });
+
+  it.each([
+    ["/files/src/conformance/adapter-manifest.schema.json", "Adapter manifest schema", /psbt-lab\.adapters/],
+    ["/files/src/custom/suite-manifest.schema.json", "Custom suite schema", /p2tr-scriptpath/],
+    ["/files/examples/custom-suite.json", "Custom suite example", /nested-to-taproot/],
+    ["/files/website", "Website source", /Vite application/],
+  ])("renders the internal repository resource at %s", (pathname, heading, content) => {
+    window.history.replaceState({}, "", pathname);
+    render(<App />);
+
+    expect(screen.getByRole("heading", { name: heading })).toBeInTheDocument();
+    expect(screen.getByText(content)).toBeInTheDocument();
+  });
+
+  it("uses internal links for homepage documentation references", () => {
+    render(<App />);
+
+    expect(screen.getByRole("link", { name: /Read the full scenario list/i })).toHaveAttribute(
+      "href",
+      "/docs#current-coverage",
+    );
+    expect(screen.getByRole("link", { name: /View the schema/i })).toHaveAttribute(
+      "href",
+      "/files/src/conformance/adapter-manifest.schema.json",
+    );
   });
 
   it("copies fenced documentation commands", async () => {
