@@ -608,7 +608,7 @@ svg {
   position: relative;
   z-index: 2;
   margin-top: -1px;
-  padding-bottom: 96px;
+  padding-bottom: 64px;
 }
 
 .report-console {
@@ -1993,7 +1993,7 @@ svg {
   }
 
   .report-section {
-    padding-bottom: 76px;
+    padding-bottom: 56px;
   }
 
   .report-console__body {
