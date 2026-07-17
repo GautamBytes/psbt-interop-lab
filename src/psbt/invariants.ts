@@ -168,13 +168,36 @@ function isValidTxModifiableChange(before: PsbtDocument, after: PsbtDocument): b
 }
 
 function roundtripFailures(
+  before: PsbtDocument,
+  after: PsbtDocument,
   added: readonly PsbtEntrySummary[],
   removed: readonly PsbtEntrySummary[],
   changed: readonly PsbtChangedEntry[],
 ): BarePsbtTransitionFailure[] {
+  const beforeModifiable = findGlobalValue(before, 0x06);
+  const afterModifiable = findGlobalValue(after, 0x06);
+  const omittedZeroNormalization =
+    before.psbtVersion === 2 &&
+    after.psbtVersion === 2 &&
+    ((beforeModifiable === undefined &&
+      afterModifiable?.byteLength === 1 &&
+      afterModifiable[0] === 0) ||
+      (beforeModifiable?.byteLength === 1 &&
+        beforeModifiable[0] === 0 &&
+        afterModifiable === undefined));
+  const isNormalizedModifiableEntry = (entry: PsbtEntrySummary): boolean =>
+    omittedZeroNormalization &&
+    entry.location.kind === "global" &&
+    entry.keyType === 0x06 &&
+    entry.keyBytes === 1;
+
   return [
-    ...added.map((entry) => addedFailure(entry)),
-    ...removed.map((entry) => removedFailure(entry)),
+    ...added
+      .filter((entry) => !isNormalizedModifiableEntry(entry))
+      .map((entry) => addedFailure(entry)),
+    ...removed
+      .filter((entry) => !isNormalizedModifiableEntry(entry))
+      .map((entry) => removedFailure(entry)),
     ...changed.map((entry) => changedFailure(entry)),
   ];
 }
@@ -410,7 +433,7 @@ export function assertPsbtTransition(
 
   switch (policy) {
     case "roundtrip":
-      failures = roundtripFailures(diff.added, diff.removed, diff.changed);
+      failures = roundtripFailures(before, after, diff.added, diff.removed, diff.changed);
       break;
     case "sign":
       failures = signFailures(

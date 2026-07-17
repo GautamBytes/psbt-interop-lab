@@ -1,4 +1,4 @@
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { describe, expect, test } from "vitest";
@@ -142,5 +142,11 @@ describe("custom suite manifest", () => {
     writeFileSync(path, JSON.stringify(validSuite()), { mode: 0o600 });
 
     await expect(loadCustomSuiteManifest(path)).resolves.toEqual(validSuite());
+  });
+
+  test("ships a valid deterministic custom-suite example", () => {
+    const example = JSON.parse(readFileSync(resolve("examples/custom-suite.json"), "utf8"));
+
+    expect(parseCustomSuiteManifest(example)).toEqual(example);
   });
 });

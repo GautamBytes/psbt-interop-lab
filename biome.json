@@ -6,6 +6,8 @@
       "!!dist",
       "!!artifacts",
       "!!adapters/rust-bitcoin/target",
+      "!!adapters/bdk-wallet-current/target",
+      "!!adapters/rust-psbt-v2/target",
       "!!src/generated/validators.ts"
     ]
   },

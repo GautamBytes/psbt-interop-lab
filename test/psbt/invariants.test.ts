@@ -151,6 +151,38 @@ describe("roundtrip policy", () => {
       }),
     );
   });
+
+  test("accepts only the BIP370 omitted-to-zero transaction-modifiable normalization", () => {
+    const addedDefault = assertPsbtTransition(
+      "roundtrip",
+      document(psbtV2()),
+      document(psbtV2(0x00)),
+    );
+    const removedDefault = assertPsbtTransition(
+      "roundtrip",
+      document(psbtV2(0x00)),
+      document(psbtV2()),
+    );
+    const addedPermission = assertPsbtTransition(
+      "roundtrip",
+      document(psbtV2()),
+      document(psbtV2(0x01)),
+    );
+    const removedPermission = assertPsbtTransition(
+      "roundtrip",
+      document(psbtV2(0x01)),
+      document(psbtV2()),
+    );
+
+    expect(addedDefault).toMatchObject({ ok: true, exactBytesEqual: false, failures: [] });
+    expect(removedDefault).toMatchObject({ ok: true, exactBytesEqual: false, failures: [] });
+    expect(addedPermission.failures).toContainEqual(
+      expect.objectContaining({ code: "ENTRY_ADDED", keyType: 0x06 }),
+    );
+    expect(removedPermission.failures).toContainEqual(
+      expect.objectContaining({ code: "ENTRY_REMOVED", keyType: 0x06 }),
+    );
+  });
 });
 
 describe("sign policy", () => {

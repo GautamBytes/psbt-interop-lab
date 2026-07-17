@@ -73,6 +73,7 @@ describe("CLI program", () => {
     const command = createProgram().commands.find((candidate) => candidate.name() === commandName);
 
     expect(command?.options.some((option) => option.long === "--adapter-manifest")).toBe(true);
+    expect(command?.options.some((option) => option.long === "--suite-manifest")).toBe(true);
   });
 
   test("runs when launched through an npm-style executable symlink", () => {
@@ -88,7 +89,7 @@ describe("CLI program", () => {
 
       expect(result.status).toBe(0);
       expect(result.stderr).toBe("");
-      expect(result.stdout.trim()).toBe("0.3.1");
+      expect(result.stdout.trim()).toBe("0.4.0");
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }

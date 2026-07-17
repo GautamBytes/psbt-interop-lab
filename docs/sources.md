@@ -1,6 +1,6 @@
 # Official Source Ledger
 
-Research and dependency snapshot: 2026-07-16.
+Research and dependency snapshot: 2026-07-17.
 
 This file records the primary sources used to choose protocol behavior, APIs, versions, and pinned
 artifacts. Runtime dependencies are also locked in `pnpm-lock.yaml`, `Cargo.lock`, and the hashed
@@ -13,10 +13,17 @@ Python requirement.
   roles, and PSBTv0 fields.
 - [BIP370: PSBT Version 2](https://bips.dev/370/) defines PSBTv2's global input/output counts and
   per-input/per-output transaction fields. The wire parser validates PSBTv2 and the rejection matrix
-  uses the official required-fields vector, while signing scenarios use Core-created PSBTv0.
+  uses the official required-fields vector, while signing scenarios use Core-created PSBTv0. Its
+  Constructor rules permit `PSBT_GLOBAL_TX_MODIFIABLE` to be omitted or removed when no further
+  inputs or outputs may be added; the semantic roundtrip rule therefore treats omission and an
+  explicit zero byte as equivalent, and no other field-presence normalization.
 - [BIP371: Taproot Fields for PSBT](https://bips.dev/371/) defines Taproot key, signature, leaf,
   derivation, internal-key, and tree fields. The semantic parser validates their field layouts, and
-  active scenarios create, key-path sign, finalize, and policy-check Core-generated P2TR PSBTs.
+  active scenarios create, key-path sign, finalize, and policy-check Core-generated P2TR PSBTs;
+  script-path fixtures exercise leaf-script, control-block, and internal-key preservation.
+- [BIP382](https://bips.dev/382/) defines `wpkh()` output descriptors, including their use inside
+  `sh()`, and [BIP386](https://bips.dev/386/) defines `tr()` descriptors. The fixture factory uses
+  these forms for nested SegWit and Taproot script-path regtest outputs.
 
 ## Bitcoin Core
 
@@ -65,6 +72,11 @@ Python requirement.
 
 ## BDK Regression Adapter
 
+- [`bdk_wallet` 3.1.0](https://docs.rs/bdk_wallet/3.1.0/bdk_wallet/) is the current BDK PSBT
+  implementation exercised for P2WPKH, P2WSH, and Taproot key-path signing plus all PSBTv0
+  roundtrip profiles. Its committed lockfile pins bitcoin 0.32.102, miniscript 12.3.7, and
+  bdk_chain 0.23.3.
+
 - [BDK FFI release v2.3.1](https://github.com/bitcoindevkit/bdk-ffi/releases/tag/v2.3.1) and
   [bdkpython 2.3.1 on PyPI](https://pypi.org/project/bdkpython/2.3.1/) identify the frozen affected
   implementation.
@@ -77,6 +89,13 @@ Python requirement.
   `PSBT is missing witness script` failure when finalization encounters an already-finalized input,
   and confirms that Core can finalize the same PSBT. The upstream discussion records the fix in
   rust-miniscript 12.3.7 and bdkpython 3.0.0. The suite keeps 2.3.1 only as a regression specimen.
+
+## PSBTv2 Adapter
+
+- [`psbt-v2` 0.3.0](https://docs.rs/psbt-v2/0.3.0/psbt_v2/) provides the native PSBTv2 parser used
+  for the official BIP370 valid and invalid vectors. The adapter pins source revision
+  `8ca657c333b6b391f2501e8b31627ccbb6a67f66` and intentionally claims parser/roundtrip support only;
+  it does not imply cross-library PSBTv2 signing support.
 
 ## Tooling
 

@@ -36,10 +36,10 @@ func TestHelloAdvertisesOnlyImplementedCapabilities(t *testing.T) {
 		"operations":   []any{"hello", "native-parse", "inspect", "roundtrip", "sign", "finalize", "finalize-inputs"},
 		"roles":        []any{"parser", "signer", "finalizer"},
 		"psbtVersions": []any{float64(0)},
-		"scriptTypes":  []any{"p2wpkh", "p2wsh", "p2tr-keypath"},
+		"scriptTypes":  []any{"p2wpkh", "p2sh-p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"},
 		"operationScriptTypes": map[string]any{
-			"inspect":         []any{"p2wpkh", "p2wsh", "p2tr-keypath"},
-			"roundtrip":       []any{"p2wpkh", "p2wsh", "p2tr-keypath"},
+			"inspect":         []any{"p2wpkh", "p2sh-p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"},
+			"roundtrip":       []any{"p2wpkh", "p2sh-p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"},
 			"sign":            []any{"p2wpkh", "p2wsh", "p2tr-keypath"},
 			"finalize":        []any{"p2wsh"},
 			"finalize-inputs": []any{"p2wsh"},

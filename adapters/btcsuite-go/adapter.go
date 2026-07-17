@@ -150,10 +150,10 @@ func (handler *Handler) HandleJSON(raw []byte, digest string) Response {
 			"operations":   []string{"hello", "native-parse", "inspect", "roundtrip", "sign", "finalize", "finalize-inputs"},
 			"roles":        []string{"parser", "signer", "finalizer"},
 			"psbtVersions": []int{0},
-			"scriptTypes":  []string{"p2wpkh", "p2wsh", "p2tr-keypath"},
+			"scriptTypes":  []string{"p2wpkh", "p2sh-p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"},
 			"operationScriptTypes": map[string]any{
-				"inspect":         []string{"p2wpkh", "p2wsh", "p2tr-keypath"},
-				"roundtrip":       []string{"p2wpkh", "p2wsh", "p2tr-keypath"},
+				"inspect":         []string{"p2wpkh", "p2sh-p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"},
+				"roundtrip":       []string{"p2wpkh", "p2sh-p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"},
 				"sign":            []string{"p2wpkh", "p2wsh", "p2tr-keypath"},
 				"finalize":        []string{"p2wsh"},
 				"finalize-inputs": []string{"p2wsh"},

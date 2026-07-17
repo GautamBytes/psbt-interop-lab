@@ -1,0 +1,56 @@
+{
+  "schema": "psbt-lab.suite/0.1",
+  "fixtures": [
+    {
+      "id": "nested-to-taproot",
+      "inputs": [
+        {
+          "descriptor": "p2sh-p2wpkh",
+          "sequence": 4294967292
+        }
+      ],
+      "outputs": [
+        {
+          "descriptor": "p2tr-scriptpath",
+          "remainder": true
+        }
+      ],
+      "feeSats": 15000,
+      "locktime": 42,
+      "transactionVersion": 2
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "nested-to-taproot-roundtrip",
+      "title": "Nested SegWit to Taproot script-path roundtrip",
+      "fixture": "nested-to-taproot",
+      "steps": [
+        {
+          "id": "rust",
+          "adapter": "rust-bitcoin",
+          "operation": "roundtrip",
+          "input": "fixture"
+        },
+        {
+          "id": "go",
+          "adapter": "btcsuite-go",
+          "operation": "roundtrip",
+          "input": "rust"
+        },
+        {
+          "id": "javascript",
+          "adapter": "bitcoinjs-lib",
+          "operation": "roundtrip",
+          "input": "go"
+        },
+        {
+          "id": "bdk",
+          "adapter": "bdk-wallet-current",
+          "operation": "roundtrip",
+          "input": "javascript"
+        }
+      ]
+    }
+  ]
+}

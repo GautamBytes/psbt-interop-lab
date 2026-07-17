@@ -1,18 +1,22 @@
 import { describe, expect, test, vi } from "vitest";
 import { parseAdapterManifest } from "../../src/conformance/manifest.js";
 import type { PreparedFixtures, PsbtFixture } from "../../src/core/fixtures.js";
+import { parseCustomSuiteManifest } from "../../src/custom/manifest.js";
 import type { AdapterProcessOptions } from "../../src/protocol/adapter-process.js";
 import type {
   AdapterRequest,
   AdapterResponse,
   NegotiatedAdapter,
 } from "../../src/protocol/types.js";
+import { extractWireFacts } from "../../src/psbt/wire-facts.js";
 import type { ScenarioExecutionContext } from "../../src/scenarios/context.js";
 import {
   BDK_ADAPTER_CONTRACT,
+  BDK_CURRENT_ADAPTER_CONTRACT,
   BITCOINJS_ADAPTER_CONTRACT,
   type ExpectedAdapterContract,
   GO_ADAPTER_CONTRACT,
+  PSBTV2_ADAPTER_CONTRACT,
   RUST_ADAPTER_CONTRACT,
 } from "../../src/scenarios/contracts.js";
 import type { ScenarioDefinition } from "../../src/scenarios/definition.js";
@@ -122,11 +126,15 @@ function fixture(id: PsbtFixture["id"]): PsbtFixture {
   const scriptTypes =
     id === "p2wpkh" || id === "intent-rich-p2wpkh"
       ? (["p2wpkh"] as const)
-      : id === "p2tr-keypath"
-        ? (["p2tr-keypath"] as const)
-        : id === "mixed-p2wpkh-p2tr"
-          ? (["p2wpkh", "p2tr-keypath"] as const)
-          : (["p2wsh"] as const);
+      : id === "p2sh-p2wpkh"
+        ? (["p2sh-p2wpkh"] as const)
+        : id === "p2tr-keypath"
+          ? (["p2tr-keypath"] as const)
+          : id === "p2tr-scriptpath"
+            ? (["p2tr-scriptpath"] as const)
+            : id === "mixed-p2wpkh-p2tr"
+              ? (["p2wpkh", "p2tr-keypath"] as const)
+              : (["p2wsh"] as const);
   return {
     id,
     initialPsbt:
@@ -154,12 +162,15 @@ function preparedFixtures(): PreparedFixtures {
     regression: fixture("bdk-finalize-regression"),
     profiles: {
       p2wpkh: fixture("p2wpkh"),
+      "p2sh-p2wpkh": fixture("p2sh-p2wpkh"),
       "p2wsh-single-key": fixture("p2wsh-single-key"),
       "p2wsh-2-of-3": fixture("p2wsh-2-of-3"),
       "p2tr-keypath": fixture("p2tr-keypath"),
+      "p2tr-scriptpath": fixture("p2tr-scriptpath"),
       "mixed-p2wpkh-p2tr": fixture("mixed-p2wpkh-p2tr"),
       "intent-rich-p2wpkh": fixture("intent-rich-p2wpkh"),
     },
+    custom: {},
   } as PreparedFixtures;
 }
 
@@ -169,32 +180,41 @@ function runtimeAdapter(contract: ExpectedAdapterContract): ProofRuntimeAdapter 
   const close = vi.fn(async () => undefined);
   return {
     close,
-    request: vi.fn(
-      async (request: AdapterRequest): Promise<AdapterResponse> => ({
-        protocol: "psbt-lab.adapter/0.2",
-        id: request.id,
-        status: "ok",
-        implementation: {
-          name: contract.name,
-          version: contract.version,
-          artifactDigest: `sha256:${"e".repeat(64)}`,
-          sourceRevision: contract.sourceRevision,
-        },
-        output: {
-          operations: [...contract.operations],
-          roles: [...contract.roles],
-          psbtVersions: [...contract.psbtVersions],
-          scriptTypes: [...contract.scriptTypes],
-          operationScriptTypes: Object.fromEntries(
-            Object.entries(contract.operationScriptTypes).map(([operation, scriptTypes]) => [
-              operation,
-              [...scriptTypes],
-            ]),
-          ),
-          features: [...(contract.features ?? [])],
-        },
-      }),
-    ),
+    request: vi.fn(async (request: AdapterRequest): Promise<AdapterResponse> => {
+      const implementation = {
+        name: contract.name,
+        version: contract.version,
+        artifactDigest: `sha256:${"e".repeat(64)}` as const,
+        sourceRevision: contract.sourceRevision,
+      };
+      return request.operation === "hello"
+        ? {
+            protocol: "psbt-lab.adapter/0.2",
+            id: request.id,
+            status: "ok",
+            implementation,
+            output: {
+              operations: [...contract.operations],
+              roles: [...contract.roles],
+              psbtVersions: [...contract.psbtVersions],
+              scriptTypes: [...contract.scriptTypes],
+              operationScriptTypes: Object.fromEntries(
+                Object.entries(contract.operationScriptTypes).map(([operation, scriptTypes]) => [
+                  operation,
+                  [...scriptTypes],
+                ]),
+              ),
+              features: [...(contract.features ?? [])],
+            },
+          }
+        : {
+            protocol: "psbt-lab.adapter/0.2",
+            id: request.id,
+            status: "ok",
+            implementation,
+            output: { psbt: request.payload["psbt"] ?? null },
+          };
+    }),
   };
 }
 
@@ -206,7 +226,13 @@ function proofHarness(failScenario = false): {
 } {
   const artifacts: ProofRuntimeArtifacts = {
     directory: "/tmp/psbt-lab-test/run",
-    checkpoint: vi.fn(),
+    checkpoint: vi.fn(async (scenario: string, stage: string, psbt: string) => ({
+      scenario,
+      stage,
+      psbtPath: `${scenario}/${stage}.psbt`,
+      factsPath: `${scenario}/${stage}.json`,
+      facts: extractWireFacts(psbt),
+    })),
     writeManifest: vi.fn(),
     writeReportJson: vi.fn(),
     writeReportMarkdown: vi.fn(),
@@ -219,6 +245,8 @@ function proofHarness(failScenario = false): {
     GO_ADAPTER_CONTRACT,
     BITCOINJS_ADAPTER_CONTRACT,
     BDK_ADAPTER_CONTRACT,
+    BDK_CURRENT_ADAPTER_CONTRACT,
+    PSBTV2_ADAPTER_CONTRACT,
   ];
   let adapterIndex = 0;
   const scenario: ScenarioDefinition<ScenarioExecutionContext> = {
@@ -255,6 +283,69 @@ function proofHarness(failScenario = false): {
 }
 
 describe("proof runtime", () => {
+  test("compiles and runs deterministic fixtures and scenarios from a suite manifest", async () => {
+    const harness = proofHarness();
+    const prepared = preparedFixtures();
+    const customFixture = {
+      ...fixture("merchant-refund"),
+      specSha256: `sha256:${"f".repeat(64)}` as const,
+      transactionIntent: {
+        version: 2,
+        locktime: 42,
+        sequences: [0xffff_fffc],
+        outputCount: 1,
+        outputs: [{ descriptor: "wpkh(...)#fixture", amountSats: 4_999_985_000 }],
+      },
+    };
+    prepared.custom = { "merchant-refund": customFixture };
+    const prepare = vi.fn(async () => prepared);
+    harness.dependencies.prepareFixtures = prepare;
+    const customSuite = parseCustomSuiteManifest({
+      schema: "psbt-lab.suite/0.1",
+      fixtures: [
+        {
+          id: "merchant-refund",
+          inputs: [{ descriptor: "p2wpkh", sequence: 0xffff_fffc }],
+          outputs: [{ descriptor: "p2wpkh", remainder: true }],
+          feeSats: 15_000,
+          locktime: 42,
+          transactionVersion: 2,
+        },
+      ],
+      scenarios: [
+        {
+          id: "merchant-refund-roundtrip",
+          title: "Merchant refund roundtrip",
+          fixture: "merchant-refund",
+          steps: [
+            {
+              id: "rust-roundtrip",
+              adapter: "rust-bitcoin",
+              operation: "roundtrip",
+              input: "fixture",
+            },
+          ],
+        },
+      ],
+    });
+
+    const result = await runProofWithDependencies(
+      {
+        rpc: {} as never,
+        artifactRoot: "/tmp/psbt-lab-test",
+        projectDirectory: "/project",
+        customSuite,
+      },
+      harness.dependencies,
+    );
+
+    expect(prepare).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.arrayContaining([expect.objectContaining({ id: "merchant-refund" })]),
+    );
+    expect(result.manifest.scenarios.map(({ id }) => id)).toContain("merchant-refund-roundtrip");
+  });
+
   test("publishes every pre-application coverage scenario", () => {
     expect(PROOF_SCENARIOS.map(({ id }) => id)).toEqual([
       "happy-path",
@@ -275,6 +366,12 @@ describe("proof runtime", () => {
       "bdk-finalize-regression",
       "bdk-regression-btcsuite-go",
       "bdk-regression-bitcoinjs-lib",
+      "p2wsh-sign-bdk-wallet-current",
+      "p2wpkh-sign-bdk-wallet-current",
+      "p2tr-keypath-sign-bdk-wallet-current",
+      "nested-segwit-roundtrip-matrix",
+      "taproot-scriptpath-roundtrip-matrix",
+      "bip370-official-vectors-rust-psbt-v2",
     ]);
   });
 
@@ -301,10 +398,10 @@ describe("proof runtime", () => {
         operations: ["hello", "native-parse", "roundtrip", "sign"],
         roles: ["parser", "signer"],
         psbtVersions: [0],
-        scriptTypes: ["p2wpkh", "p2wsh", "p2tr-keypath"],
+        scriptTypes: ["p2wpkh", "p2sh-p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
         operationScriptTypes: {
-          roundtrip: ["p2wpkh", "p2wsh", "p2tr-keypath"],
-          sign: ["p2wpkh", "p2wsh", "p2tr-keypath"],
+          roundtrip: ["p2wpkh", "p2sh-p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
+          sign: ["p2wpkh", "p2sh-p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
         },
         features: ["fixture-commitment-sha256"],
       },
@@ -319,7 +416,7 @@ describe("proof runtime", () => {
         category,
       })),
     ).toEqual(PROOF_SCENARIOS);
-    expect(catalog).toHaveLength(PROOF_SCENARIOS.length + 6);
+    expect(catalog).toHaveLength(PROOF_SCENARIOS.length + 10);
     expect(
       catalog
         .slice(PROOF_SCENARIOS.length)
@@ -358,7 +455,7 @@ describe("proof runtime", () => {
     );
 
     expect(result.manifest.outcome).toBe("passed");
-    expect(harness.adapters).toHaveLength(4);
+    expect(harness.adapters).toHaveLength(6);
     for (const adapter of harness.adapters) expect(adapter.close).toHaveBeenCalledTimes(1);
     const commonCommitments = JSON.stringify({
       "happy-path": `sha256:${"c".repeat(64)}`,
@@ -391,6 +488,14 @@ describe("proof runtime", () => {
       {
         image: "psbt-interop-lab/bdkpython:2.3.1",
         options: { platform: "linux/amd64" },
+      },
+      {
+        image: "psbt-interop-lab/bdk-wallet-current:3.1.0",
+        options: { env: { PSBT_LAB_FIXTURE_COMMITMENTS: rustCommitments } },
+      },
+      {
+        image: "psbt-interop-lab/rust-psbt-v2:0.1.0",
+        options: {},
       },
     ]);
     expect(rustCommitments).not.toContain("cHNidP8");
@@ -485,8 +590,8 @@ describe("proof runtime", () => {
     );
 
     expect(result.manifest.outcome).toBe("passed");
-    expect(result.manifest.adapters).toHaveLength(5);
-    expect(result.manifest.adapters[4]).toMatchObject({ name: "actual-wallet-library" });
+    expect(result.manifest.adapters).toHaveLength(7);
+    expect(result.manifest.adapters[6]).toMatchObject({ name: "actual-wallet-library" });
     expect(createExternalAdapter).toHaveBeenCalledOnce();
     const processOptions = createExternalAdapter.mock.calls[0]?.[0];
     expect(processOptions).toMatchObject({
@@ -497,7 +602,9 @@ describe("proof runtime", () => {
     expect(commitments).toEqual({
       "happy-path": `sha256:${"c".repeat(64)}`,
       p2wpkh: `sha256:${"d".repeat(64)}`,
+      "p2sh-p2wpkh": `sha256:${"d".repeat(64)}`,
       "p2tr-keypath": `sha256:${"d".repeat(64)}`,
+      "p2tr-scriptpath": `sha256:${"d".repeat(64)}`,
     });
     expect(externalAdapter.close).toHaveBeenCalledOnce();
   });

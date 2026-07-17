@@ -6,8 +6,9 @@ handoff semantically, asks Bitcoin Core to finalize and policy-check completed t
 writes replayable compatibility reports.
 
 The current suite integrates Bitcoin Core 31.1, rust-bitcoin 0.32.102, btcsuite PSBT 1.2.0,
-bitcoinjs-lib 7.0.1, and a frozen bdkpython 2.3.1 regression specimen. Everything runs on regtest;
-the tool never broadcasts and has no mainnet mode.
+bitcoinjs-lib 7.0.1, BDK Wallet 3.1.0, and rust-psbt's PSBTv2 0.3.0 parser. A frozen bdkpython
+2.3.1 adapter remains as a real regression specimen. Everything runs on regtest; the tool never
+broadcasts and has no mainnet mode.
 
 ## Quick Start
 
@@ -18,7 +19,7 @@ Requirements:
 - On ARM hosts, Docker must support `linux/amd64` emulation for the frozen BDK 2.3.1 specimen
 
 ```bash
-npm install --global psbt-interop-lab@0.3.1
+npm install --global psbt-interop-lab@0.4.0
 psbt-lab doctor
 psbt-lab self-test
 psbt-lab matrix
@@ -64,17 +65,36 @@ preservation. It executes the configured command directly with `shell: false`; t
 manifest must therefore be treated as trusted local code. See [the adapter guide](docs/adapters.md)
 and the bundled [manifest schema](src/conformance/adapter-manifest.schema.json).
 
-The matrix keeps all 18 bundled scenarios and appends native-parse and semantic-roundtrip cells for
-each external adapter across P2WPKH, P2WSH, and Taproot key-path fixtures. It also appends signing
-handoffs when the adapter declares the matching signer capabilities and the
-`fixture-commitment-sha256` safety feature.
+The matrix keeps all 24 bundled scenarios and appends native-parse and semantic-roundtrip cells for
+each external adapter across P2WPKH, nested P2SH-P2WPKH, P2WSH, Taproot key-path, and Taproot
+script-path fixtures. It also appends signing handoffs when the adapter declares the matching
+signer capabilities and the `fixture-commitment-sha256` safety feature.
+
+## Custom Suites
+
+Maintainers can describe deterministic regtest fixtures and checked handoff steps without changing
+the lab's source:
+
+```bash
+psbt-lab matrix --suite-manifest examples/custom-suite.json
+```
+
+The manifest can select fixed public script templates, transaction outputs, fee, locktime,
+sequences, and adapter order. It cannot supply shell commands, descriptors, private keys, raw PSBTs,
+or arbitrary adapter payloads. The bundled adapters can roundtrip custom fixtures. Custom signing
+is capability-gated and runs only when an adapter explicitly advertises
+`user-fixture-template-v1` in addition to the normal fixture-commitment protection. See the
+[example](examples/custom-suite.json) and
+[schema](src/custom/suite-manifest.schema.json).
 
 ## Current Coverage
 
-The suite currently runs 18 scenarios:
+The suite currently runs 24 scenarios:
 
 - Core-created P2WPKH, P2WSH, and Taproot key-path signing handoffs through rust-bitcoin,
-  btcsuite, and bitcoinjs-lib
+  btcsuite, bitcoinjs-lib, and current BDK Wallet
+- Nested P2SH-P2WPKH and Taproot script-path roundtrip matrices through four current libraries
+- All 14 valid and 21 invalid official BIP370 vectors through a pinned native PSBTv2 parser
 - Same-input 2-of-3 multisig where Rust and JavaScript sign independent copies, JavaScript
   combines them, and Core finalizes the result
 - A four-library BDK to Rust to Go to JavaScript roundtrip and signing chain
@@ -93,9 +113,11 @@ roundtripping, signing, combining, and finalization. Unsupported capabilities ar
 unsupported rather than counted as passes.
 
 Known native-library divergences remain explicit compatibility findings in CLI, JSON, Markdown,
-and HTML output. The current baseline allows only btcsuite 1.2.0 to either accept or reject the
-duplicate global key probe; another parser accepting malformed input, or any parser crashing or
-timing out, still fails the scenario.
+and HTML output. Failures identify familiar BIP174, BIP370, and BIP371 field names where known,
+attribute the failing handoff, and provide evidence-based next steps without rewriting the PSBT.
+The current baseline allows only btcsuite 1.2.0 to either accept or reject the duplicate global key
+probe; another parser accepting malformed input, or any parser crashing or timing out, still fails
+the scenario.
 
 Run `psbt-lab self-test` to prove the detectors catch deliberate proprietary and unknown-field
 loss, output-amount mutation, sequence mutation, and signature removal.
@@ -123,7 +145,7 @@ directory controlled by the same host.
 
 This is test infrastructure, not a wallet or signer:
 
-- Only suite-generated regtest fixtures are accepted for signing.
+- Only bounded, suite-generated regtest fixtures are accepted; arbitrary PSBT input is not exposed.
 - Signers require a run-scoped SHA256 commitment to the exact unsigned transaction.
 - The only private keys are deterministic Bitcoin scalars one and two, public test values with no
   economic value.

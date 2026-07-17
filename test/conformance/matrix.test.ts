@@ -29,9 +29,11 @@ function fixtures(): PreparedFixtures {
     happy: fixture("happy-path", "p2wsh"),
     profiles: {
       p2wpkh: fixture("p2wpkh", "p2wpkh"),
+      "p2sh-p2wpkh": fixture("p2sh-p2wpkh", "p2sh-p2wpkh"),
       "p2wsh-single-key": fixture("p2wsh-single-key", "p2wsh"),
       "p2wsh-2-of-3": fixture("p2wsh-2-of-3", "p2wsh"),
       "p2tr-keypath": fixture("p2tr-keypath", "p2tr-keypath"),
+      "p2tr-scriptpath": fixture("p2tr-scriptpath", "p2tr-scriptpath"),
     },
   } as PreparedFixtures;
 }
@@ -49,10 +51,10 @@ function externalAdapter(registryId = "wallet-alias"): NegotiatedAdapter {
       operations: ["hello", "native-parse", "roundtrip", "sign"],
       roles: ["parser", "signer"],
       psbtVersions: [0],
-      scriptTypes: ["p2wpkh", "p2wsh", "p2tr-keypath"],
+      scriptTypes: ["p2wpkh", "p2sh-p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
       operationScriptTypes: {
-        roundtrip: ["p2wpkh", "p2wsh", "p2tr-keypath"],
-        sign: ["p2wpkh", "p2wsh", "p2tr-keypath"],
+        roundtrip: ["p2wpkh", "p2sh-p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
+        sign: ["p2wpkh", "p2sh-p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
       },
       features: ["fixture-commitment-sha256"],
     },
@@ -60,7 +62,7 @@ function externalAdapter(registryId = "wallet-alias"): NegotiatedAdapter {
 }
 
 describe("external adapter matrix scenarios", () => {
-  test("adds parse/roundtrip and compatible signing for all three built-in script fixtures", async () => {
+  test("adds parse/roundtrip and compatible signing for all five built-in script fixtures", async () => {
     const matrix = await import("../../src/conformance/matrix.js").catch(() => undefined);
     expect(matrix, "the external matrix scenario boundary is missing").toBeDefined();
     if (!matrix) return;
@@ -70,15 +72,13 @@ describe("external adapter matrix scenarios", () => {
       new Map([["wallet-alias", externalAdapter()]]),
     );
 
-    expect(definitions).toHaveLength(6);
-    expect(definitions.map(({ category }) => category)).toEqual([
-      "external-adapter-roundtrip",
-      "external-adapter-signing",
-      "external-adapter-roundtrip",
-      "external-adapter-signing",
-      "external-adapter-roundtrip",
-      "external-adapter-signing",
-    ]);
+    expect(definitions).toHaveLength(10);
+    expect(definitions.map(({ category }) => category)).toEqual(
+      Array.from({ length: 5 }, () => [
+        "external-adapter-roundtrip",
+        "external-adapter-signing",
+      ]).flat(),
+    );
     expect(
       definitions.every(({ requirements }) => requirements[0]?.adapter === "wallet-alias"),
     ).toBe(true);
@@ -92,7 +92,7 @@ describe("external adapter matrix scenarios", () => {
     parser.capabilities.operations = ["hello", "native-parse", "roundtrip"];
     parser.capabilities.roles = ["parser"];
     parser.capabilities.operationScriptTypes = {
-      roundtrip: ["p2wpkh", "p2wsh", "p2tr-keypath"],
+      roundtrip: ["p2wpkh", "p2sh-p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
     };
     parser.capabilities.features = [];
 
@@ -101,7 +101,7 @@ describe("external adapter matrix scenarios", () => {
       new Map([["wallet-alias", parser]]),
     );
 
-    expect(definitions).toHaveLength(3);
+    expect(definitions).toHaveLength(5);
     expect(definitions.every(({ category }) => category === "external-adapter-roundtrip")).toBe(
       true,
     );

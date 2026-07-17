@@ -13,7 +13,9 @@ flowchart LR
   CLI -->|"bounded JSONL"| Rust["rust-bitcoin 0.32.102 adapter"]
   CLI -->|"bounded JSONL"| Go["btcsuite psbt 1.2.0 adapter"]
   CLI -->|"bounded JSONL"| JS["bitcoinjs-lib 7.0.1 adapter"]
-  CLI -->|"bounded JSONL"| BDK["bdkpython 2.3.1 adapter"]
+  CLI -->|"bounded JSONL"| BDK["BDK Wallet 3.1.0 adapter"]
+  CLI -->|"bounded JSONL"| V2["rust-psbt PSBTv2 0.3.0 adapter"]
+  CLI -->|"bounded JSONL"| Frozen["bdkpython 2.3.1 regression specimen"]
   CLI --> Facts["Lossless semantic PSBT parser and transition rules"]
   CLI --> Artifacts["Private checkpoints plus JSON, Markdown, and HTML reports"]
   Artifacts --> Replay["Offline PSBT-digest replay"]
@@ -35,10 +37,11 @@ Bitcoin Core numeric version `310100`.
 
 ### Bitcoin Core fixture source and oracle
 
-Core 31.1 mines a local regtest chain and funds deterministic public P2WPKH, single-key and 2-of-3
-P2WSH, and P2TR key-path descriptors. It creates PSBTv0 with `createpsbt` and fills UTXO/script
-metadata with `utxoupdatepsbt`. Intent fixtures add multiple outputs, RBF sequence, non-zero
-locktime, explicit sighash type, and derivation metadata. At the end of each signing path,
+Core 31.1 mines a local regtest chain and funds deterministic public P2WPKH, nested P2SH-P2WPKH,
+single-key and 2-of-3 P2WSH, P2TR key-path, and P2TR script-path descriptors. It creates PSBTv0 with
+`createpsbt` and fills UTXO/script metadata with `utxoupdatepsbt`. Intent fixtures add multiple
+outputs, RBF sequence, non-zero locktime, explicit sighash type, and derivation metadata. At the
+end of each signing path,
 `finalizepsbt` extracts the transaction and `testmempoolaccept` checks current consensus and mempool
 policy without broadcasting it.
 
@@ -67,9 +70,10 @@ The `native-parse` operation removes the adapter's PSBT structural preflight fro
 testing. After bounded canonical base64 decoding, the Rust, Go, JavaScript, or Python adapter calls
 the native library parser directly and reports whether that parser accepted or rejected the bytes.
 
-The Rust, Go, and JavaScript adapters sign and finalize only known run-committed fixture inputs.
-The Python adapter freezes the affected `bdkpython` 2.3.1 wheel and exposes round-trip/finalize
-behavior. No adapter has network access at runtime.
+The Rust, Go, JavaScript, and current BDK adapters sign and finalize only known run-committed
+fixture inputs. A separate Rust adapter exercises the official BIP370 PSBTv2 vectors through a
+native parser. The Python adapter freezes the affected `bdkpython` 2.3.1 wheel and exposes
+round-trip/finalize behavior. No adapter has network access at runtime.
 
 ### Wire facts and artifacts
 
@@ -78,6 +82,11 @@ hidden by a library's normalized object model. It records PSBT version, byte len
 counts, and key/value sizes. Raw PSBT, script, and UTXO material is excluded from reports.
 Implementation name, version, source revision, and self-reported digest metadata are intentionally
 recorded and protected only by local file permissions.
+
+Roundtrip checks preserve every field except one BIP370 equivalence: an omitted
+`PSBT_GLOBAL_TX_MODIFIABLE` field and an explicit one-byte zero value both mean that no inputs or
+outputs may be changed. The checker accepts only that missing-to-zero or zero-to-missing
+normalization. Nonzero flags, any other addition/removal, and every value mutation still fail.
 
 Each handoff writes both the canonical base64 PSBT and its facts. The manifest records these files
 alongside the run's self-reported implementation identities. Replay reparses each PSBT and verifies
@@ -112,8 +121,9 @@ The detailed assumptions, abuse paths, and residual risks are recorded in the
 
 ## Proof Scenarios
 
-The executable catalog currently contains 18 scenarios. Nine independent Core-to-library handoffs
-exercise rust-bitcoin, btcsuite, and bitcoinjs signing for P2WSH, P2WPKH, and P2TR key-path inputs.
+The executable catalog currently contains 24 scenarios. Twelve independent Core-to-library
+handoffs exercise rust-bitcoin, btcsuite, bitcoinjs, and current BDK signing for P2WSH, P2WPKH, and
+P2TR key-path inputs.
 A same-input 2-of-3 scenario has Rust and JavaScript sign independent PSBT copies, combines their
 partial signatures, and requires Core to finalize the union. A four-library chain proves
 byte-semantic preservation across BDK, Rust, Go, and JavaScript. A parallel path has Rust sign input
@@ -135,6 +145,11 @@ Three regression scenarios
 reproduce BDK issue #488 after Rust, Go, or JavaScript prepares the same mixed finalized/partial
 state; Core independently finalizes and policy-checks the same PSBT.
 
+Two profile matrices roundtrip nested P2SH-P2WPKH and Taproot script-path PSBTs through the four
+current PSBTv0 libraries. The PSBTv2 scenario sends all 14 valid and 21 invalid official BIP370
+vectors through the pinned native `psbt-v2` parser and requires valid roundtrips plus clean invalid
+rejection.
+
 `psbt-lab self-test` deliberately drops metadata, changes an output amount, changes an input
 sequence, and removes a signature. It passes only when the semantic detectors identify every fault.
 
@@ -146,7 +161,15 @@ the expected identity and baseline parser capabilities, probes valid and malform
 and requires semantic roundtrip preservation.
 
 `psbt-lab matrix --adapter-manifest <manifest>` then registers each external process by its manifest
-ID while retaining the separately validated implementation identity. The runner preserves all 18
-bundled scenarios and appends capability-gated P2WPKH, P2WSH, and Taproot key-path parse, roundtrip,
-and signing scenarios. Run-scoped unsigned-transaction commitments authorize only deterministic
-regtest fixtures. See [the adapter guide](adapters.md).
+ID while retaining the separately validated implementation identity. The runner preserves all 24
+bundled scenarios and appends capability-gated P2WPKH, nested P2SH-P2WPKH, P2WSH, Taproot key-path,
+and Taproot script-path parse and roundtrip scenarios, plus signing where declared. Run-scoped
+unsigned-transaction commitments authorize only deterministic regtest fixtures. See
+[the adapter guide](adapters.md).
+
+`psbt-lab matrix --suite-manifest <manifest>` compiles a strict bounded manifest into Core-funded
+fixtures and typed handoff scenarios. Users choose only fixed public descriptor templates and
+structured operations; arbitrary commands, descriptors, keys, PSBTs, and payloads are rejected.
+Typed dataflow prevents a finalized transaction result from being reused as a PSBT. Signing or
+input finalization of a custom fixture requires both the normal commitment feature and the separate
+`user-fixture-template-v1` capability.

@@ -5,17 +5,23 @@ import { createExternalAdapterScenarios } from "../conformance/matrix.js";
 import { createExternalAdapterRegistry, negotiateExternalAdapter } from "../conformance/runtime.js";
 import { type PreparedFixtures, type PsbtFixture, prepareFixtures } from "../core/fixtures.js";
 import type { CoreRpc } from "../core/rpc.js";
+import { type CompiledUserFixturePlan, compileUserFixturePlans } from "../custom/fixtures.js";
+import type { CustomSuiteManifest } from "../custom/manifest.js";
+import { compileUserScenarios } from "../custom/scenarios.js";
 import { AdapterProcess, type AdapterProcessOptions } from "../protocol/adapter-process.js";
 import type { NegotiatedAdapter } from "../protocol/types.js";
 import { ArtifactRun, type RunManifest } from "../runner/artifacts.js";
 import { generateHtmlReport, generateMarkdownReport, redactValue } from "../runner/report.js";
 import { classifyRegression, createBdkRegressionScenario } from "./bdk-regression.js";
+import { createBip370VectorScenario } from "./bip370.js";
 import { type CorePolicyResult, ScenarioExecutionContext } from "./context.js";
 import {
   assertAdapterHello,
   BDK_ADAPTER_CONTRACT,
+  BDK_CURRENT_ADAPTER_CONTRACT,
   BITCOINJS_ADAPTER_CONTRACT,
   GO_ADAPTER_CONTRACT,
+  PSBTV2_ADAPTER_CONTRACT,
   RUST_ADAPTER_CONTRACT,
 } from "./contracts.js";
 import type { ScenarioDefinition } from "./definition.js";
@@ -29,6 +35,7 @@ import {
 } from "./interop-matrix.js";
 import { createInvalidInputScenario } from "./invalid-inputs.js";
 import { createMetadataPreservationScenario } from "./metadata-preservation.js";
+import { createScriptProfileRoundtripScenario } from "./script-profile-roundtrip.js";
 
 export { classifyHappyPath, classifyRegression };
 export type PolicyResult = CorePolicyResult;
@@ -37,9 +44,24 @@ const RUST_IMAGE = "psbt-interop-lab/rust-bitcoin:0.1.0";
 const GO_IMAGE = "psbt-interop-lab/btcsuite-go:1.2.0";
 const BITCOINJS_IMAGE = "psbt-interop-lab/bitcoinjs-lib:7.0.1";
 const BDK_IMAGE = "psbt-interop-lab/bdkpython:2.3.1";
+const BDK_CURRENT_IMAGE = "psbt-interop-lab/bdk-wallet-current:3.1.0";
+const PSBTV2_IMAGE = "psbt-interop-lab/rust-psbt-v2:0.1.0";
 const MAX_COMMITMENT_ENV_BYTES = 4 * 1024;
 const SAFE_FIXTURE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
-const BUILT_IN_ADAPTER_IDS = ["rust-bitcoin", "btcsuite-go", "bitcoinjs-lib", "bdkpython"] as const;
+const BUILT_IN_ADAPTER_IDS = [
+  "rust-bitcoin",
+  "btcsuite-go",
+  "bitcoinjs-lib",
+  "bdkpython",
+  "bdk-wallet-current",
+  "rust-psbt-v2",
+] as const;
+const MODERN_ROUNDTRIP_ADAPTERS = [
+  "rust-bitcoin",
+  "btcsuite-go",
+  "bitcoinjs-lib",
+  "bdk-wallet-current",
+] as const;
 
 export interface ProofOptions {
   rpc: CoreRpc;
@@ -47,6 +69,7 @@ export interface ProofOptions {
   projectDirectory: string;
   adapterTimeoutMs?: number;
   adapterManifest?: AdapterManifest;
+  customSuite?: CustomSuiteManifest;
 }
 
 export interface ProofResult {
@@ -151,6 +174,36 @@ export const PROOF_SCENARIOS: readonly ProofScenarioSummary[] = [
     title: "BDK regression through bitcoinjs-lib finalization",
     category: "historical-regression",
   },
+  {
+    id: "p2wsh-sign-bdk-wallet-current",
+    title: "P2WSH signing through current BDK Wallet",
+    category: "cross-library-signing",
+  },
+  {
+    id: "p2wpkh-sign-bdk-wallet-current",
+    title: "P2WPKH signing through current BDK Wallet",
+    category: "cross-library-signing",
+  },
+  {
+    id: "p2tr-keypath-sign-bdk-wallet-current",
+    title: "Taproot key-path signing through current BDK Wallet",
+    category: "taproot-key-path",
+  },
+  {
+    id: "nested-segwit-roundtrip-matrix",
+    title: "Nested SegWit roundtrip matrix",
+    category: "script-profile-roundtrip",
+  },
+  {
+    id: "taproot-scriptpath-roundtrip-matrix",
+    title: "Taproot script-path roundtrip matrix",
+    category: "script-profile-roundtrip",
+  },
+  {
+    id: "bip370-official-vectors-rust-psbt-v2",
+    title: "Official BIP370 vectors through rust-psbt-v2",
+    category: "psbtv2-conformance",
+  },
 ];
 
 interface FixtureCommitment {
@@ -179,7 +232,10 @@ export interface ProofRuntimeArtifacts {
 
 export interface ProofDependencies {
   createArtifacts(root: string, runId: string): Promise<ProofRuntimeArtifacts>;
-  prepareFixtures(rpc: CoreRpc): Promise<PreparedFixtures>;
+  prepareFixtures(
+    rpc: CoreRpc,
+    customPlans?: readonly CompiledUserFixturePlan[],
+  ): Promise<PreparedFixtures>;
   createAdapter(
     image: string,
     projectDirectory: string,
@@ -351,6 +407,37 @@ export function createProofCatalog(
       id: "bdk-regression-bitcoinjs-lib",
       title: "BDK regression through bitcoinjs-lib finalization",
     }),
+    createHappyPathScenario(fixtures.happy, {
+      adapter: "bdk-wallet-current",
+      id: "p2wsh-sign-bdk-wallet-current",
+      title: "P2WSH signing through current BDK Wallet",
+    }),
+    createHappyPathScenario(fixtures.profiles.p2wpkh, {
+      adapter: "bdk-wallet-current",
+      id: "p2wpkh-sign-bdk-wallet-current",
+      title: "P2WPKH signing through current BDK Wallet",
+      scriptType: "p2wpkh",
+      signatureKeyTypes: [0x02],
+    }),
+    createHappyPathScenario(fixtures.profiles["p2tr-keypath"], {
+      adapter: "bdk-wallet-current",
+      id: "p2tr-keypath-sign-bdk-wallet-current",
+      title: "Taproot key-path signing through current BDK Wallet",
+      category: "taproot-key-path",
+      scriptType: "p2tr-keypath",
+      signatureKeyTypes: [0x13],
+    }),
+    createScriptProfileRoundtripScenario(fixtures.profiles["p2sh-p2wpkh"], {
+      id: "nested-segwit-roundtrip-matrix",
+      title: "Nested SegWit roundtrip matrix",
+      adapters: MODERN_ROUNDTRIP_ADAPTERS,
+    }),
+    createScriptProfileRoundtripScenario(fixtures.profiles["p2tr-scriptpath"], {
+      id: "taproot-scriptpath-roundtrip-matrix",
+      title: "Taproot script-path roundtrip matrix",
+      adapters: MODERN_ROUNDTRIP_ADAPTERS,
+    }),
+    createBip370VectorScenario("rust-psbt-v2"),
   ];
   for (const [index, definition] of definitions.entries()) {
     const declared = PROOF_SCENARIOS[index];
@@ -381,7 +468,10 @@ export async function runProofWithDependencies(
   const startedAt = new Date().toISOString();
   const runId = runIdentifier();
   const artifacts = await dependencies.createArtifacts(resolve(options.artifactRoot), runId);
-  const fixtures = await dependencies.prepareFixtures(options.rpc);
+  const customPlans = options.customSuite
+    ? compileUserFixturePlans(options.customSuite.fixtures)
+    : [];
+  const fixtures = await dependencies.prepareFixtures(options.rpc, customPlans);
   const timeoutMs = options.adapterTimeoutMs ?? 60_000;
   const commonCommitmentConfiguration = serializeFixtureCommitments([
     fixtures.happy,
@@ -401,7 +491,10 @@ export async function runProofWithDependencies(
   const externalCommitmentConfiguration = serializeFixtureCommitments([
     fixtures.happy,
     fixtures.profiles.p2wpkh,
+    fixtures.profiles["p2sh-p2wpkh"],
     fixtures.profiles["p2tr-keypath"],
+    fixtures.profiles["p2tr-scriptpath"],
+    ...Object.values(fixtures.custom),
   ] satisfies readonly PsbtFixture[]);
   const projectDirectory = resolve(options.projectDirectory);
   const rust = dependencies.createAdapter(RUST_IMAGE, projectDirectory, {
@@ -416,6 +509,10 @@ export async function runProofWithDependencies(
   const bdk = dependencies.createAdapter(BDK_IMAGE, projectDirectory, {
     platform: "linux/amd64",
   });
+  const bdkCurrent = dependencies.createAdapter(BDK_CURRENT_IMAGE, projectDirectory, {
+    env: { [FIXTURE_COMMITMENTS_ENV]: rustCommitmentConfiguration },
+  });
+  const psbtv2 = dependencies.createAdapter(PSBTV2_IMAGE, projectDirectory);
   const externalRuntime = options.adapterManifest
     ? createExternalAdapterRegistry(
         options.adapterManifest,
@@ -433,6 +530,8 @@ export async function runProofWithDependencies(
       ["btcsuite-go", go],
       ["bitcoinjs-lib", bitcoinjs],
       ["bdkpython", bdk],
+      ["bdk-wallet-current", bdkCurrent],
+      ["rust-psbt-v2", psbtv2],
       ...[...externalRuntime].map(([id, runtime]) => [id, runtime.process] as const),
     ]),
     adapterTimeoutMs: timeoutMs,
@@ -447,6 +546,10 @@ export async function runProofWithDependencies(
       await context.request("bdkpython", "hello", {}),
       BDK_ADAPTER_CONTRACT,
     );
+    const bdkCurrentHello = assertAdapterHello(
+      await context.request("bdk-wallet-current", "hello", {}),
+      BDK_CURRENT_ADAPTER_CONTRACT,
+    );
     const goHello = assertAdapterHello(
       await context.request("btcsuite-go", "hello", {}),
       GO_ADAPTER_CONTRACT,
@@ -454,6 +557,10 @@ export async function runProofWithDependencies(
     const bitcoinjsHello = assertAdapterHello(
       await context.request("bitcoinjs-lib", "hello", {}),
       BITCOINJS_ADAPTER_CONTRACT,
+    );
+    const psbtv2Hello = assertAdapterHello(
+      await context.request("rust-psbt-v2", "hello", {}),
+      PSBTV2_ADAPTER_CONTRACT,
     );
     const externalNegotiated = new Map<string, NegotiatedAdapter>();
     for (const [id, runtime] of externalRuntime) {
@@ -464,10 +571,18 @@ export async function runProofWithDependencies(
       goHello,
       bitcoinjsHello,
       bdkHello,
+      bdkCurrentHello,
+      psbtv2Hello,
       ...externalNegotiated.values(),
     ];
+    const customScenarios = options.customSuite
+      ? compileUserScenarios(
+          options.customSuite.scenarios,
+          new Map(Object.entries(fixtures.custom)),
+        )
+      : [];
     const scenarios = await runScenarioCatalog(
-      dependencies.createCatalog(fixtures, externalNegotiated),
+      [...dependencies.createCatalog(fixtures, externalNegotiated), ...customScenarios],
       context,
       negotiatedMap(negotiated),
     );
@@ -502,6 +617,8 @@ export async function runProofWithDependencies(
       go.close(),
       bitcoinjs.close(),
       bdk.close(),
+      bdkCurrent.close(),
+      psbtv2.close(),
       ...[...externalRuntime.values()].map((runtime) => runtime.process.close()),
     ]);
   }

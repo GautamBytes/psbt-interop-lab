@@ -1,29 +1,30 @@
 # Future Work
 
-PSBT Interop Lab already provides a working interoperability matrix and field-level transition
-checks. Future work will broaden the implementations and workflows it can test, make failures
-easier to understand, and help maintainers prevent regressions in CI. Priorities should follow
-feedback from wallet and library developers using the released tool.
+PSBT Interop Lab already provides a working interoperability matrix, external adapter enrollment,
+deterministic custom suites, official BIP370 vectors, and field-level diagnoses. Future work should
+be driven by real wallet and library maintainers using those foundations.
 
 ## Broader Compatibility
 
-- Add adapters for more wallet projects, signing libraries, and implementation languages.
-- Add executable PSBTv2 workflows and official BIP370 interoperability vectors.
-- Expand script coverage to Taproot script-path, nested SegWit, and legacy profiles where useful.
-- Support deterministic user-defined fixtures and handoff scenarios for real regtest regressions.
+- Add adapters for more wallet projects, hardware-signing bridges, and implementation languages.
+- Add PSBTv2 cross-implementation handoffs and signing only after at least two mature native
+  implementations expose compatible APIs; 0.4.0 validates the official vectors with one parser.
+- Add Taproot script-path signing/finalization and carefully selected legacy profiles. Current
+  Taproot script-path coverage proves parse and roundtrip preservation.
+- Let bundled signers authorize specific custom public fixture templates through the existing
+  `user-fixture-template-v1` capability boundary.
 
 ## Better Diagnostics
 
-- Display familiar BIP field names alongside numeric PSBT key types.
-- Explain the likely failing implementation and provide safe, evidence-based next steps.
-- Add executable scenario replay, while keeping stored artifacts bounded and redacted.
 - Compare compatibility results across implementation versions to expose new regressions.
+- Add stable machine-readable diagnostic codes for downstream CI annotations and dashboards.
+- Improve minimization of failing custom scenarios into smaller reproducible test cases.
 
 ## Developer Integration
 
 - Provide straightforward CI integration for wallet and library repositories.
 - Publish versioned compatibility reports and reusable test vectors.
-- Continue the matrix when one adapter crashes or times out, while recording that failure clearly.
+- Publish optional prebuilt adapter images after demand justifies the release and attestation work.
 - Produce reproducible upstream bug reports and contribute practical fixes where maintainers want
   them.
 

@@ -7,9 +7,11 @@ import type {
 import {
   assertAdapterHello,
   assertByteIdenticalRoundtrip,
+  BDK_CURRENT_ADAPTER_CONTRACT,
   BITCOINJS_ADAPTER_CONTRACT,
   type ExpectedAdapterContract,
   GO_ADAPTER_CONTRACT,
+  PSBTV2_ADAPTER_CONTRACT,
   RUST_ADAPTER_CONTRACT,
 } from "../../src/scenarios/contracts.js";
 
@@ -62,9 +64,33 @@ describe("adapter contracts", () => {
   test.each([RUST_ADAPTER_CONTRACT, GO_ADAPTER_CONTRACT, BITCOINJS_ADAPTER_CONTRACT])(
     "$name declares modern SegWit and Taproot profile support",
     (contract) => {
-      expect(contract.scriptTypes).toEqual(["p2wpkh", "p2wsh", "p2tr-keypath"]);
+      expect(contract.scriptTypes).toEqual([
+        "p2wpkh",
+        "p2sh-p2wpkh",
+        "p2wsh",
+        "p2tr-keypath",
+        "p2tr-scriptpath",
+      ]);
     },
   );
+
+  test("pins the parser-only PSBTv2 adapter to the official vector implementation", () => {
+    expect(PSBTV2_ADAPTER_CONTRACT).toMatchObject({
+      name: "rust-psbt-v2",
+      psbtVersions: [2],
+      operations: ["hello", "native-parse", "inspect", "roundtrip"],
+      roles: ["parser"],
+    });
+  });
+
+  test("pins the current BDK wallet implementation independently of the regression specimen", () => {
+    expect(BDK_CURRENT_ADAPTER_CONTRACT).toMatchObject({
+      name: "bdk-wallet-current",
+      version: "3.1.0",
+      psbtVersions: [0],
+      scriptTypes: ["p2wpkh", "p2sh-p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
+    });
+  });
 
   test("rejects a lying byte-identical response", () => {
     const source = MINIMAL_PSBT;

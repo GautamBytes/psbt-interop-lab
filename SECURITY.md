@@ -21,6 +21,12 @@ a minimal inherited environment, but it does not sandbox an arbitrary host execu
 manifest received from an untrusted person. Prefer a separately reviewed container command with the
 same restrictions as the built-in adapters.
 
+Custom suite manifests are data, not executable configuration. They are limited to 1 MiB, fixed
+public script templates, bounded transaction fields, typed handoff operations, and safe IDs. They
+cannot provide commands, paths, private keys, arbitrary descriptors, raw PSBTs, or arbitrary
+adapter payloads. Custom signing remains disabled unless an adapter explicitly supports the
+`user-fixture-template-v1` authorization contract.
+
 ## Dependency And Scanner Status
 
 The installed CLI has one production dependency, Commander. Ajv is development-only: it compiles
@@ -52,7 +58,7 @@ treating aggregate capability counts as runtime findings.
 
 ### Signing restrictions
 
-The Rust, Go, and JavaScript adapters have no generic private-key input. They recognize only
+The Rust, Go, JavaScript, and current BDK adapters have no generic private-key input. They recognize only
 `network=regtest`, declared suite fixture identifiers, run-scoped unsigned-transaction commitments,
 expected public keys and scripts, and internally consistent full/witness UTXO data. Each operation
 also enforces the exact fixture profile and supported script type. A request outside that policy is

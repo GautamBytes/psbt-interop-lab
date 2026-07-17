@@ -186,10 +186,10 @@ test("hello advertises only proven PSBTv0 operations and script types", () => {
     ],
     roles: ["parser", "signer", "combiner", "finalizer"],
     psbtVersions: [0],
-    scriptTypes: ["p2wpkh", "p2wsh", "p2tr-keypath"],
+    scriptTypes: ["p2wpkh", "p2sh-p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
     operationScriptTypes: {
-      inspect: ["p2wpkh", "p2wsh", "p2tr-keypath"],
-      roundtrip: ["p2wpkh", "p2wsh", "p2tr-keypath"],
+      inspect: ["p2wpkh", "p2sh-p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
+      roundtrip: ["p2wpkh", "p2sh-p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
       sign: ["p2wpkh", "p2wsh", "p2tr-keypath"],
       combine: ["p2wsh"],
       finalize: ["p2wsh"],

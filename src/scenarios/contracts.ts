@@ -32,9 +32,9 @@ export const RUST_ADAPTER_CONTRACT = {
   operations: ["hello", "native-parse", "roundtrip", "sign", "finalize-inputs"],
   roles: ["parser", "signer", "finalizer"],
   psbtVersions: [0],
-  scriptTypes: ["p2wpkh", "p2wsh", "p2tr-keypath"],
+  scriptTypes: ["p2wpkh", "p2sh-p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
   operationScriptTypes: {
-    roundtrip: ["p2wpkh", "p2wsh", "p2tr-keypath"],
+    roundtrip: ["p2wpkh", "p2sh-p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
     sign: ["p2wpkh", "p2wsh", "p2tr-keypath"],
     "finalize-inputs": ["p2wsh"],
   },
@@ -56,10 +56,10 @@ export const GO_ADAPTER_CONTRACT = {
   ],
   roles: ["parser", "signer", "finalizer"],
   psbtVersions: [0],
-  scriptTypes: ["p2wpkh", "p2wsh", "p2tr-keypath"],
+  scriptTypes: ["p2wpkh", "p2sh-p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
   operationScriptTypes: {
-    inspect: ["p2wpkh", "p2wsh", "p2tr-keypath"],
-    roundtrip: ["p2wpkh", "p2wsh", "p2tr-keypath"],
+    inspect: ["p2wpkh", "p2sh-p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
+    roundtrip: ["p2wpkh", "p2sh-p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
     sign: ["p2wpkh", "p2wsh", "p2tr-keypath"],
     finalize: ["p2wsh"],
     "finalize-inputs": ["p2wsh"],
@@ -83,10 +83,10 @@ export const BITCOINJS_ADAPTER_CONTRACT = {
   ],
   roles: ["parser", "signer", "combiner", "finalizer"],
   psbtVersions: [0],
-  scriptTypes: ["p2wpkh", "p2wsh", "p2tr-keypath"],
+  scriptTypes: ["p2wpkh", "p2sh-p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
   operationScriptTypes: {
-    inspect: ["p2wpkh", "p2wsh", "p2tr-keypath"],
-    roundtrip: ["p2wpkh", "p2wsh", "p2tr-keypath"],
+    inspect: ["p2wpkh", "p2sh-p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
+    roundtrip: ["p2wpkh", "p2sh-p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
     sign: ["p2wpkh", "p2wsh", "p2tr-keypath"],
     combine: ["p2wsh"],
     finalize: ["p2wsh"],
@@ -109,6 +109,41 @@ export const BDK_ADAPTER_CONTRACT = {
     finalize: ["p2wsh"],
   },
   features: ["historical-regression.bdk-wallet-488"],
+} as const satisfies ExpectedAdapterContract;
+
+export const PSBTV2_ADAPTER_CONTRACT = {
+  name: "rust-psbt-v2",
+  version: "0.1.0",
+  sourceRevision: "rust-psbt/psbt-v2-0.3.0@8ca657c333b6b391f2501e8b31627ccbb6a67f66",
+  operations: ["hello", "native-parse", "inspect", "roundtrip"],
+  roles: ["parser"],
+  psbtVersions: [2],
+  scriptTypes: ["p2wpkh"],
+  operationScriptTypes: {
+    inspect: ["p2wpkh"],
+    roundtrip: ["p2wpkh"],
+  },
+} as const satisfies ExpectedAdapterContract;
+
+export const BDK_CURRENT_ADAPTER_CONTRACT = {
+  name: "bdk-wallet-current",
+  version: "3.1.0",
+  sourceRevision: "bdk-wallet-v3.1.0+bitcoin-0.32.102+miniscript-12.3.7",
+  operations: ["hello", "native-parse", "inspect", "roundtrip", "sign", "finalize"],
+  roles: ["parser", "signer", "finalizer"],
+  psbtVersions: [0],
+  scriptTypes: ["p2wpkh", "p2sh-p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
+  operationScriptTypes: {
+    inspect: ["p2wpkh", "p2sh-p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
+    roundtrip: ["p2wpkh", "p2sh-p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
+    sign: ["p2wpkh", "p2wsh", "p2tr-keypath"],
+    finalize: ["p2wpkh", "p2wsh", "p2tr-keypath"],
+  },
+  features: [
+    "fixture-commitment-sha256",
+    "network-free",
+    "trusted-witness-utxo-authorized-fixtures-only",
+  ],
 } as const satisfies ExpectedAdapterContract;
 
 function requireSuccess(response: AdapterResponse, operation: string): AdapterSuccessResponse {

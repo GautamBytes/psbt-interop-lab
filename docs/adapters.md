@@ -2,7 +2,7 @@
 
 `psbt-lab adapter check` lets a wallet or library maintainer validate a local adapter without
 changing PSBT Interop Lab source. The same manifest can enroll conforming adapters in the full
-matrix while preserving the 18 bundled scenarios.
+matrix while preserving the 24 bundled scenarios.
 
 ## Adapter Manifest
 
@@ -67,26 +67,29 @@ psbt-lab run --suite proof --adapter-manifest ./adapters.json
 ```
 
 The manifest `id` is the stable registry and report identity. It may differ from `expected.name`.
-It must not collide with `rust-bitcoin`, `btcsuite-go`, `bitcoinjs-lib`, `bdkpython`, or another ID
-in the same manifest. Every response must continue reporting the expected name, version, source
-revision, and optional pinned artifact digest. The configured timeout caps every request.
+It must not collide with `rust-bitcoin`, `btcsuite-go`, `bitcoinjs-lib`, `bdkpython`,
+`bdk-wallet-current`, `rust-psbt-v2`, or another ID in the same manifest. Every response must
+continue reporting the expected name, version, source revision, and optional pinned artifact
+digest. The configured timeout caps every request.
 
 ## Matrix Participation
 
 Each external adapter receives a native-parse and semantic-roundtrip scenario for the built-in
-P2WPKH, P2WSH, and Taproot key-path fixtures. A cell is reported as unsupported when its declared
-PSBT version, script type, parser role, or operation-specific roundtrip support does not match.
+P2WPKH, nested P2SH-P2WPKH, P2WSH, Taproot key-path, and Taproot script-path fixtures. A cell is
+reported as unsupported when its declared PSBT version, script type, parser role, or
+operation-specific roundtrip support does not match.
 
 A signing scenario is added only when `hello` declares all of the following:
 
 - `roundtrip` and `sign` operations
 - `parser` and `signer` roles
-- PSBTv0 and the matching `p2wpkh`, `p2wsh`, or `p2tr-keypath` script type
+- PSBTv0 and the matching script type
 - Matching `operationScriptTypes` entries for both `roundtrip` and `sign`
 - The `fixture-commitment-sha256` feature
 
-Signing requests contain `psbt`, `network: "regtest"`, and one of the deterministic fixture IDs
-`p2wpkh`, `happy-path` for P2WSH, or `p2tr-keypath`. These fixtures use the public key derived from
+Signing requests currently use the built-in `p2wpkh`, `happy-path` P2WSH, and `p2tr-keypath`
+fixtures where the adapter declares support. They contain `psbt`, `network: "regtest"`, and the
+deterministic fixture ID. These fixtures use the public key derived from
 the 32-byte test scalar `1`; this key is public test material and must never be used for real funds.
 The adapter must return the signed PSBT in `output.psbt` and must reject signing unless the fixture
 ID and unsigned transaction match the run-scoped SHA256 commitment supplied at startup. Caller
@@ -107,6 +110,11 @@ The baseline conformance profile requires:
 
 Conformance requires `roundtrip` to preserve every PSBT field semantically. Legal key ordering
 changes are allowed.
+
+Custom suite signing additionally requires the adapter to advertise `user-fixture-template-v1`.
+The request then includes the deterministic fixture ID and its canonical fixture-spec SHA256. This
+feature is intentionally separate from general signing support; an adapter must independently
+validate the public template and run-scoped unsigned-transaction commitment.
 
 The `native-parse` operation receives `{ "psbt": "<canonical-base64>" }`. The adapter may bound and
 decode base64 before calling its native PSBT parser, but it must not use a second structural PSBT

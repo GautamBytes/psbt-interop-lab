@@ -29,6 +29,8 @@ The confirmed local assumptions are:
 - The local Docker daemon and host account are trusted.
 - Artifacts remain local and may contain sensitive transaction metadata.
 - External adapter manifests are trusted executable configuration selected by the developer.
+- Custom suite manifests are bounded data that select only fixed public fixture templates and typed
+  handoff operations.
 
 The trusted developer chooses the checkout, Docker images, RPC endpoint, and artifact directory.
 The supported guarantee therefore excludes a malicious or compromised host account, Docker daemon,
@@ -68,11 +70,14 @@ flowchart TB
     Rust["Networkless rust-bitcoin adapter"]
     Go["Networkless btcsuite Go adapter"]
     JS["Networkless bitcoinjs-lib adapter"]
-    BDK["Networkless bdkpython 2.3.1 adapter"]
+    BDK["Networkless BDK Wallet 3.1.0 adapter"]
+    V2["Networkless rust-psbt PSBTv2 adapter"]
+    Frozen["Networkless bdkpython 2.3.1 specimen"]
     Wire["Bounded PSBT wire parser"]
     Store["Private local artifact directory"]
     Replay["Offline replay verifier"]
     Manifest["Trusted external adapter manifest"]
+    Suite["Bounded custom suite manifest"]
     External["External adapter command"]
 
     CLI -->|"loopback HTTP JSON-RPC"| Core
@@ -81,11 +86,14 @@ flowchart TB
     CLI <-->|"bounded stdin/stdout JSONL"| Go
     CLI <-->|"bounded stdin/stdout JSONL"| JS
     CLI <-->|"bounded stdin/stdout JSONL"| BDK
+    CLI <-->|"bounded stdin/stdout JSONL"| V2
+    CLI <-->|"bounded stdin/stdout JSONL"| Frozen
     CLI -->|"canonical PSBTs"| Wire
     CLI -->|"atomic local writes"| Store
     Replay -->|"bounded offline reads; no adapters"| Store
     Replay --> Wire
     Manifest -->|"strict bounded JSON"| CLI
+    Suite -->|"strict bounded JSON"| CLI
     CLI <-->|"bounded stdin/stdout JSONL"| External
   end
 
@@ -115,15 +123,19 @@ The local components and their repository evidence are:
   requires the returned JSON-RPC ID to equal the request ID.
 - `prepareFixtures` in `src/core/fixtures.ts` requires regtest, zero peers, Bitcoin Core numeric
   version `310100`, and suite-generated PSBTv0 structure.
-- The Rust, Go, and JavaScript adapters sign only declared suite fixture profiles whose unsigned
-  transactions match run-scoped commitments. Their hello responses declare script support per
-  operation so signing support is not mistaken for finalization support. The BDK adapter in
+- The Rust, Go, JavaScript, and current BDK adapters sign only declared suite fixture profiles whose
+  unsigned transactions match run-scoped commitments. Their hello responses declare script
+  support per operation so signing support is not mistaken for finalization support. The
+  `rust-psbt-v2` adapter exercises official BIP370 vectors as a parser, while
   `adapters/bdkpython-2.3.1/` freezes the historical regression implementation.
 - `AdapterProcess.request` in `src/protocol/adapter-process.ts` mediates one bounded JSONL request at
   a time, validates response schemas and IDs, and terminates on timeout or protocol violation.
 - `loadAdapterManifest` and `runAdapterConformance` in `src/conformance/` validate bounded,
   versioned executable configuration and test a trusted external adapter's identity, native parser,
   transport, and semantic roundtrip behavior. They do not sandbox or attest the command.
+- `loadCustomSuiteManifest` in `src/custom/manifest.ts` accepts only bounded fixed-template fixture
+  data and typed scenario dataflow. It rejects commands, paths, private keys, arbitrary descriptors,
+  raw PSBTs, and arbitrary adapter payloads.
 - `extractWireFacts` in `src/psbt/wire-facts.ts` parses canonical, bounded PSBT framing independently
   of the native adapters.
 - `ArtifactRun` in `src/runner/artifacts.ts` writes private checkpoint and report files atomically.
@@ -151,6 +163,7 @@ hostile:
 - A buggy or deliberately malformed adapter response, including a false `byteIdentical` field,
   wrong request ID, oversized output, invalid schema, stale implementation self-report, or hang.
 - A malformed external adapter manifest or an adapter command that violates the JSONL protocol.
+- A malformed custom suite manifest, including oversized structures or invalid scenario dataflow.
 - Accidental operator misconfiguration, such as a wrong Core endpoint, wrong Core version, attached
   peer, stale local image tag, unsuitable artifact path, or an untrusted container on Core's bridge.
 - Corrupted local artifact files, including truncation, digest mismatch, absolute or lexically
@@ -175,6 +188,7 @@ a privileged environment. Those events violate the confirmed trust assumptions.
 | Adapter compatibility | `src/scenarios/contracts.ts`: `assertAdapterHello` | Pins self-reported name, version, source revision, operations, and PSBTv0 support | A malicious adapter can spoof the expected identity strings and supply any schema-valid self-reported digest; neither is image attestation. |
 | Scenario transition | `src/scenarios/context.ts`: `ScenarioExecutionContext.requireTransition` | Parses both PSBTs and applies role-specific semantic field rules independently of `byteIdentical` | It establishes allowed state changes, not which binary produced the response. |
 | External adapter manifest | `src/conformance/manifest.ts`: `loadAdapterManifest`; `src/conformance/check.ts`: `runAdapterConformance` | 1 MiB strict schema, bounded command fields, `shell: false`, minimal environment, JSONL bounds, timeout, identity and parser checks | The selected command executes with the invoking user's host privileges and can spoof self-reported identity. Only trusted manifests are supported. |
+| Custom suite manifest | `src/custom/manifest.ts`: `loadCustomSuiteManifest`; `src/custom/scenarios.ts`: `compileUserScenarios` | 1 MiB strict schema, bounded fixtures/steps, fixed public templates, typed dataflow, capability-gated signing | It tests deterministic generated fixtures only and is not a safe arbitrary-PSBT or production signing interface. |
 | PSBT parser | `src/psbt/wire-facts.ts`: `extractWireFacts` | Pre-decode encoded-length check; canonical base64; 4 MiB PSBT, key/value, map, and entry bounds; structural framing | It does not interpret wallet intent or prove native-library memory safety. |
 | Replay | `src/runner/replay.ts`: `verifyReplay` | Rejects absolute and lexically escaping paths; bounds manifest/files and checkpoint count; reparses each PSBT and verifies its SHA256 against the manifest and stored facts JSON `sha256` | Intermediate symlinks remain trusted. Final-component `O_NOFOLLOW` applies only where Node exposes it. Other facts/outcomes are not recomputed, and mutable hashes are not authenticity. |
 | Artifact writes | `src/runner/artifacts.ts`: `ArtifactRun` | Safe identifiers, contained paths, exclusive temporary files, `fsync`, atomic rename, private modes | The trusted account can read or replace local artifacts; directory contents are not signed. |
@@ -232,6 +246,7 @@ a privileged environment. Those events violate the confirmed trust assumptions.
 | TM-006 | CI availability and check integrity | Untrusted pull-request code executes in hosted jobs | Consume compute/network, seek credentials, or alter tests/build scripts | CI delay/cost or misleading PR signal | `contents: read`, no workflow secrets, `persist-credentials: false`, pinned actions, ephemeral runners, job timeouts, concurrency cancellation; Docker proof skipped for pull requests | Controls mitigate compute/network/credential abuse, but pull-request code controls its own checks. Green means revision self-consistency, not independent check integrity. GitHub runner isolation and registries are externally trusted. | Mitigated, low residual resource/credential risk; check independence not claimed |
 | TM-007 | Real funds, production keys, users, or public services | The lab is extended or misused with arbitrary PSBTs, production keys, mainnet, uploads, hardware, public API/UI, or multiple tenants | Unsupported input reaches parser, native libraries, signing, storage, or policy decisions | Key/fund loss, privacy breach, or remote denial of service | The built-in matrix exposes only generated fixtures; fixture keys are public and valueless; Core is offline regtest; no broadcast or public endpoint exists | External conformance runs bounded parser probes but is not a production-input security audit. No key-isolation, authentication, authorization, rate-limit, tenancy, hardware, or public-service guarantee is provided. | Out of scope; requires a new threat model |
 | TM-008 | Host files, credentials, and processes | Developer runs an untrusted or insufficiently reviewed external adapter manifest | Manifest starts a host executable that reads files, uses network access, or persists after the check | Host compromise or data disclosure | Strict 1 MiB schema; bounded fields; argument-array spawn with `shell: false`; minimal inherited environment; bounded JSONL and timeout; reports omit command arguments and environment values; documentation recommends a constrained container | These controls do not sandbox the executable. Only trusted manifests are supported; executing untrusted manifests is explicitly out of scope. | Accepted only under trusted-manifest assumption |
+| TM-009 | Proof integrity and runner availability | A custom suite manifest is malformed or attempts to expand the signing surface | Oversized fixtures, unsafe descriptors/payloads, invalid dataflow, or unauthorized custom signing | Misleading result, local resource use, or unintended use of test signers | Strict 1 MiB schema; bounded counts and numeric values; fixed public templates; no command/path/key/raw-PSBT fields; typed step inputs; custom signing requires `fixture-commitment-sha256` and `user-fixture-template-v1` | The feature remains regtest-only and does not validate arbitrary production wallet inputs. | Mitigated, low residual risk under local generated-fixture scope |
 
 ## 9. Criticality Calibration
 

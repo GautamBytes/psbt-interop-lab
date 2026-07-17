@@ -278,9 +278,9 @@ fn negotiates_supported_operations() {
             "operations": ["hello", "native-parse", "roundtrip", "sign", "finalize-inputs"],
             "roles": ["parser", "signer", "finalizer"],
             "psbtVersions": [0],
-            "scriptTypes": ["p2wpkh", "p2wsh", "p2tr-keypath"],
+            "scriptTypes": ["p2wpkh", "p2sh-p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
             "operationScriptTypes": {
-                "roundtrip": ["p2wpkh", "p2wsh", "p2tr-keypath"],
+                "roundtrip": ["p2wpkh", "p2sh-p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
                 "sign": ["p2wpkh", "p2wsh", "p2tr-keypath"],
                 "finalize-inputs": ["p2wsh"]
             },

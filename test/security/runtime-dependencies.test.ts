@@ -12,6 +12,7 @@ describe("published runtime dependency boundary", () => {
       dependencies?: Record<string, string>;
       devDependencies?: Record<string, string>;
       scripts?: Record<string, string>;
+      files?: string[];
     };
 
     expect(packageJson.dependencies).not.toHaveProperty("ajv");
@@ -25,6 +26,17 @@ describe("published runtime dependency boundary", () => {
     expect(readProjectFile("src/conformance/manifest.ts")).not.toContain('from "ajv"');
     expect(readProjectFile("src/generated/validators.ts")).not.toMatch(
       /(?:from\s+["']ajv|require\(["']ajv)/,
+    );
+    expect(readProjectFile("scripts/copy-static-assets.ts")).toContain(
+      "suite-manifest.schema.json",
+    );
+    expect(packageJson.files).toEqual(
+      expect.arrayContaining([
+        "src/custom/suite-manifest.schema.json",
+        "adapters/bdk-wallet-current/Cargo.lock",
+        "adapters/rust-psbt-v2/Cargo.lock",
+        "examples",
+      ]),
     );
   });
 

@@ -617,10 +617,10 @@ pub fn handle_value_with_commitments(
                 "operations": ["hello", "native-parse", "inspect", "roundtrip", "sign", "finalize"],
                 "roles": ["parser", "signer", "finalizer"],
                 "psbtVersions": [0],
-                "scriptTypes": ["p2wpkh", "p2wsh", "p2tr-keypath"],
+                "scriptTypes": ["p2wpkh", "p2sh-p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
                 "operationScriptTypes": {
-                    "inspect": ["p2wpkh", "p2wsh", "p2tr-keypath"],
-                    "roundtrip": ["p2wpkh", "p2wsh", "p2tr-keypath"],
+                    "inspect": ["p2wpkh", "p2sh-p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
+                    "roundtrip": ["p2wpkh", "p2sh-p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
                     "sign": ["p2wpkh", "p2wsh", "p2tr-keypath"],
                     "finalize": ["p2wpkh", "p2wsh", "p2tr-keypath"]
                 },

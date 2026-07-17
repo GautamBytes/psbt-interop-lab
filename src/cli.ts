@@ -18,11 +18,12 @@ import {
 import { runAdapterConformance } from "./conformance/check.js";
 import { loadAdapterManifest } from "./conformance/manifest.js";
 import { CoreRpc } from "./core/rpc.js";
+import { loadCustomSuiteManifest } from "./custom/manifest.js";
 import { verifyReplay } from "./runner/replay.js";
 import { PROOF_SCENARIOS, runProof } from "./scenarios/proof.js";
 import { runCommand } from "./system/command.js";
 
-const VERSION = "0.3.1";
+const VERSION = "0.4.0";
 const PROJECT_DIRECTORY = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const DEFAULT_RPC_URL = "http://127.0.0.1:18443";
 const DEFAULT_RPC_USER = "psbtlab";
@@ -33,6 +34,7 @@ interface RunOptions {
   artifacts: string;
   rpcUrl: string;
   adapterManifest?: string;
+  suiteManifest?: string;
   build: boolean;
   startCore: boolean;
 }
@@ -76,6 +78,8 @@ async function doctor(): Promise<DoctorCheck[]> {
     "psbt-interop-lab/btcsuite-go:1.2.0",
     "psbt-interop-lab/bitcoinjs-lib:7.0.1",
     "psbt-interop-lab/bdkpython:2.3.1",
+    "psbt-interop-lab/rust-psbt-v2:0.1.0",
+    "psbt-interop-lab/bdk-wallet-current:3.1.0",
   ]) {
     const check = await dockerCheck(
       `Image ${image}`,
@@ -103,6 +107,8 @@ async function prepareRuntime(options: RunOptions): Promise<void> {
         "go-adapter",
         "bitcoinjs-adapter",
         "bdk-adapter",
+        "psbt-v2-adapter",
+        "bdk-wallet-current-adapter",
       ],
       {
         cwd: PROJECT_DIRECTORY,
@@ -130,6 +136,7 @@ function addRuntimeOptions(command: Command): Command {
     )
     .option("--rpc-url <url>", "Loopback Bitcoin Core RPC URL", DEFAULT_RPC_URL)
     .option("--adapter-manifest <path>", "Add trusted external adapters to the matrix")
+    .option("--suite-manifest <path>", "Add deterministic fixtures and checked handoff scenarios")
     .option("--no-build", "Use existing Docker images without rebuilding")
     .option("--no-start-core", "Use an already-running Core instance");
 }
@@ -142,6 +149,10 @@ async function executeProof(options: RunOptions): Promise<void> {
     options.adapterManifest === undefined
       ? undefined
       : await loadAdapterManifest(options.adapterManifest);
+  const customSuite =
+    options.suiteManifest === undefined
+      ? undefined
+      : await loadCustomSuiteManifest(options.suiteManifest);
   await prepareRuntime(options);
   const rpc = new CoreRpc({
     url: options.rpcUrl,
@@ -154,6 +165,7 @@ async function executeProof(options: RunOptions): Promise<void> {
     artifactRoot: resolve(options.artifacts),
     projectDirectory: PROJECT_DIRECTORY,
     ...(adapterManifest === undefined ? {} : { adapterManifest }),
+    ...(customSuite === undefined ? {} : { customSuite }),
   });
   process.stdout.write(`${formatProofSummary(result)}\n`);
   if (result.manifest.outcome !== "passed") {

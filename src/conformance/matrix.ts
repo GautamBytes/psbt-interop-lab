@@ -102,11 +102,21 @@ export function createExternalAdapterScenarios(
       scriptType: "p2wpkh",
       signatureKeyTypes: [0x02],
     },
+    {
+      fixture: fixtures.profiles["p2sh-p2wpkh"],
+      scriptType: "p2sh-p2wpkh",
+      signatureKeyTypes: [0x02],
+    },
     { fixture: fixtures.happy, scriptType: "p2wsh", signatureKeyTypes: [0x02] },
     {
       fixture: fixtures.profiles["p2tr-keypath"],
       scriptType: "p2tr-keypath",
       signatureKeyTypes: [0x13],
+    },
+    {
+      fixture: fixtures.profiles["p2tr-scriptpath"],
+      scriptType: "p2tr-scriptpath",
+      signatureKeyTypes: [0x14],
     },
   ];
   const definitions: ScenarioDefinition<ScenarioExecutionContext>[] = [];

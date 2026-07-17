@@ -89,6 +89,32 @@ services:
     security_opt:
       - no-new-privileges:true
 
+  psbt-v2-adapter:
+    image: psbt-interop-lab/rust-psbt-v2:0.1.0
+    build:
+      context: adapters/rust-psbt-v2
+    network_mode: none
+    read_only: true
+    cap_drop:
+      - ALL
+    pids_limit: 64
+    mem_limit: 256m
+    security_opt:
+      - no-new-privileges:true
+
+  bdk-wallet-current-adapter:
+    image: psbt-interop-lab/bdk-wallet-current:3.1.0
+    build:
+      context: adapters/bdk-wallet-current
+    network_mode: none
+    read_only: true
+    cap_drop:
+      - ALL
+    pids_limit: 64
+    mem_limit: 256m
+    security_opt:
+      - no-new-privileges:true
+
 networks:
   lab:
     driver: bridge
