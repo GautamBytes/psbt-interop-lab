@@ -31,10 +31,10 @@
 **Interfaces:**
 - Produces: a Vite application with `dev`, `build`, `test`, and `lint` commands.
 
-- [ ] Bootstrap the Product Design React starter in `website/`.
-- [ ] Pin dependencies and configure the development server for local visual verification.
-- [ ] Add a smoke test that renders the approved hero headline.
-- [ ] Run the smoke test and production build.
+- [x] Bootstrap the Product Design React starter in `website/`.
+- [x] Pin dependencies and configure the development server for local visual verification.
+- [x] Add a smoke test that renders the approved hero headline.
+- [x] Run the smoke test and production build.
 
 ### Task 2: Visual System And Page Content
 
@@ -51,11 +51,11 @@
 **Interfaces:**
 - Produces: typed `scenarios`, `implementations`, `workflowSteps`, and `docLinks` content consumed by page components.
 
-- [ ] Generate and install the bitmap hero texture from the approved mock.
-- [ ] Implement the sticky header and centered hero with exact approved copy.
-- [ ] Implement the compatibility-report console using the real duplicate-global-key finding.
-- [ ] Implement workflow, coverage, safety, adapter, and final call-to-action sections.
-- [ ] Add desktop, tablet, and mobile responsive styling.
+- [x] Generate and install the bitmap hero texture from the approved mock.
+- [x] Implement the sticky header and centered hero with exact approved copy.
+- [x] Implement the compatibility-report console using the real duplicate-global-key finding.
+- [x] Implement workflow, coverage, safety, adapter, and final call-to-action sections.
+- [x] Add desktop, tablet, and mobile responsive styling.
 
 ### Task 3: Core Interactions
 
@@ -69,10 +69,10 @@
 **Interfaces:**
 - Produces: working search, command copy, theme, report selection, and mobile navigation behavior.
 
-- [ ] Add failing interaction tests for every core control.
-- [ ] Implement accessible dialog, menu, button, and status behavior.
-- [ ] Add visible hover, focus, selected, and copied states.
-- [ ] Run the full website test suite and fix failures.
+- [x] Add failing interaction tests for every core control.
+- [x] Implement accessible dialog, menu, button, and status behavior.
+- [x] Add visible hover, focus, selected, and copied states.
+- [x] Run the full website test suite and fix failures.
 
 ### Task 4: Verification And Repository Handoff
 
@@ -83,9 +83,8 @@
 **Interfaces:**
 - Produces: a tested production build, visual QA record, local preview URL, and repository documentation link.
 
-- [ ] Run website tests, lint, typecheck, and production build.
-- [ ] Start the development server and capture 1440 x 1024 and 390 x 844 screenshots.
-- [ ] Compare both screenshots with the approved target and fix P0, P1, and P2 issues.
-- [ ] Record the passing result in `website/design-qa.md`.
-- [ ] Link the website development commands from the root README and commit the complete change.
-
+- [x] Run website tests, lint, typecheck, and production build.
+- [x] Start the development server and capture 1440 x 1024 and 390 x 844 screenshots.
+- [x] Compare both screenshots with the approved target and fix P0, P1, and P2 issues.
+- [x] Record the passing result in `website/design-qa.md`.
+- [x] Link the website development commands from the root README and commit the complete change.

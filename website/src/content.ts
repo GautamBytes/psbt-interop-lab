@@ -1,0 +1,165 @@
+export const repositoryUrl = "https://github.com/GautamBytes/psbt-interop-lab";
+export const npmUrl = "https://www.npmjs.com/package/psbt-interop-lab";
+export const installCommand = "npm install --global psbt-interop-lab@0.4.0";
+
+export type ScenarioStatus = "pass" | "finding" | "supported";
+
+export interface EvidenceRow {
+  field: string;
+  expected: string;
+  actual: string;
+  implementation: string;
+  nextStep: string;
+}
+
+export interface ReportScenario {
+  id: string;
+  shortLabel: string;
+  title: string;
+  status: ScenarioStatus;
+  statusLabel: string;
+  handoff: string;
+  summary: string;
+  evidence: EvidenceRow[];
+  replay: string;
+}
+
+export const implementations = [
+  { name: "Bitcoin Core", version: "31.1", short: "BTC", tone: "orange" },
+  { name: "rust-bitcoin", version: "0.32.102", short: "RS", tone: "neutral" },
+  { name: "btcsuite PSBT", version: "1.2.0", short: "GO", tone: "blue" },
+  { name: "bitcoinjs-lib", version: "7.0.1", short: "JS", tone: "yellow" },
+  { name: "BDK Wallet", version: "3.1.0", short: "BDK", tone: "green" },
+  { name: "PSBTv2 parser", version: "0.3.0", short: "V2", tone: "violet" },
+] as const;
+
+export const reportScenarios: ReportScenario[] = [
+  {
+    id: "roundtrip",
+    shortLabel: "Four-library roundtrip",
+    title: "Metadata-rich P2WSH roundtrip",
+    status: "pass",
+    statusLabel: "Passed",
+    handoff: "Core -> rust-bitcoin -> btcsuite -> bitcoinjs-lib",
+    summary:
+      "Transaction intent, known fields, unknown fields, and proprietary metadata remain semantically intact across the full handoff chain.",
+    evidence: [
+      {
+        field: "Unsigned transaction commitment",
+        expected: "unchanged",
+        actual: "unchanged",
+        implementation: "all handoffs",
+        nextStep: "No action required.",
+      },
+      {
+        field: "Unknown and proprietary fields",
+        expected: "exact union preserved",
+        actual: "exact union preserved",
+        implementation: "all handoffs",
+        nextStep: "No action required.",
+      },
+      {
+        field: "PSBT_OUT_BIP32_DERIVATION",
+        expected: "preserved",
+        actual: "preserved",
+        implementation: "all handoffs",
+        nextStep: "No action required.",
+      },
+    ],
+    replay: "psbt-lab replay artifacts/<run-id>",
+  },
+  {
+    id: "duplicate-key",
+    shortLabel: "Duplicate global key",
+    title: "Native parser duplicate-key probe",
+    status: "finding",
+    statusLabel: "Compatibility finding",
+    handoff: "Malformed PSBT -> btcsuite PSBT 1.2.0 native parser",
+    summary:
+      "btcsuite accepts a duplicate global unsigned-transaction key. The lab keeps this divergence visible while requiring other native parsers to reject malformed input safely.",
+    evidence: [
+      {
+        field: "PSBT_GLOBAL_UNSIGNED_TX (0x00)",
+        expected: "duplicate key rejected",
+        actual: "duplicate key accepted",
+        implementation: "btcsuite PSBT 1.2.0",
+        nextStep: "Reject duplicate map keys before downstream use.",
+      },
+      {
+        field: "Native parser process",
+        expected: "bounded clean result",
+        actual: "completed without crash",
+        implementation: "btcsuite adapter",
+        nextStep: "Track as compatibility behavior, not a crash.",
+      },
+      {
+        field: "Report classification",
+        expected: "finding remains explicit",
+        actual: "CLI, JSON, Markdown, and HTML",
+        implementation: "PSBT Interop Lab",
+        nextStep: "Review before choosing a parser boundary.",
+      },
+    ],
+    replay: "psbt-lab replay artifacts/<run-id>",
+  },
+  {
+    id: "taproot",
+    shortLabel: "Taproot key-path",
+    title: "Taproot key-path signing handoff",
+    status: "supported",
+    statusLabel: "Covered",
+    handoff: "Bitcoin Core -> current library signer -> Bitcoin Core",
+    summary:
+      "The suite checks Taproot key-path creation, roundtripping, signing, finalization, and policy acceptance on isolated regtest fixtures.",
+    evidence: [
+      {
+        field: "Taproot internal key",
+        expected: "preserved",
+        actual: "checked at every handoff",
+        implementation: "capability-compatible adapters",
+        nextStep: "Unsupported adapters are reported, never counted as passes.",
+      },
+      {
+        field: "Unsigned transaction commitment",
+        expected: "signer cannot mutate intent",
+        actual: "run-scoped commitment enforced",
+        implementation: "adapter protocol",
+        nextStep: "Keep commitment protection enabled.",
+      },
+      {
+        field: "Final transaction",
+        expected: "Core policy accepted",
+        actual: "verified on regtest",
+        implementation: "Bitcoin Core 31.1",
+        nextStep: "No mainnet broadcast path exists.",
+      },
+    ],
+    replay: "psbt-lab replay artifacts/<run-id>",
+  },
+];
+
+export const workflowSteps = [
+  {
+    number: "01",
+    title: "Run real handoffs",
+    body: "Deterministic regtest fixtures move through the same creator, updater, signer, combiner, and finalizer roles wallets use.",
+  },
+  {
+    number: "02",
+    title: "Compare semantically",
+    body: "Every map is parsed field by field. Legal key reordering is recorded without hiding a changed amount, signature, sequence, or metadata field.",
+  },
+  {
+    number: "03",
+    title: "Replay exact evidence",
+    body: "Private local artifacts preserve the checkpoints, facts, hashes, and implementation identities needed to reproduce a failure.",
+  },
+] as const;
+
+export const docLinks = [
+  { label: "Quick start", detail: "Install and run the matrix", href: `${repositoryUrl}#quick-start` },
+  { label: "Scenario coverage", detail: "See all 24 bundled scenarios", href: `${repositoryUrl}#current-coverage` },
+  { label: "Adapter kit", detail: "Bring another wallet or library", href: `${repositoryUrl}/blob/main/docs/adapters.md` },
+  { label: "Architecture", detail: "Understand the trust boundaries", href: `${repositoryUrl}/blob/main/docs/architecture.md` },
+  { label: "Security", detail: "Read the safety model", href: `${repositoryUrl}/blob/main/SECURITY.md` },
+] as const;

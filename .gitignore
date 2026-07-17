@@ -7,3 +7,8 @@ adapters/rust-bitcoin/target/
 __pycache__/
 *.py[cod]
 *.log
+website/.npm-cache/
+website/.playwright-cli/
+website/*.tsbuildinfo
+website/vite.config.js
+website/vite.config.d.ts
