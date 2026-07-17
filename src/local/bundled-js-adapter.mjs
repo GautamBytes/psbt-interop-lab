@@ -99,6 +99,15 @@ function singleton(entries, type) {
   return entries.find(({ key }) => key.length === 1 && key[0] === type)?.value;
 }
 
+function requiredSingleton(entries, type, length, label) {
+  const value = singleton(entries, type);
+  if (value === undefined) throw new PsbtParseError(`PSBTv2 requires ${label}`);
+  if (length !== undefined && value.length !== length) {
+    throw new PsbtParseError(`${label} must contain ${length} bytes`);
+  }
+  return value;
+}
+
 function compactSizeValue(value, label) {
   const decoded = compactSize(value, 0, label);
   if (decoded.nextOffset !== value.length) throw new PsbtParseError(`${label} has trailing bytes`);
@@ -159,6 +168,10 @@ function parsePsbt(encoded) {
       throw new PsbtParseError("PSBTv0 requires an unsigned transaction");
     counts = unsignedTransactionCounts(transaction);
   } else if (psbtVersion === 2) {
+    if (singleton(globalMap.entries, 0x00) !== undefined) {
+      throw new PsbtParseError("PSBTv2 must not contain a global unsigned transaction");
+    }
+    requiredSingleton(globalMap.entries, 0x02, 4, "a global transaction version");
     const inputs = singleton(globalMap.entries, 0x04);
     const outputs = singleton(globalMap.entries, 0x05);
     if (inputs === undefined || outputs === undefined) {
@@ -173,8 +186,31 @@ function parsePsbt(encoded) {
   }
 
   let offset = globalMap.nextOffset;
-  for (let index = 0; index < counts.inputs + counts.outputs; index += 1) {
-    offset = parseMap(bytes, offset).nextOffset;
+  const inputMaps = [];
+  const outputMaps = [];
+  for (let index = 0; index < counts.inputs; index += 1) {
+    const map = parseMap(bytes, offset);
+    inputMaps.push(map.entries);
+    offset = map.nextOffset;
+  }
+  for (let index = 0; index < counts.outputs; index += 1) {
+    const map = parseMap(bytes, offset);
+    outputMaps.push(map.entries);
+    offset = map.nextOffset;
+  }
+  if (psbtVersion === 2) {
+    for (const entries of inputMaps) {
+      requiredSingleton(entries, 0x0e, 32, "an input previous transaction ID");
+      requiredSingleton(entries, 0x0f, 4, "an input previous output index");
+      const sequence = singleton(entries, 0x10);
+      if (sequence !== undefined && sequence.length !== 4) {
+        throw new PsbtParseError("an input sequence must contain four bytes");
+      }
+    }
+    for (const entries of outputMaps) {
+      requiredSingleton(entries, 0x03, 8, "an output amount");
+      requiredSingleton(entries, 0x04, undefined, "an output script");
+    }
   }
   if (offset !== bytes.length) throw new PsbtParseError("PSBT has trailing bytes or maps");
   return { psbtVersion, inputs: counts.inputs, outputs: counts.outputs };

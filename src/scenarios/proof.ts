@@ -771,6 +771,16 @@ export async function runProofWithDependencies(
   dependencies: ProofDependencies,
 ): Promise<ProofResult> {
   const selection = resolveProofSelection(options.selectors);
+  if (selection.filtered && options.customSuite) {
+    throw new Error(
+      "Scenario selection cannot be combined with a suite manifest because custom scenarios are not statically registered",
+    );
+  }
+  if (selection.filtered && options.adapterManifest) {
+    throw new Error(
+      "Scenario selection cannot be combined with an adapter manifest because external scenarios require capability negotiation",
+    );
+  }
   const startedAt = new Date().toISOString();
   const runId = runIdentifier();
   const artifacts = await dependencies.createArtifacts(resolve(options.artifactRoot), runId);

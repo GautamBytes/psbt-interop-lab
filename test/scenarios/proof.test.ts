@@ -369,6 +369,39 @@ describe("proof runtime", () => {
     expect(harness.adapters[0]?.close).toHaveBeenCalledOnce();
   });
 
+  test("rejects filtered runs that would silently omit manifest scenarios", async () => {
+    const harness = proofHarness();
+    const selected = { scenarios: ["happy-path"] };
+
+    await expect(
+      runProofWithDependencies(
+        {
+          rpc: {} as never,
+          artifactRoot: "/tmp/psbt-lab-test",
+          projectDirectory: "/project",
+          selectors: selected,
+          customSuite: { fixtures: [], scenarios: [] } as never,
+        },
+        harness.dependencies,
+      ),
+    ).rejects.toThrow(/scenario selection.*suite manifest/i);
+
+    await expect(
+      runProofWithDependencies(
+        {
+          rpc: {} as never,
+          artifactRoot: "/tmp/psbt-lab-test",
+          projectDirectory: "/project",
+          selectors: selected,
+          adapterManifest: { adapters: [] } as never,
+        },
+        harness.dependencies,
+      ),
+    ).rejects.toThrow(/scenario selection.*adapter manifest/i);
+    expect(harness.dependencies.prepareFixtures).not.toHaveBeenCalled();
+    expect(harness.created).toEqual([]);
+  });
+
   test("compiles and runs deterministic fixtures and scenarios from a suite manifest", async () => {
     const harness = proofHarness();
     const prepared = preparedFixtures();

@@ -86,4 +86,26 @@ describe("bundled local JavaScript adapter", () => {
       error: { class: "psbt.native_parse_failed" },
     });
   });
+
+  test("rejects PSBTv2 documents missing required transaction fields", async () => {
+    const adapter = bundledAdapter();
+    const incompleteV2 = Buffer.from(
+      "70736274ff01fb04020000000104010101050101000000",
+      "hex",
+    ).toString("base64");
+    const response = await adapter.request(
+      {
+        protocol: ADAPTER_PROTOCOL,
+        id: "incomplete-v2",
+        operation: "native-parse",
+        payload: { psbt: incompleteV2 },
+      },
+      5_000,
+    );
+
+    expect(response).toMatchObject({
+      status: "rejected",
+      error: { class: "psbt.native_parse_failed" },
+    });
+  });
 });

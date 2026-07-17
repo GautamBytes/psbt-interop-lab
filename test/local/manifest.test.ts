@@ -1,5 +1,12 @@
 import { createHash } from "node:crypto";
-import { mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
@@ -73,7 +80,7 @@ describe("local runtime manifest", () => {
     const canonicalDirectory = realpathSync(directory);
     expect(createProcess).toHaveBeenCalledWith({
       command: process.execPath,
-      args: [resolve(canonicalDirectory, "adapter.mjs")],
+      args: [expect.stringMatching(/psbt-lab-local-adapters-/)],
       cwd: canonicalDirectory,
     });
     expect(adapters[1]).toMatchObject({
@@ -97,6 +104,30 @@ describe("local runtime manifest", () => {
       }),
     ).rejects.toThrow(/checksum.*bundled-js/i);
     expect(createProcess).not.toHaveBeenCalled();
+  });
+
+  test("launches an immutable private snapshot of the verified adapter", async () => {
+    const directory = temporaryDirectory();
+    const artifact = resolve(directory, "adapter.mjs");
+    const source = "process.stdin.resume();\n";
+    writeFileSync(artifact, source, { mode: 0o600 });
+    const createProcess = vi.fn((options: AdapterProcessOptions) => {
+      writeFileSync(artifact, "throw new Error('replaced');\n", { mode: 0o600 });
+      const launchedPath = options.args?.[0];
+      expect(launchedPath).not.toBe(artifact);
+      expect(readFileSync(launchedPath as string, "utf8")).toBe(source);
+      return { request: vi.fn(), close: vi.fn(async () => undefined) };
+    });
+    const local = await import("../../src/local/provider.js");
+
+    const provider = await local.createLocalRuntimeProvider({
+      packageDirectory: directory,
+      manifest: manifest("adapter.mjs", sha256(source)),
+      createProcess,
+    });
+
+    await provider.close();
+    expect(createProcess).toHaveBeenCalledOnce();
   });
 
   test("rejects paths that escape through a symlink", async () => {

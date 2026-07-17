@@ -78,6 +78,40 @@ jobs:
       - run: cargo clippy --locked --all-targets -- -D warnings
       - run: cargo test --locked
 
+  bdk-wallet-current-adapter:
+    name: Current BDK Wallet adapter
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: adapters/bdk-wallet-current
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install 1.97.0 --profile minimal --component rustfmt,clippy
+      - run: rustup default 1.97.0
+      - run: cargo fmt --check
+      - run: cargo clippy --locked --all-targets -- -D warnings
+      - run: cargo test --locked
+
+  psbt-v2-adapter:
+    name: PSBTv2 adapter
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: adapters/rust-psbt-v2
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install 1.97.0 --profile minimal --component rustfmt,clippy
+      - run: rustup default 1.97.0
+      - run: cargo fmt --check
+      - run: cargo clippy --locked --all-targets -- -D warnings
+      - run: cargo test --locked
+
   package-smoke:
     name: Release tarball smoke test
     runs-on: ubuntu-latest

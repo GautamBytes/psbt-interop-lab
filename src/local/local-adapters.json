@@ -7,14 +7,14 @@
       "launch": {
         "kind": "node",
         "path": "src/local/bundled-js-adapter.mjs",
-        "sha256": "sha256:d0cc3c394320fe3913ef8e6af8975814bd6c0675445bcf24bbe3616d8fef60d4"
+        "sha256": "sha256:b6c37e677d50e2ddac1e59d68df35006e8cc622e0c851900708c164ab5c2e3d9"
       },
       "timeoutMs": 5000,
       "expected": {
         "name": "psbt-lab-js",
         "version": "0.1.0",
         "sourceRevision": "bundled-js-v1",
-        "artifactDigest": "sha256:d0cc3c394320fe3913ef8e6af8975814bd6c0675445bcf24bbe3616d8fef60d4"
+        "artifactDigest": "sha256:b6c37e677d50e2ddac1e59d68df35006e8cc622e0c851900708c164ab5c2e3d9"
       }
     },
     {

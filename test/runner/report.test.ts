@@ -21,6 +21,13 @@ function manifest(): RunManifest {
     startedAt: "2026-07-16T00:00:00.000Z",
     completedAt: "2026-07-16T00:00:01.000Z",
     outcome: "failed",
+    selectors: {
+      requested: { scenarios: ["metadata-preservation"], category: "metadata-preservation" },
+      executed: {
+        scenarios: ["metadata-preservation"],
+        categories: ["metadata-preservation"],
+      },
+    },
     core: {
       version: 310100,
       subversion: "/Satoshi:31.1.0/",
@@ -122,6 +129,8 @@ describe("HTML report", () => {
     expect(html).toContain("Compatibility findings");
     expect(html).toContain("Accepted a duplicate global key");
     expect(html).toContain("Content-Security-Policy");
+    expect(html).toContain("metadata-preservation");
+    expect(html).toContain("Filtered run");
     expect(html).not.toContain("<script>");
     expect(html).not.toContain(TESTNET_WIF);
     expect(html).not.toContain(TEST_SLIP132_PRIVATE_KEY);
@@ -143,6 +152,8 @@ describe("HTML report", () => {
       expect(report).toContain("rust-bitcoin");
       expect(report).toContain("RESTORE_EXTENSION_METADATA");
       expect(report).toContain("Return to the previous checkpoint.");
+      expect(report).toContain("metadata-preservation");
     }
+    expect(markdown).toContain("Filtered run");
   });
 });

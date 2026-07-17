@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";
-import { lstat, open, realpath } from "node:fs/promises";
-import { relative, resolve, sep } from "node:path";
+import { chmod, lstat, mkdtemp, open, realpath, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { basename, join, relative, resolve, sep } from "node:path";
 import { AdapterProcess, type AdapterProcessOptions } from "../protocol/adapter-process.js";
 import type {
   RuntimeAdapter,
@@ -34,7 +35,7 @@ async function verifiedArtifact(
   artifactPath: string,
   expectedDigest: string,
   executable: boolean,
-): Promise<string> {
+): Promise<{ readonly canonical: string; readonly bytes: Buffer }> {
   const candidate = resolve(packageDirectory, artifactPath);
   if (!isContained(packageDirectory, candidate)) {
     throw new Error(`Local adapter ${adapterId} path is outside the package directory`);
@@ -60,16 +61,35 @@ async function verifiedArtifact(
     if (executable && process.platform !== "win32" && (stat.mode & 0o111) === 0) {
       throw new Error(`Local adapter ${adapterId} is not executable`);
     }
-    const digest = `sha256:${createHash("sha256")
-      .update(await handle.readFile())
-      .digest("hex")}`;
+    const bytes = await handle.readFile();
+    const digest = `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
     if (digest !== expectedDigest) {
       throw new Error(`Local adapter checksum mismatch for ${adapterId}`);
     }
+    return { canonical, bytes };
   } finally {
     await handle.close();
   }
-  return canonical;
+}
+
+async function privateSnapshot(
+  directory: string,
+  adapterId: string,
+  sourcePath: string,
+  bytes: Buffer,
+  executable: boolean,
+): Promise<string> {
+  const extension = basename(sourcePath).includes(".") ? `.${basename(sourcePath).split(".").pop()}` : "";
+  const path = join(directory, `${adapterId}${extension}`);
+  const handle = await open(path, "wx", executable ? 0o500 : 0o400);
+  try {
+    await handle.writeFile(bytes);
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+  await chmod(path, executable ? 0o500 : 0o400);
+  return path;
 }
 
 async function resolveManifest(
@@ -91,6 +111,8 @@ export async function createLocalRuntimeProvider(
   const createProcess =
     options.createProcess ?? ((processOptions) => new AdapterProcess(processOptions));
   const adapters: RuntimeAdapter[] = [];
+  const snapshotDirectory = await mkdtemp(join(tmpdir(), "psbt-lab-local-adapters-"));
+  await chmod(snapshotDirectory, 0o700);
 
   try {
     for (const definition of manifest.adapters) {
@@ -98,11 +120,18 @@ export async function createLocalRuntimeProvider(
         adapters.push(definition);
         continue;
       }
-      const artifact = await verifiedArtifact(
+      const verified = await verifiedArtifact(
         packageDirectory,
         definition.id,
         definition.launch.path,
         definition.launch.sha256,
+        definition.launch.kind === "executable",
+      );
+      const artifact = await privateSnapshot(
+        snapshotDirectory,
+        definition.id,
+        verified.canonical,
+        verified.bytes,
         definition.launch.kind === "executable",
       );
       const processOptions: AdapterProcessOptions =
@@ -123,6 +152,7 @@ export async function createLocalRuntimeProvider(
         adapter.availability === "available" ? [adapter.process.close()] : [],
       ),
     );
+    await rm(snapshotDirectory, { recursive: true, force: true });
     throw error;
   }
 
@@ -140,6 +170,7 @@ export async function createLocalRuntimeProvider(
           adapter.availability === "available" ? [adapter.process.close()] : [],
         ),
       );
+      await rm(snapshotDirectory, { recursive: true, force: true });
     },
   };
 }

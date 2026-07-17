@@ -51,6 +51,12 @@ export function redactValue(value: unknown, key = "", depth = 0): unknown {
 }
 
 export function generateMarkdownReport(manifest: RunManifest): string {
+  const filtered =
+    (manifest.selectors?.requested.scenarios?.length ?? 0) > 0 ||
+    manifest.selectors?.requested.category !== undefined;
+  const selection = filtered
+    ? `Filtered run: requested ${manifest.selectors?.requested.scenarios?.map((id) => `\`${id}\``).join(", ") || "all scenarios"}${manifest.selectors?.requested.category ? ` in category \`${manifest.selectors.requested.category}\`` : ""}; executed ${manifest.selectors?.executed.scenarios.length ?? 0} scenario(s).`
+    : undefined;
   const lines = [
     "# PSBT Interop Lab Proof",
     "",
@@ -59,6 +65,7 @@ export function generateMarkdownReport(manifest: RunManifest): string {
     manifest.core
       ? `Bitcoin Core: \`${manifest.core.subversion}\` on regtest at height ${manifest.core.blocks}`
       : "Bitcoin Core: not required by selected scenarios",
+    ...(selection ? [selection] : []),
     "",
     "## Scenarios",
     "",
@@ -269,6 +276,12 @@ export function generateHtmlReport(manifest: RunManifest): string {
   const runtimeSummary = manifest.core
     ? `${escapeHtml(manifest.core.subversion)} · regtest height ${escapeHtml(manifest.core.blocks)} · ${escapeHtml(manifest.core.connections)} peers`
     : "Bitcoin Core not required by selected scenarios";
+  const filtered =
+    (manifest.selectors?.requested.scenarios?.length ?? 0) > 0 ||
+    manifest.selectors?.requested.category !== undefined;
+  const selectionSummary = filtered
+    ? `<p class="run-meta"><strong>Filtered run</strong> · requested ${escapeHtml(manifest.selectors?.requested.scenarios?.join(", ") || "all scenarios")}${manifest.selectors?.requested.category ? ` · category ${escapeHtml(manifest.selectors.requested.category)}` : ""} · executed ${escapeHtml(manifest.selectors?.executed.scenarios.length ?? 0)} scenario(s)</p>`
+    : "";
 
   return `<!doctype html>
 <html lang="en">
@@ -327,6 +340,7 @@ export function generateHtmlReport(manifest: RunManifest): string {
   <header class="run-header">
     <h1>PSBT Interop Lab</h1>
     <p class="run-meta">Run <code>${escapeHtml(manifest.runId)}</code> · ${runtimeSummary}</p>
+    ${selectionSummary}
   </header>
   <section class="metrics" aria-label="Run totals">
     <div class="metric"><strong>${counts.passed}</strong><span>Passed</span></div>
