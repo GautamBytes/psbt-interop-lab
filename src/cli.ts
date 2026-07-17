@@ -19,6 +19,8 @@ import { runAdapterConformance } from "./conformance/check.js";
 import { loadAdapterManifest } from "./conformance/manifest.js";
 import { CoreRpc } from "./core/rpc.js";
 import { loadCustomSuiteManifest } from "./custom/manifest.js";
+import { formatParseMatrix, runParseMatrix } from "./local/parse-matrix.js";
+import { createLocalRuntimeProvider } from "./local/provider.js";
 import { verifyReplay } from "./runner/replay.js";
 import { PROOF_SCENARIOS, runProof } from "./scenarios/proof.js";
 import { runCommand } from "./system/command.js";
@@ -28,6 +30,7 @@ const PROJECT_DIRECTORY = resolve(dirname(fileURLToPath(import.meta.url)), "..")
 const DEFAULT_RPC_URL = "http://127.0.0.1:18443";
 const DEFAULT_RPC_USER = "psbtlab";
 const DEFAULT_RPC_PASSWORD = "psbtlab-regtest-only";
+const LOCAL_RUNTIME_MANIFEST = resolve(PROJECT_DIRECTORY, "src/local/local-adapters.json");
 
 interface RunOptions {
   suite: string;
@@ -247,6 +250,28 @@ export function createProgram(): Command {
   ).action(async (options: Omit<RunOptions, "suite">) => {
     await executeProof({ ...options, suite: "proof" });
   });
+
+  program
+    .command("parse-matrix")
+    .description("Run deterministic parser and roundtrip fixtures without Docker or Bitcoin Core")
+    .option("--runtime <runtime>", "Parser runtime provider", "local")
+    .option("--json", "Print machine-readable output")
+    .action(async (options: { runtime: string; json?: boolean }) => {
+      if (options.runtime !== "local") {
+        throw new Error(
+          `Unknown parser runtime ${options.runtime}; the available runtime is local`,
+        );
+      }
+      const provider = await createLocalRuntimeProvider({
+        packageDirectory: PROJECT_DIRECTORY,
+        manifestPath: LOCAL_RUNTIME_MANIFEST,
+      });
+      const report = await runParseMatrix(provider);
+      process.stdout.write(
+        options.json ? `${JSON.stringify(report, null, 2)}\n` : `${formatParseMatrix(report)}\n`,
+      );
+      if (report.outcome === "failed") process.exitCode = 1;
+    });
 
   program
     .command("stop")

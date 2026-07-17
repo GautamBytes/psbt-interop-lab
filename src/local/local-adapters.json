@@ -1,0 +1,46 @@
+{
+  "schema": "psbt-lab.local-runtime/0.1",
+  "adapters": [
+    {
+      "id": "bundled-js",
+      "availability": "available",
+      "launch": {
+        "kind": "node",
+        "path": "src/local/bundled-js-adapter.mjs",
+        "sha256": "sha256:d0cc3c394320fe3913ef8e6af8975814bd6c0675445bcf24bbe3616d8fef60d4"
+      },
+      "timeoutMs": 5000,
+      "expected": {
+        "name": "psbt-lab-js",
+        "version": "0.1.0",
+        "sourceRevision": "bundled-js-v1",
+        "artifactDigest": "sha256:d0cc3c394320fe3913ef8e6af8975814bd6c0675445bcf24bbe3616d8fef60d4"
+      }
+    },
+    {
+      "id": "rust-bitcoin-native",
+      "availability": "unsupported",
+      "reason": "No checksum-pinned rust-bitcoin native bundle is published for this platform"
+    },
+    {
+      "id": "btcsuite-go-native",
+      "availability": "unsupported",
+      "reason": "No checksum-pinned btcsuite native bundle is published for this platform"
+    },
+    {
+      "id": "bdkpython-native",
+      "availability": "unsupported",
+      "reason": "No checksum-pinned bdkpython native bundle is published for this platform"
+    },
+    {
+      "id": "rust-psbt-v2-native",
+      "availability": "unsupported",
+      "reason": "No checksum-pinned rust-psbt PSBTv2 native bundle is published for this platform"
+    },
+    {
+      "id": "bdk-wallet-current-native",
+      "availability": "unsupported",
+      "reason": "No checksum-pinned BDK wallet native bundle is published for this platform"
+    }
+  ]
+}

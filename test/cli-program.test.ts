@@ -17,6 +17,7 @@ describe("CLI program", () => {
       "adapter",
       "run",
       "matrix",
+      "parse-matrix",
       "stop",
       "replay",
     ]);
