@@ -4,7 +4,13 @@ WORKDIR /source
 RUN rustup component add rustfmt clippy
 COPY Cargo.toml Cargo.lock ./
 COPY src ./src
-COPY tests ./tests
+RUN mkdir tests
+COPY tests/bip370_parse_invalid.rs tests/bip370_parse_invalid.rs
+COPY tests/bip370_parse_valid.rs tests/bip370_parse_valid.rs
+COPY tests/process.rs tests/process.rs
+COPY tests/protocol.rs tests/protocol.rs
+COPY tests/util.rs tests/util.rs
+COPY tests/workflow.rs tests/workflow.rs
 RUN cargo fmt --check \
     && cargo clippy --locked --all-targets -- -D warnings \
     && cargo test --locked \

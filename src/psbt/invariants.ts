@@ -156,15 +156,24 @@ function findGlobalValue(document: PsbtDocument, keyType: number): Buffer | unde
 function isValidTxModifiableChange(before: PsbtDocument, after: PsbtDocument): boolean {
   const beforeValue = findGlobalValue(before, 0x06);
   const afterValue = findGlobalValue(after, 0x06);
-  if (beforeValue?.byteLength !== 1 || afterValue?.byteLength !== 1) {
+  if (
+    before.psbtVersion !== 2 ||
+    after.psbtVersion !== 2 ||
+    (beforeValue !== undefined && beforeValue.byteLength !== 1) ||
+    (afterValue !== undefined && afterValue.byteLength !== 1)
+  ) {
     return false;
   }
-  const beforeFlags = beforeValue[0] as number;
-  const afterFlags = afterValue[0] as number;
+  const beforeFlags = beforeValue?.[0] ?? 0;
+  const afterFlags = afterValue?.[0] ?? 0;
   const unknownBitsUnchanged = (beforeFlags & 0xf8) === (afterFlags & 0xf8);
   const modifiableBitsOnlyClear = (afterFlags & 0x03 & ~(beforeFlags & 0x03)) === 0;
   const sighashSingleOnlySets = (beforeFlags & 0x04 & ~(afterFlags & 0x04)) === 0;
   return unknownBitsUnchanged && modifiableBitsOnlyClear && sighashSingleOnlySets;
+}
+
+function isTxModifiableEntry(entry: PsbtEntrySummary | PsbtChangedEntry): boolean {
+  return entry.location.kind === "global" && entry.keyType === 0x06 && entry.keyBytes === 1;
 }
 
 function roundtripFailures(
@@ -212,13 +221,23 @@ function signFailures(
 ): BarePsbtTransitionFailure[] {
   const failures: BarePsbtTransitionFailure[] = [];
   for (const entry of added) {
-    if (isChangedIdentityEntry(before, after, entry.location, entry.keyType, identityChanged)) {
+    if (isTxModifiableEntry(entry)) {
+      if (!isValidTxModifiableChange(before, after)) {
+        failures.push(addedFailure(entry, "TX_MODIFIABLE_INVALID_CHANGE"));
+      }
+    } else if (isChangedIdentityEntry(before, after, entry.location, entry.keyType, identityChanged)) {
       failures.push(addedFailure(entry, "TRANSACTION_IDENTITY_CHANGED"));
     } else if (!isInputType(entry.location, entry.keyType, SIGNATURE_INPUT_TYPES)) {
       failures.push(addedFailure(entry));
     }
   }
   for (const entry of removed) {
+    if (isTxModifiableEntry(entry)) {
+      if (!isValidTxModifiableChange(before, after)) {
+        failures.push(removedFailure(entry, "TX_MODIFIABLE_INVALID_CHANGE"));
+      }
+      continue;
+    }
     const code = isChangedIdentityEntry(
       before,
       after,
@@ -254,11 +273,21 @@ function combineFailures(
 ): BarePsbtTransitionFailure[] {
   const failures: BarePsbtTransitionFailure[] = [];
   for (const entry of added) {
-    if (isChangedIdentityEntry(before, after, entry.location, entry.keyType, identityChanged)) {
+    if (isTxModifiableEntry(entry)) {
+      if (!isValidTxModifiableChange(before, after)) {
+        failures.push(addedFailure(entry, "TX_MODIFIABLE_INVALID_CHANGE"));
+      }
+    } else if (isChangedIdentityEntry(before, after, entry.location, entry.keyType, identityChanged)) {
       failures.push(addedFailure(entry, "TRANSACTION_IDENTITY_CHANGED"));
     }
   }
   for (const entry of removed) {
+    if (isTxModifiableEntry(entry)) {
+      if (!isValidTxModifiableChange(before, after)) {
+        failures.push(removedFailure(entry, "TX_MODIFIABLE_INVALID_CHANGE"));
+      }
+      continue;
+    }
     const code = isChangedIdentityEntry(
       before,
       after,
@@ -271,16 +300,22 @@ function combineFailures(
     failures.push(removedFailure(entry, code));
   }
   for (const entry of changed) {
-    const code = isChangedIdentityEntry(
-      before,
-      after,
-      entry.location,
-      entry.keyType,
-      identityChanged,
-    )
-      ? "TRANSACTION_IDENTITY_CHANGED"
-      : "ENTRY_CHANGED";
-    failures.push(changedFailure(entry, code));
+    if (isTxModifiableEntry(entry)) {
+      if (!isValidTxModifiableChange(before, after)) {
+        failures.push(changedFailure(entry, "TX_MODIFIABLE_INVALID_CHANGE"));
+      }
+    } else {
+      const code = isChangedIdentityEntry(
+        before,
+        after,
+        entry.location,
+        entry.keyType,
+        identityChanged,
+      )
+        ? "TRANSACTION_IDENTITY_CHANGED"
+        : "ENTRY_CHANGED";
+      failures.push(changedFailure(entry, code));
+    }
   }
   return failures;
 }
@@ -295,30 +330,44 @@ function finalizeFailures(
 ): BarePsbtTransitionFailure[] {
   const failures: BarePsbtTransitionFailure[] = [];
   for (const entry of added) {
-    if (isChangedIdentityEntry(before, after, entry.location, entry.keyType, identityChanged)) {
+    if (isTxModifiableEntry(entry)) {
+      if (!isValidTxModifiableChange(before, after)) {
+        failures.push(addedFailure(entry, "TX_MODIFIABLE_INVALID_CHANGE"));
+      }
+    } else if (isChangedIdentityEntry(before, after, entry.location, entry.keyType, identityChanged)) {
       failures.push(addedFailure(entry, "TRANSACTION_IDENTITY_CHANGED"));
     } else if (!isInputType(entry.location, entry.keyType, FINAL_INPUT_TYPES)) {
       failures.push(addedFailure(entry));
     }
   }
   for (const entry of removed) {
-    if (isChangedIdentityEntry(before, after, entry.location, entry.keyType, identityChanged)) {
+    if (isTxModifiableEntry(entry)) {
+      if (!isValidTxModifiableChange(before, after)) {
+        failures.push(removedFailure(entry, "TX_MODIFIABLE_INVALID_CHANGE"));
+      }
+    } else if (isChangedIdentityEntry(before, after, entry.location, entry.keyType, identityChanged)) {
       failures.push(removedFailure(entry, "TRANSACTION_IDENTITY_CHANGED"));
     } else if (!isInputType(entry.location, entry.keyType, FINALIZE_REMOVABLE_INPUT_TYPES)) {
       failures.push(removedFailure(entry));
     }
   }
   for (const entry of changed) {
-    const code = isChangedIdentityEntry(
-      before,
-      after,
-      entry.location,
-      entry.keyType,
-      identityChanged,
-    )
-      ? "TRANSACTION_IDENTITY_CHANGED"
-      : "ENTRY_CHANGED";
-    failures.push(changedFailure(entry, code));
+    if (isTxModifiableEntry(entry)) {
+      if (!isValidTxModifiableChange(before, after)) {
+        failures.push(changedFailure(entry, "TX_MODIFIABLE_INVALID_CHANGE"));
+      }
+    } else {
+      const code = isChangedIdentityEntry(
+        before,
+        after,
+        entry.location,
+        entry.keyType,
+        identityChanged,
+      )
+        ? "TRANSACTION_IDENTITY_CHANGED"
+        : "ENTRY_CHANGED";
+      failures.push(changedFailure(entry, code));
+    }
   }
   return failures;
 }

@@ -28,6 +28,7 @@ import {
   BDK_CURRENT_ADAPTER_CONTRACT,
   BITCOINJS_ADAPTER_CONTRACT,
   GO_ADAPTER_CONTRACT,
+  LIBWALLY_ADAPTER_CONTRACT,
   PSBTV2_ADAPTER_CONTRACT,
   RUST_ADAPTER_CONTRACT,
 } from "./contracts.js";
@@ -42,6 +43,10 @@ import {
 } from "./interop-matrix.js";
 import { createInvalidInputScenario } from "./invalid-inputs.js";
 import { createMetadataPreservationScenario } from "./metadata-preservation.js";
+import {
+  createMultisigPsbtv2InteropScenario,
+  createP2wpkhPsbtv2InteropScenarios,
+} from "./psbtv2-interop.js";
 import { createScriptProfileRoundtripScenario } from "./script-profile-roundtrip.js";
 import {
   createTaprootScriptPathCanaryScenario,
@@ -57,6 +62,7 @@ const BITCOINJS_IMAGE = "psbt-interop-lab/bitcoinjs-lib:7.0.1";
 const BDK_IMAGE = "psbt-interop-lab/bdkpython:2.3.1";
 const BDK_CURRENT_IMAGE = "psbt-interop-lab/bdk-wallet-current:3.1.0";
 const PSBTV2_IMAGE = "psbt-interop-lab/rust-psbt-v2:0.1.0";
+const LIBWALLY_IMAGE = "psbt-interop-lab/libwally:1.5.4";
 const MAX_COMMITMENT_ENV_BYTES = 4 * 1024;
 const SAFE_FIXTURE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const BUILT_IN_ADAPTER_IDS = [
@@ -66,6 +72,7 @@ const BUILT_IN_ADAPTER_IDS = [
   "bdkpython",
   "bdk-wallet-current",
   "rust-psbt-v2",
+  "libwally",
 ] as const;
 export type BuiltInAdapterId = (typeof BUILT_IN_ADAPTER_IDS)[number];
 const MODERN_ROUNDTRIP_ADAPTERS = [
@@ -249,6 +256,26 @@ export const PROOF_SCENARIOS: readonly ProofScenarioSummary[] = [
     title: "Official BIP370 vectors through rust-psbt-v2",
     category: "psbtv2-conformance",
   },
+  {
+    id: "bip370-official-vectors-libwally",
+    title: "Official BIP370 vectors through libwally",
+    category: "psbtv2-conformance",
+  },
+  {
+    id: "psbtv2-p2wpkh-rust-to-libwally",
+    title: "PSBTv2 P2WPKH rust-psbt-v2 to libwally",
+    category: "psbtv2-interop",
+  },
+  {
+    id: "psbtv2-p2wpkh-libwally-to-rust",
+    title: "PSBTv2 P2WPKH libwally to rust-psbt-v2",
+    category: "psbtv2-interop",
+  },
+  {
+    id: "psbtv2-2-of-3-cross-library",
+    title: "PSBTv2 2-of-3 cross-library signing and finalization",
+    category: "psbtv2-interop",
+  },
 ];
 
 interface FixtureCommitment {
@@ -333,6 +360,18 @@ function taprootScriptPathHandoff(
     (candidate) => candidate.id === id,
   );
   if (!scenario) throw new Error(`Missing Taproot script-path scenario ${id}`);
+  return scenario;
+}
+
+function p2wpkhPsbtv2Handoff(
+  fixtures: PreparedFixtureSet | undefined,
+  id: "psbtv2-p2wpkh-rust-to-libwally" | "psbtv2-p2wpkh-libwally-to-rust",
+): ScenarioDefinition<ScenarioExecutionContext> {
+  const fixture = requiredFixture(fixtures, "p2wpkh");
+  const scenario = createP2wpkhPsbtv2InteropScenarios(fixture).find(
+    (candidate) => candidate.id === id,
+  );
+  if (!scenario) throw new Error(`Missing PSBTv2 P2WPKH scenario ${id}`);
   return scenario;
 }
 
@@ -573,6 +612,35 @@ export const PROOF_SCENARIO_REGISTRATIONS: readonly ProofScenarioRegistration[] 
     { core: false, fixtures: [], adapters: ["rust-psbt-v2"] },
     () => createBip370VectorScenario("rust-psbt-v2"),
   ),
+  registerScenario(
+    "bip370-official-vectors-libwally",
+    { core: false, fixtures: [], adapters: ["libwally"] },
+    () =>
+      createBip370VectorScenario("libwally", "libwally-core", ["valid-08", "valid-13"]),
+  ),
+  ...(
+    ["psbtv2-p2wpkh-rust-to-libwally", "psbtv2-p2wpkh-libwally-to-rust"] as const
+  ).map((id) =>
+    registerScenario(
+      id,
+      {
+        core: true,
+        fixtures: ["p2wpkh"],
+        adapters: ["rust-psbt-v2", "libwally"],
+      },
+      (fixtures) => p2wpkhPsbtv2Handoff(fixtures, id),
+    ),
+  ),
+  registerScenario(
+    "psbtv2-2-of-3-cross-library",
+    {
+      core: true,
+      fixtures: ["p2wsh-2-of-3"],
+      adapters: ["rust-psbt-v2", "libwally"],
+    },
+    (fixtures) =>
+      createMultisigPsbtv2InteropScenario(requiredFixture(fixtures, "p2wsh-2-of-3")),
+  ),
 ];
 
 export function resolveProofSelection(selectors: ProofSelectors = {}): ResolvedProofSelection {
@@ -794,6 +862,8 @@ function adapterImage(id: BuiltInAdapterId): string {
       return BDK_CURRENT_IMAGE;
     case "rust-psbt-v2":
       return PSBTV2_IMAGE;
+    case "libwally":
+      return LIBWALLY_IMAGE;
   }
 }
 
@@ -802,7 +872,6 @@ function adapterOptions(
   fixtures: PreparedFixtureSet | undefined,
 ): DockerAdapterOptions {
   if (id === "bdkpython") return { platform: "linux/amd64" };
-  if (id === "rust-psbt-v2") return {};
   const commitmentIds =
     id === "rust-bitcoin" || id === "bdk-wallet-current"
       ? RUST_COMMITMENT_FIXTURES
@@ -811,6 +880,7 @@ function adapterOptions(
     const fixture = preparedFixture(fixtures, fixtureId);
     return fixture ? [fixture] : [];
   });
+  if (commitments.length === 0) return {};
   return {
     env: { [FIXTURE_COMMITMENTS_ENV]: serializeFixtureCommitments(commitments) },
   };
@@ -834,6 +904,8 @@ async function negotiateBuiltInAdapter(
       return assertAdapterHello(response, BDK_CURRENT_ADAPTER_CONTRACT);
     case "rust-psbt-v2":
       return assertAdapterHello(response, PSBTV2_ADAPTER_CONTRACT);
+    case "libwally":
+      return assertAdapterHello(response, LIBWALLY_ADAPTER_CONTRACT);
   }
 }
 
@@ -901,7 +973,10 @@ export async function runProofWithDependencies(
   try {
     const builtInNegotiated: NegotiatedAdapter[] = [];
     for (const id of selection.resources.adapters) {
-      builtInNegotiated.push(await negotiateBuiltInAdapter(id, context));
+      builtInNegotiated.push({
+        ...(await negotiateBuiltInAdapter(id, context)),
+        registryId: id,
+      });
     }
     const externalNegotiated = new Map<string, NegotiatedAdapter>();
     for (const [id, runtime] of externalRuntime) {

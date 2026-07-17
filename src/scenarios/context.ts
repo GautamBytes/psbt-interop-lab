@@ -375,8 +375,20 @@ export class ScenarioExecutionContext {
     if (!finalized.complete || !finalized.hex) {
       return { allowed: false, rejectReason: "PSBT was not complete" };
     }
+    return this.policyCheckTransaction(finalized.hex);
+  }
+
+  async policyCheckTransaction(transactionHex: string): Promise<CorePolicyResult> {
+    if (
+      transactionHex.length === 0 ||
+      transactionHex.length > 8 * 1024 * 1024 ||
+      transactionHex.length % 2 !== 0 ||
+      !/^[0-9a-fA-F]+$/.test(transactionHex)
+    ) {
+      throw new TypeError("Transaction must be bounded even-length hexadecimal data");
+    }
     return parsePolicyResult(
-      await this.#rpc.call("testmempoolaccept", { rawtxs: [finalized.hex] }),
+      await this.#rpc.call("testmempoolaccept", { rawtxs: [transactionHex] }),
     );
   }
 }

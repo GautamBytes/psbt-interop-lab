@@ -102,6 +102,19 @@ services:
     security_opt:
       - no-new-privileges:true
 
+  libwally-adapter:
+    image: psbt-interop-lab/libwally:1.5.4
+    build:
+      context: adapters/libwally-1.5.4
+    network_mode: none
+    read_only: true
+    cap_drop:
+      - ALL
+    pids_limit: 64
+    mem_limit: 256m
+    security_opt:
+      - no-new-privileges:true
+
   bdk-wallet-current-adapter:
     image: psbt-interop-lab/bdk-wallet-current:3.1.0
     build:

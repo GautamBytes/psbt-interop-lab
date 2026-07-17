@@ -4,14 +4,48 @@ use std::process::{Command, Stdio};
 use serde_json::{Value, json};
 
 fn run_adapter(input: &[u8]) -> std::process::Output {
-    let mut child = Command::new(env!("CARGO_BIN_EXE_psbt-lab-rust-psbt-v2-adapter"))
+    run_adapter_with_commitments(input, None)
+}
+
+fn run_adapter_with_commitments(input: &[u8], commitments: Option<&str>) -> std::process::Output {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_psbt-lab-rust-psbt-v2-adapter"));
+    command
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("adapter executable starts");
+        .stderr(Stdio::piped());
+    if let Some(commitments) = commitments {
+        command.env("PSBT_LAB_FIXTURE_COMMITMENTS", commitments);
+    }
+    let mut child = command.spawn().expect("adapter executable starts");
     let _ = child.stdin.take().expect("adapter stdin").write_all(input);
     child.wait_with_output().expect("adapter exits")
+}
+
+#[test]
+fn rejects_signing_when_process_commitment_configuration_is_invalid() {
+    let psbt = "cHNidP8BAgQCAAAAAQQBAQEFAQIB+wQCAAAAAAEOIAsK2SFBnByHGXNdctxzn56p4GONH+TB7vD5lECEgV/IAQ8EAAAAAAABAwgACK8vAAAAAAEEFgAUxDD2TEdW2jENvRoIVXLvKZkmJywAAQMIi73rCwAAAAABBBYAFE3Rk6yWSlasG54cyoRU/i9HT4UTAA==";
+    let request = json!({
+        "protocol": "psbt-lab.adapter/0.2",
+        "id": "sign-1",
+        "operation": "sign",
+        "payload": {
+            "psbt": psbt,
+            "network": "regtest",
+            "fixtureId": "p2wpkh"
+        }
+    });
+    let output = run_adapter_with_commitments(format!("{request}\n").as_bytes(), Some("not-json"));
+    let response: Value = serde_json::from_slice(
+        output
+            .stdout
+            .split(|byte| *byte == b'\n')
+            .find(|line| !line.is_empty())
+            .expect("response line"),
+    )
+    .expect("JSON response");
+
+    assert_eq!(response["status"], "crashed");
+    assert_eq!(response["error"]["class"], "adapter.invalid_configuration");
 }
 
 #[test]

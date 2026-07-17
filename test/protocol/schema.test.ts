@@ -30,6 +30,20 @@ describe("adapter protocol schemas", () => {
     ).toEqual({ ok: true });
   });
 
+  test.each([
+    ["extract", { psbt: "cHNidP8=" }],
+    ["convert", { psbt: "cHNidP8=", targetVersion: 2 }],
+  ])("accepts the PSBTv2 workflow operation %s", (operation, payload) => {
+    expect(
+      validateAdapterRequest({
+        protocol: "psbt-lab.adapter/0.2",
+        id: `${operation}-1`,
+        operation,
+        payload,
+      }),
+    ).toEqual({ ok: true });
+  });
+
   test("rejects unknown request properties", () => {
     const result = validateAdapterRequest({
       protocol: "psbt-lab.adapter/0.2",

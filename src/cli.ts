@@ -58,6 +58,7 @@ const ADAPTER_COMPOSE_SERVICES: Readonly<Record<BuiltInAdapterId, string>> = {
   bdkpython: "bdk-adapter",
   "rust-psbt-v2": "psbt-v2-adapter",
   "bdk-wallet-current": "bdk-wallet-current-adapter",
+  libwally: "libwally-adapter",
 };
 
 function nodeMajorVersion(): number {
@@ -101,6 +102,7 @@ async function doctor(): Promise<DoctorCheck[]> {
     "psbt-interop-lab/bdkpython:2.3.1",
     "psbt-interop-lab/rust-psbt-v2:0.1.0",
     "psbt-interop-lab/bdk-wallet-current:3.1.0",
+    "psbt-interop-lab/libwally:1.5.4",
   ]) {
     const check = await dockerCheck(
       `Image ${image}`,

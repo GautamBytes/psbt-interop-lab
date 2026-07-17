@@ -9,6 +9,8 @@ export const adapterOperations = [
   "combine",
   "finalize",
   "finalize-inputs",
+  "extract",
+  "convert",
 ] as const;
 
 export type AdapterOperation = (typeof adapterOperations)[number];

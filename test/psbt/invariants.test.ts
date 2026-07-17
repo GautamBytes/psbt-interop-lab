@@ -281,15 +281,19 @@ describe("sign policy", () => {
     );
   });
 
-  test("rejects adding or removing transaction-modifiable policy state", () => {
+  test("allows omitted-zero normalization and monotonic removal of modifiable permissions", () => {
     const added = assertPsbtTransition("sign", document(psbtV2()), document(psbtV2(0x00)));
-    const removed = assertPsbtTransition("sign", document(psbtV2(0x00)), document(psbtV2()));
+    const tightened = assertPsbtTransition("sign", document(psbtV2(0x03)), document(psbtV2()));
+    const invalidAdded = assertPsbtTransition("sign", document(psbtV2()), document(psbtV2(0x01)));
+    const invalidRemoval = assertPsbtTransition("sign", document(psbtV2(0x04)), document(psbtV2()));
 
-    expect(added.failures).toContainEqual(
-      expect.objectContaining({ code: "ENTRY_ADDED", keyType: 0x06 }),
+    expect(added).toMatchObject({ ok: true, failures: [] });
+    expect(tightened).toMatchObject({ ok: true, failures: [] });
+    expect(invalidAdded.failures).toContainEqual(
+      expect.objectContaining({ code: "TX_MODIFIABLE_INVALID_CHANGE", keyType: 0x06 }),
     );
-    expect(removed.failures).toContainEqual(
-      expect.objectContaining({ code: "ENTRY_REMOVED", keyType: 0x06 }),
+    expect(invalidRemoval.failures).toContainEqual(
+      expect.objectContaining({ code: "TX_MODIFIABLE_INVALID_CHANGE", keyType: 0x06 }),
     );
   });
 });
@@ -344,6 +348,12 @@ describe("combine policy", () => {
 });
 
 describe("finalize policy", () => {
+  test("allows an omitted transaction-modifiable zero to be serialized explicitly", () => {
+    expect(
+      assertPsbtTransition("finalize", document(psbtV2()), document(psbtV2(0x00))),
+    ).toMatchObject({ ok: true, failures: [] });
+  });
+
   test("allows final fields to replace temporary BIP174 and BIP371 signing fields", () => {
     const proprietary = entry(0xfc, Buffer.from("retain"), proprietaryKeyData);
     const before = document(

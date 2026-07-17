@@ -18,17 +18,38 @@ fn request(operation: &str, payload: Value) -> Value {
 }
 
 #[test]
-fn advertises_only_bounded_psbt_v2_parser_capabilities() {
+fn advertises_native_psbt_v2_workflow_capabilities() {
     let response = handle_value(request("hello", json!({})), DIGEST);
 
     assert_eq!(response["status"], "ok");
     assert_eq!(
         response["output"]["operations"],
-        json!(["hello", "native-parse", "inspect", "roundtrip"])
+        json!([
+            "hello",
+            "native-parse",
+            "inspect",
+            "roundtrip",
+            "sign",
+            "combine",
+            "finalize",
+            "extract"
+        ])
     );
-    assert_eq!(response["output"]["roles"], json!(["parser"]));
+    assert_eq!(
+        response["output"]["roles"],
+        json!(["parser", "signer", "combiner", "finalizer", "extractor"])
+    );
     assert_eq!(response["output"]["psbtVersions"], json!([2]));
-    assert_eq!(response["output"]["scriptTypes"], json!(["p2wpkh"]));
+    assert_eq!(
+        response["output"]["scriptTypes"],
+        json!(["p2wpkh", "p2wsh"])
+    );
+    assert!(
+        !response["output"]["operations"]
+            .as_array()
+            .expect("operations array")
+            .contains(&json!("convert"))
+    );
 }
 
 #[test]
@@ -68,11 +89,20 @@ fn parses_inspects_and_roundtrips_psbt_v2() {
 }
 
 #[test]
-fn rejects_operations_outside_parser_scope() {
-    let response = handle_value(request("sign", json!({})), DIGEST);
+fn reports_the_unavailable_native_conversion_api_without_claiming_support() {
+    let response = handle_value(
+        request(
+            "convert",
+            json!({ "psbt": VALID_PSBT_V2, "targetVersion": 0 }),
+        ),
+        DIGEST,
+    );
 
     assert_eq!(response["status"], "unsupported");
-    assert_eq!(response["error"]["class"], "operation.unsupported");
+    assert_eq!(
+        response["error"]["class"],
+        "conversion.native_api_unavailable"
+    );
 }
 
 #[test]

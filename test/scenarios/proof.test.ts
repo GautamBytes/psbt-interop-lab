@@ -16,6 +16,7 @@ import {
   BITCOINJS_ADAPTER_CONTRACT,
   type ExpectedAdapterContract,
   GO_ADAPTER_CONTRACT,
+  LIBWALLY_ADAPTER_CONTRACT,
   PSBTV2_ADAPTER_CONTRACT,
   RUST_ADAPTER_CONTRACT,
 } from "../../src/scenarios/contracts.js";
@@ -247,6 +248,7 @@ function proofHarness(failScenario = false): {
     ["psbt-interop-lab/bdkpython:2.3.1", BDK_ADAPTER_CONTRACT],
     ["psbt-interop-lab/bdk-wallet-current:3.1.0", BDK_CURRENT_ADAPTER_CONTRACT],
     ["psbt-interop-lab/rust-psbt-v2:0.1.0", PSBTV2_ADAPTER_CONTRACT],
+    ["psbt-interop-lab/libwally:1.5.4", LIBWALLY_ADAPTER_CONTRACT],
   ]);
   const scenario: ScenarioDefinition<ScenarioExecutionContext> = {
     id: "runtime-lifecycle",
@@ -315,6 +317,17 @@ describe("proof runtime", () => {
         core: true,
         fixtures: ["p2tr-scriptpath"],
         adapters: ["rust-bitcoin", "bdk-wallet-current"],
+      },
+    });
+    expect(
+      proofModule.PROOF_SCENARIO_REGISTRATIONS.find(
+        ({ id }) => id === "psbtv2-p2wpkh-rust-to-libwally",
+      ),
+    ).toMatchObject({
+      resources: {
+        core: true,
+        fixtures: ["p2wpkh"],
+        adapters: ["rust-psbt-v2", "libwally"],
       },
     });
     expect(
@@ -505,6 +518,10 @@ describe("proof runtime", () => {
       "taproot-scriptpath-bdk-to-rust",
       "taproot-scriptpath-negative-canaries",
       "bip370-official-vectors-rust-psbt-v2",
+      "bip370-official-vectors-libwally",
+      "psbtv2-p2wpkh-rust-to-libwally",
+      "psbtv2-p2wpkh-libwally-to-rust",
+      "psbtv2-2-of-3-cross-library",
     ]);
   });
 
@@ -588,7 +605,7 @@ describe("proof runtime", () => {
     );
 
     expect(result.manifest.outcome).toBe("passed");
-    expect(harness.adapters).toHaveLength(6);
+    expect(harness.adapters).toHaveLength(7);
     for (const adapter of harness.adapters) expect(adapter.close).toHaveBeenCalledTimes(1);
     const commonCommitments = JSON.stringify({
       "happy-path": `sha256:${"c".repeat(64)}`,
@@ -629,7 +646,11 @@ describe("proof runtime", () => {
       },
       {
         image: "psbt-interop-lab/rust-psbt-v2:0.1.0",
-        options: {},
+        options: { env: { PSBT_LAB_FIXTURE_COMMITMENTS: commonCommitments } },
+      },
+      {
+        image: "psbt-interop-lab/libwally:1.5.4",
+        options: { env: { PSBT_LAB_FIXTURE_COMMITMENTS: commonCommitments } },
       },
     ]);
     expect(rustCommitments).not.toContain("cHNidP8");
@@ -724,8 +745,8 @@ describe("proof runtime", () => {
     );
 
     expect(result.manifest.outcome).toBe("passed");
-    expect(result.manifest.adapters).toHaveLength(7);
-    expect(result.manifest.adapters[6]).toMatchObject({ name: "actual-wallet-library" });
+    expect(result.manifest.adapters).toHaveLength(8);
+    expect(result.manifest.adapters[7]).toMatchObject({ name: "actual-wallet-library" });
     expect(createExternalAdapter).toHaveBeenCalledOnce();
     const processOptions = createExternalAdapter.mock.calls[0]?.[0];
     expect(processOptions).toMatchObject({

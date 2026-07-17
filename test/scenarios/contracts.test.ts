@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import * as adapterContracts from "../../src/scenarios/contracts.js";
 import type {
   AdapterImplementation,
   AdapterResponse,
@@ -74,12 +75,48 @@ describe("adapter contracts", () => {
     },
   );
 
-  test("pins the parser-only PSBTv2 adapter to the official vector implementation", () => {
+  test("pins the native PSBTv2 workflow adapter without claiming unavailable conversion", () => {
     expect(PSBTV2_ADAPTER_CONTRACT).toMatchObject({
       name: "rust-psbt-v2",
       psbtVersions: [2],
-      operations: ["hello", "native-parse", "inspect", "roundtrip"],
-      roles: ["parser"],
+      operations: [
+        "hello",
+        "native-parse",
+        "inspect",
+        "roundtrip",
+        "sign",
+        "combine",
+        "finalize",
+        "extract",
+      ],
+      roles: ["parser", "signer", "combiner", "finalizer", "extractor"],
+      scriptTypes: ["p2wpkh", "p2wsh"],
+    });
+    expect(PSBTV2_ADAPTER_CONTRACT.operations).not.toContain("convert");
+  });
+
+  test("pins libwally 1.5.4 as the independent converting PSBTv2 implementation", () => {
+    const contract = Reflect.get(adapterContracts, "LIBWALLY_ADAPTER_CONTRACT");
+
+    expect(contract).toMatchObject({
+      name: "libwally-core",
+      version: "1.5.4",
+      sourceRevision:
+        "libwally-core-release_1.5.4@c5591834b3ae4ee4c7db9e537a9c19104ab4bf0c",
+      psbtVersions: [0, 2],
+      operations: [
+        "hello",
+        "native-parse",
+        "inspect",
+        "roundtrip",
+        "sign",
+        "combine",
+        "finalize",
+        "extract",
+        "convert",
+      ],
+      roles: ["parser", "signer", "combiner", "finalizer", "extractor"],
+      scriptTypes: ["p2wpkh", "p2wsh"],
     });
   });
 
