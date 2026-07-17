@@ -18,7 +18,9 @@ export function normalizePathname(pathname: string): string {
 
 export function isKnownRoute(pathname: string): pathname is RoutePath {
   const normalized = normalizePathname(pathname);
-  return Object.values(routes).includes(normalized as RoutePath) || normalized.startsWith("/files/");
+  return (
+    Object.values(routes).includes(normalized as RoutePath) || normalized.startsWith("/files/")
+  );
 }
 
 export function navigate(href: string): void {

@@ -158,15 +158,51 @@ export const workflowSteps = [
 
 export const docLinks = [
   { label: "Quick start", detail: "Install and run the matrix", href: "/docs#quick-start" },
-  { label: "Scenario coverage", detail: "See all 24 bundled scenarios", href: "/docs#current-coverage" },
+  {
+    label: "Scenario coverage",
+    detail: "See all 24 bundled scenarios",
+    href: "/docs#current-coverage",
+  },
   { label: "Adapter kit", detail: "Bring another wallet or library", href: "/adapter-kit" },
-  { label: "Architecture", detail: "Understand the system and trust boundaries", href: "/docs/architecture" },
-  { label: "Future work", detail: "Review planned compatibility and integration work", href: "/docs/future-work" },
-  { label: "Official sources", detail: "Check specifications, versions, and pinned artifacts", href: "/docs/sources" },
+  {
+    label: "Architecture",
+    detail: "Understand the system and trust boundaries",
+    href: "/docs/architecture",
+  },
+  {
+    label: "Future work",
+    detail: "Review planned compatibility and integration work",
+    href: "/docs/future-work",
+  },
+  {
+    label: "Official sources",
+    detail: "Check specifications, versions, and pinned artifacts",
+    href: "/docs/sources",
+  },
   { label: "Security", detail: "Read the safety model", href: "/security" },
-  { label: "Threat model", detail: "Inspect runtime and CI security boundaries", href: "/security/threat-model" },
-  { label: "Adapter manifest schema", detail: "Inspect the third-party adapter contract", href: "/files/src/conformance/adapter-manifest.schema.json" },
-  { label: "Custom suite schema", detail: "Inspect the fixture and scenario contract", href: "/files/src/custom/suite-manifest.schema.json" },
-  { label: "Custom suite example", detail: "Start from a complete custom roundtrip", href: "/files/examples/custom-suite.json" },
-  { label: "Website source", detail: "Browse the website application structure", href: "/files/website" },
+  {
+    label: "Threat model",
+    detail: "Inspect runtime and CI security boundaries",
+    href: "/security/threat-model",
+  },
+  {
+    label: "Adapter manifest schema",
+    detail: "Inspect the third-party adapter contract",
+    href: "/files/src/conformance/adapter-manifest.schema.json",
+  },
+  {
+    label: "Custom suite schema",
+    detail: "Inspect the fixture and scenario contract",
+    href: "/files/src/custom/suite-manifest.schema.json",
+  },
+  {
+    label: "Custom suite example",
+    detail: "Start from a complete custom roundtrip",
+    href: "/files/examples/custom-suite.json",
+  },
+  {
+    label: "Website source",
+    detail: "Browse the website application structure",
+    href: "/files/website",
+  },
 ] as const;

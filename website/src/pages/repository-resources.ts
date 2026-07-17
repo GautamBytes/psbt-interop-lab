@@ -1,5 +1,5 @@
-import adapterManifestSchema from "../../../src/conformance/adapter-manifest.schema.json?raw";
 import customSuiteExample from "../../../examples/custom-suite.json?raw";
+import adapterManifestSchema from "../../../src/conformance/adapter-manifest.schema.json?raw";
 import customSuiteSchema from "../../../src/custom/suite-manifest.schema.json?raw";
 import { repositoryUrl } from "../content";
 
@@ -19,7 +19,8 @@ export const repositoryResources: RepositoryResource[] = [
   {
     route: "/files/src/conformance/adapter-manifest.schema.json",
     label: "Adapter manifest schema",
-    description: "The exact JSON Schema used to validate third-party adapter manifests before execution.",
+    description:
+      "The exact JSON Schema used to validate third-party adapter manifests before execution.",
     sourcePath: "src/conformance/adapter-manifest.schema.json",
     sourceUrl: `${repositoryUrl}/blob/main/src/conformance/adapter-manifest.schema.json`,
     kind: "file",
@@ -39,7 +40,8 @@ export const repositoryResources: RepositoryResource[] = [
   {
     route: "/files/examples/custom-suite.json",
     label: "Custom suite example",
-    description: "A complete custom fixture and multi-adapter roundtrip that can be used as a starting point.",
+    description:
+      "A complete custom fixture and multi-adapter roundtrip that can be used as a starting point.",
     sourcePath: "examples/custom-suite.json",
     sourceUrl: `${repositoryUrl}/blob/main/examples/custom-suite.json`,
     kind: "file",
@@ -49,7 +51,8 @@ export const repositoryResources: RepositoryResource[] = [
   {
     route: "/files/website",
     label: "Website source",
-    description: "The standalone Vite application that renders this project website and mirrors repository documentation.",
+    description:
+      "The standalone Vite application that renders this project website and mirrors repository documentation.",
     sourcePath: "website/",
     sourceUrl: `${repositoryUrl}/tree/main/website`,
     kind: "directory",
@@ -68,7 +71,11 @@ export function findRepositoryResource(pathname: string): RepositoryResource | u
   return repositoryResources.find((resource) => resource.route === pathname);
 }
 
-export function findRepositoryResourceBySourcePath(sourcePath: string): RepositoryResource | undefined {
+export function findRepositoryResourceBySourcePath(
+  sourcePath: string,
+): RepositoryResource | undefined {
   const normalized = sourcePath.replace(/\/+$/, "");
-  return repositoryResources.find((resource) => resource.sourcePath.replace(/\/+$/, "") === normalized);
+  return repositoryResources.find(
+    (resource) => resource.sourcePath.replace(/\/+$/, "") === normalized,
+  );
 }

@@ -249,7 +249,10 @@ svg {
   color: var(--text-muted);
   cursor: pointer;
   border-radius: 6px;
-  transition: color 160ms ease, border-color 160ms ease, background-color 160ms ease;
+  transition:
+    color 160ms ease,
+    border-color 160ms ease,
+    background-color 160ms ease;
 }
 
 .icon-button {
@@ -325,7 +328,9 @@ svg {
   height: 8px;
   background: var(--text-muted);
   border-radius: 50%;
-  transition: transform 160ms ease, background-color 160ms ease;
+  transition:
+    transform 160ms ease,
+    background-color 160ms ease;
 }
 
 :root[data-theme="light"] .theme-toggle__thumb {
@@ -464,7 +469,11 @@ svg {
   font-size: 14px;
   font-weight: 700;
   border-radius: 6px;
-  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease, transform 160ms ease;
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease,
+    transform 160ms ease;
 }
 
 .button:hover {
@@ -569,13 +578,15 @@ svg {
   align-items: center;
   justify-content: center;
   gap: 38px;
+  padding: 0;
   margin-top: 18px;
+  list-style: none;
   color: var(--text-muted);
   font-family: var(--mono);
   font-size: 12px;
 }
 
-.hero__metrics span {
+.hero__metrics li {
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -794,7 +805,9 @@ svg {
   display: grid;
   grid-template-columns: repeat(6, minmax(112px, 1fr));
   min-width: 780px;
+  margin: 0;
   padding: 14px 18px;
+  list-style: none;
   border-bottom: 1px solid var(--border);
   overflow: hidden;
 }

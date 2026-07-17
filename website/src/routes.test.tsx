@@ -7,7 +7,9 @@ import { documents } from "./pages/documents";
 
 const mermaidMocks = vi.hoisted(() => ({
   initialize: vi.fn(),
-  render: vi.fn(async () => ({ svg: '<svg viewBox="0 0 800 400"><text>Rendered architecture</text></svg>' })),
+  render: vi.fn(async () => ({
+    svg: '<svg viewBox="0 0 800 400"><text>Rendered architecture</text></svg>',
+  })),
 }));
 
 vi.mock("mermaid", () => ({ default: mermaidMocks }));
@@ -26,8 +28,16 @@ describe("website documentation routes", () => {
     ["/security", "Security Model", /boundary is kept intentionally smaller/i],
     ["/docs/architecture", "Architecture", /proof suite answers one concrete question/i],
     ["/docs/future-work", "Future Work", /driven by real wallet and library maintainers/i],
-    ["/docs/sources", "Official Source Ledger", /primary sources used to choose protocol behavior/i],
-    ["/security/threat-model", "PSBT Interop Lab Threat Model", /local generated-regtest workflow/i],
+    [
+      "/docs/sources",
+      "Official Source Ledger",
+      /primary sources used to choose protocol behavior/i,
+    ],
+    [
+      "/security/threat-model",
+      "PSBT Interop Lab Threat Model",
+      /local generated-regtest workflow/i,
+    ],
   ])("renders %s from repository Markdown", (pathname, heading, text) => {
     window.history.replaceState({}, "", pathname);
     render(<App />);
@@ -40,11 +50,19 @@ describe("website documentation routes", () => {
     const user = userEvent.setup();
     render(<App />);
 
-    const primaryNavigation = within(screen.getByRole("navigation", { name: "Primary navigation" }));
+    const primaryNavigation = within(
+      screen.getByRole("navigation", { name: "Primary navigation" }),
+    );
     const docs = primaryNavigation.getByRole("link", { name: "Docs" });
     expect(docs).toHaveAttribute("href", "/docs");
-    expect(primaryNavigation.getByRole("link", { name: "Adapter kit" })).toHaveAttribute("href", "/adapter-kit");
-    expect(primaryNavigation.getByRole("link", { name: "Security" })).toHaveAttribute("href", "/security");
+    expect(primaryNavigation.getByRole("link", { name: "Adapter kit" })).toHaveAttribute(
+      "href",
+      "/adapter-kit",
+    );
+    expect(primaryNavigation.getByRole("link", { name: "Security" })).toHaveAttribute(
+      "href",
+      "/security",
+    );
 
     await user.click(docs);
 
@@ -75,10 +93,22 @@ describe("website documentation routes", () => {
     window.history.replaceState({}, "", "/docs");
     render(<App />);
 
-    expect(screen.getByRole("link", { name: "the architecture" })).toHaveAttribute("href", "/docs/architecture");
-    expect(screen.getByRole("link", { name: "future work" })).toHaveAttribute("href", "/docs/future-work");
-    expect(screen.getByRole("link", { name: "official source ledger" })).toHaveAttribute("href", "/docs/sources");
-    expect(screen.getByRole("link", { name: "threat model" })).toHaveAttribute("href", "/security/threat-model");
+    expect(screen.getByRole("link", { name: "the architecture" })).toHaveAttribute(
+      "href",
+      "/docs/architecture",
+    );
+    expect(screen.getByRole("link", { name: "future work" })).toHaveAttribute(
+      "href",
+      "/docs/future-work",
+    );
+    expect(screen.getByRole("link", { name: "official source ledger" })).toHaveAttribute(
+      "href",
+      "/docs/sources",
+    );
+    expect(screen.getByRole("link", { name: "threat model" })).toHaveAttribute(
+      "href",
+      "/security/threat-model",
+    );
   });
 
   it("renders Mermaid fences as accessible diagrams instead of source code", async () => {
@@ -87,10 +117,12 @@ describe("website documentation routes", () => {
 
     const diagram = await screen.findByRole("img", { name: "Architecture diagram" });
     expect(diagram).toContainHTML("Rendered architecture");
-    expect(mermaidMocks.initialize).toHaveBeenCalledWith(expect.objectContaining({
-      securityLevel: "strict",
-      startOnLoad: false,
-    }));
+    expect(mermaidMocks.initialize).toHaveBeenCalledWith(
+      expect.objectContaining({
+        securityLevel: "strict",
+        startOnLoad: false,
+      }),
+    );
     expect(mermaidMocks.render).toHaveBeenCalledWith(
       expect.stringMatching(/^mermaid-/),
       expect.stringContaining("flowchart LR"),
@@ -128,7 +160,11 @@ describe("website documentation routes", () => {
   });
 
   it.each([
-    ["/files/src/conformance/adapter-manifest.schema.json", "Adapter manifest schema", /psbt-lab\.adapters/],
+    [
+      "/files/src/conformance/adapter-manifest.schema.json",
+      "Adapter manifest schema",
+      /psbt-lab\.adapters/,
+    ],
     ["/files/src/custom/suite-manifest.schema.json", "Custom suite schema", /p2tr-scriptpath/],
     ["/files/examples/custom-suite.json", "Custom suite example", /nested-to-taproot/],
     ["/files/website", "Website source", /Vite application/],

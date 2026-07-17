@@ -7,7 +7,9 @@ export function NotFoundPage() {
       <span className="eyebrow">404</span>
       <h1>Page not found</h1>
       <p>The page does not exist in the PSBT Interop Lab website.</p>
-      <SiteLink className="button button--primary" href={routes.home}>Return home</SiteLink>
+      <SiteLink className="button button--primary" href={routes.home}>
+        Return home
+      </SiteLink>
     </section>
   );
 }

@@ -27,14 +27,35 @@ export function Header({
   return (
     <header className="site-header">
       <div className="site-header__inner">
-        <SiteLink className="site-header__brand" href={routes.home} aria-label="PSBT Interop Lab home">
+        <SiteLink
+          className="site-header__brand"
+          href={routes.home}
+          aria-label="PSBT Interop Lab home"
+        >
           <Brand />
         </SiteLink>
         <nav className="desktop-nav" aria-label="Primary navigation">
-          <SiteLink href={routes.docs} aria-current={pathname.startsWith("/docs") || pathname.startsWith("/files/") ? "page" : undefined}>Docs</SiteLink>
+          <SiteLink
+            href={routes.docs}
+            aria-current={
+              pathname.startsWith("/docs") || pathname.startsWith("/files/") ? "page" : undefined
+            }
+          >
+            Docs
+          </SiteLink>
           <SiteLink href="/#matrix">Matrix</SiteLink>
-          <SiteLink href={routes.adapterKit} aria-current={pathname === routes.adapterKit ? "page" : undefined}>Adapter kit</SiteLink>
-          <SiteLink href={routes.security} aria-current={pathname.startsWith("/security") ? "page" : undefined}>Security</SiteLink>
+          <SiteLink
+            href={routes.adapterKit}
+            aria-current={pathname === routes.adapterKit ? "page" : undefined}
+          >
+            Adapter kit
+          </SiteLink>
+          <SiteLink
+            href={routes.security}
+            aria-current={pathname.startsWith("/security") ? "page" : undefined}
+          >
+            Security
+          </SiteLink>
         </nav>
         <div className="site-header__actions">
           <button

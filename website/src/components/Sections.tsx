@@ -4,7 +4,6 @@ import { BracketsCurly } from "@phosphor-icons/react/BracketsCurly";
 import { CheckCircle } from "@phosphor-icons/react/CheckCircle";
 import { FileLock } from "@phosphor-icons/react/FileLock";
 import { Fingerprint } from "@phosphor-icons/react/Fingerprint";
-import { FlowArrow } from "@phosphor-icons/react/FlowArrow";
 import { GithubLogo } from "@phosphor-icons/react/GithubLogo";
 import { HardDrives } from "@phosphor-icons/react/HardDrives";
 import { Package } from "@phosphor-icons/react/Package";
@@ -26,7 +25,11 @@ const coverage = [
 export function Sections() {
   return (
     <>
-      <section className="content-section workflow-section" id="workflow" aria-labelledby="workflow-title">
+      <section
+        className="content-section workflow-section"
+        id="workflow"
+        aria-labelledby="workflow-title"
+      >
         <div className="page-shell">
           <header className="section-heading">
             <span className="eyebrow">From handoff to evidence</span>
@@ -75,7 +78,11 @@ export function Sections() {
         </div>
       </section>
 
-      <section className="content-section safety-section" id="security" aria-labelledby="safety-title">
+      <section
+        className="content-section safety-section"
+        id="security"
+        aria-labelledby="safety-title"
+      >
         <div className="page-shell">
           <header className="section-heading section-heading--compact">
             <span className="eyebrow">A deliberately narrow safety boundary</span>
@@ -106,7 +113,11 @@ export function Sections() {
         </div>
       </section>
 
-      <section className="content-section adapter-section" id="adapters" aria-labelledby="adapter-title">
+      <section
+        className="content-section adapter-section"
+        id="adapters"
+        aria-labelledby="adapter-title"
+      >
         <div className="page-shell adapter-layout">
           <div>
             <span className="eyebrow">Bring your implementation</span>
@@ -120,20 +131,34 @@ export function Sections() {
                 <BracketsCurly aria-hidden="true" />
                 Build an adapter
               </SiteLink>
-              <SiteLink className="button button--text" href="/files/src/conformance/adapter-manifest.schema.json">
+              <SiteLink
+                className="button button--text"
+                href="/files/src/conformance/adapter-manifest.schema.json"
+              >
                 View the schema <ArrowSquareOut aria-hidden="true" />
               </SiteLink>
             </div>
           </div>
-          <div className="adapter-terminal" aria-label="Adapter command example">
+          <section className="adapter-terminal" aria-label="Adapter command example">
             <div className="adapter-terminal__bar">
-              <span /><span /><span />
+              <span />
+              <span />
+              <span />
               <small>adapter-check</small>
             </div>
-            <pre><code><span>$</span> psbt-lab adapter check ./adapters.json{"\n"}
-{"\n"}<b>PASS</b> manifest schema{"\n"}<b>PASS</b> implementation identity{"\n"}<b>PASS</b> malformed parser behavior{"\n"}<b>PASS</b> semantic roundtrip preservation{"\n"}
-{"\n"}<em>Adapter is ready for the matrix.</em></code></pre>
-          </div>
+            <pre>
+              <code>
+                <span>$</span> psbt-lab adapter check ./adapters.json{"\n"}
+                {"\n"}
+                <b>PASS</b> manifest schema{"\n"}
+                <b>PASS</b> implementation identity{"\n"}
+                <b>PASS</b> malformed parser behavior{"\n"}
+                <b>PASS</b> semantic roundtrip preservation{"\n"}
+                {"\n"}
+                <em>Adapter is ready for the matrix.</em>
+              </code>
+            </pre>
+          </section>
         </div>
       </section>
 

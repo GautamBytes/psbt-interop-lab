@@ -22,7 +22,8 @@ interface TocItem {
 function textFromChildren(children: ReactNode): string {
   if (typeof children === "string" || typeof children === "number") return String(children);
   if (Array.isArray(children)) return children.map(textFromChildren).join("");
-  if (isValidElement<{ children?: ReactNode }>(children)) return textFromChildren(children.props.children);
+  if (isValidElement<{ children?: ReactNode }>(children))
+    return textFromChildren(children.props.children);
   return "";
 }
 
@@ -112,9 +113,13 @@ export function MarkdownPage({ document }: MarkdownPageProps) {
       void node;
       const resolved = resolveDocumentHref(href, document.baseDir);
       return resolved.startsWith("/") ? (
-        <SiteLink {...props} href={resolved}>{children}</SiteLink>
+        <SiteLink {...props} href={resolved}>
+          {children}
+        </SiteLink>
       ) : (
-        <a {...props} href={resolved}>{children}</a>
+        <a {...props} href={resolved}>
+          {children}
+        </a>
       );
     },
     table: ({ children, node, ...props }) => {
@@ -156,7 +161,11 @@ export function MarkdownPage({ document }: MarkdownPageProps) {
           <span>On this page</span>
           <nav>
             {toc.map((item) => (
-              <a className={item.depth === 3 ? "is-nested" : ""} href={`#${item.id}`} key={`${item.id}-${item.depth}`}>
+              <a
+                className={item.depth === 3 ? "is-nested" : ""}
+                href={`#${item.id}`}
+                key={`${item.id}-${item.depth}`}
+              >
                 {item.label}
               </a>
             ))}

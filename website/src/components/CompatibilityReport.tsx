@@ -1,5 +1,5 @@
 import { CheckCircle } from "@phosphor-icons/react/CheckCircle";
-import { Circle } from "@phosphor-icons/react/Circle";
+import type { Circle } from "@phosphor-icons/react/Circle";
 import { Info } from "@phosphor-icons/react/Info";
 import { Warning } from "@phosphor-icons/react/Warning";
 import { useState } from "react";
@@ -13,7 +13,8 @@ const statusIcon = {
 
 export function CompatibilityReport() {
   const [selectedId, setSelectedId] = useState(reportScenarios[1].id);
-  const selected = reportScenarios.find((scenario) => scenario.id === selectedId) ?? reportScenarios[1];
+  const selected =
+    reportScenarios.find((scenario) => scenario.id === selectedId) ?? reportScenarios[1];
   const StatusIcon = statusIcon[selected.status];
 
   return (
@@ -65,10 +66,12 @@ export function CompatibilityReport() {
               <p>{selected.summary}</p>
             </div>
 
-            <div className="handoff-timeline" aria-label="Implementation handoff">
+            <ol className="handoff-timeline" aria-label="Implementation handoff">
               {implementations.map((implementation, index) => (
-                <div className="handoff-timeline__item" key={implementation.name}>
-                  <span className={`implementation-badge implementation-badge--${implementation.tone}`}>
+                <li className="handoff-timeline__item" key={implementation.name}>
+                  <span
+                    className={`implementation-badge implementation-badge--${implementation.tone}`}
+                  >
                     {implementation.short}
                   </span>
                   <span>
@@ -76,9 +79,9 @@ export function CompatibilityReport() {
                     <small>{implementation.version}</small>
                   </span>
                   {index < implementations.length - 1 ? <i aria-hidden="true" /> : null}
-                </div>
+                </li>
               ))}
-            </div>
+            </ol>
 
             <div className="evidence-table-wrap">
               <table className="evidence-table">
@@ -96,7 +99,11 @@ export function CompatibilityReport() {
                     <tr key={row.field}>
                       <th scope="row">{row.field}</th>
                       <td className="value-expected">{row.expected}</td>
-                      <td className={selected.status === "finding" ? "value-finding" : "value-expected"}>
+                      <td
+                        className={
+                          selected.status === "finding" ? "value-finding" : "value-expected"
+                        }
+                      >
                         {row.actual}
                       </td>
                       <td>{row.implementation}</td>

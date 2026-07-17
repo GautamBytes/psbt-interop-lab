@@ -14,7 +14,9 @@ export function RepositoryResourcePage({ resource }: RepositoryResourcePageProps
           <span className="eyebrow">Repository reference</span>
           <div className="docs-page__intro-row">
             <div>
-              <h1 className="docs-page__label" id="resource-title">{resource.label}</h1>
+              <h1 className="docs-page__label" id="resource-title">
+                {resource.label}
+              </h1>
               <p>{resource.description}</p>
             </div>
             <a className="button button--secondary" href={resource.sourceUrl}>
@@ -39,7 +41,11 @@ export function RepositoryResourcePage({ resource }: RepositoryResourcePageProps
             <h2>Included source</h2>
             <p>Tracked entry points for the public website and its documentation experience.</p>
             <ul>
-              {resource.entries?.map((entry) => <li key={entry}><code>{entry}</code></li>)}
+              {resource.entries?.map((entry) => (
+                <li key={entry}>
+                  <code>{entry}</code>
+                </li>
+              ))}
             </ul>
           </div>
         )}

@@ -19,7 +19,9 @@ describe("PSBT Interop Lab website", () => {
     expect(
       screen.getByRole("heading", { name: /catch psbt handoff failures before users do/i }),
     ).toBeInTheDocument();
-    expect(screen.getByText(/run the same transaction through real bitcoin libraries/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/run the same transaction through real bitcoin libraries/i),
+    ).toBeInTheDocument();
     expect(screen.getByText("Native parser duplicate-key probe")).toBeInTheDocument();
   });
 
@@ -40,7 +42,9 @@ describe("PSBT Interop Lab website", () => {
     await user.click(screen.getByRole("button", { name: /four-library roundtrip/i }));
 
     expect(screen.getByText("Metadata-rich P2WSH roundtrip")).toBeInTheDocument();
-    expect(screen.getByText(/transaction intent, known fields, unknown fields/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/transaction intent, known fields, unknown fields/i),
+    ).toBeInTheDocument();
   });
 
   it("opens and filters project search", async () => {
@@ -52,7 +56,9 @@ describe("PSBT Interop Lab website", () => {
     await user.type(search, "security");
 
     expect(screen.getByRole("dialog", { name: "Find documentation" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /security.*read the safety model/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: /security.*read the safety model/i }),
+    ).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /quick start/i })).not.toBeInTheDocument();
   });
 

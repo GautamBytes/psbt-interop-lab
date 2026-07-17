@@ -1,7 +1,7 @@
 import { useEffect, useId, useState } from "react";
 import { MarkdownCodeBlock } from "./MarkdownCodeBlock";
 
-type MermaidApi = (typeof import("mermaid"))["default"];
+type MermaidApi = typeof import("mermaid")["default"];
 
 let mermaidPromise: Promise<MermaidApi> | undefined;
 
@@ -67,7 +67,9 @@ export function MermaidDiagram({ definition, label }: MermaidDiagramProps) {
     return (
       <div className="mermaid-diagram mermaid-diagram--error" role="alert">
         <p>The diagram could not be rendered. Its source is shown below.</p>
-        <MarkdownCodeBlock><code>{definition}</code></MarkdownCodeBlock>
+        <MarkdownCodeBlock>
+          <code>{definition}</code>
+        </MarkdownCodeBlock>
       </div>
     );
   }
@@ -79,10 +81,13 @@ export function MermaidDiagram({ definition, label }: MermaidDiagramProps) {
           className="mermaid-diagram__canvas"
           role="img"
           aria-label={label}
+          // biome-ignore lint/security/noDangerouslySetInnerHtml: Mermaid renders trusted repository-owned diagrams with securityLevel set to strict.
           dangerouslySetInnerHTML={{ __html: svg }}
         />
       ) : (
-        <div className="mermaid-diagram__loading" role="status">Rendering diagram...</div>
+        <div className="mermaid-diagram__loading" role="status">
+          Rendering diagram...
+        </div>
       )}
     </figure>
   );

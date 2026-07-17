@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import { CompatibilityReport } from "./components/CompatibilityReport";
 import { Header } from "./components/Header";
 import { Hero } from "./components/Hero";
+import { MarkdownPage } from "./components/MarkdownPage";
+import { RepositoryResourcePage } from "./components/RepositoryResourcePage";
 import { SearchDialog } from "./components/SearchDialog";
 import { Sections } from "./components/Sections";
 import { SiteLink } from "./components/SiteLink";
@@ -9,10 +11,8 @@ import { repositoryUrl } from "./content";
 import { useRoute } from "./hooks/useRoute";
 import { findDocument } from "./pages/documents";
 import { NotFoundPage } from "./pages/NotFoundPage";
-import { routes } from "./routes";
-import { MarkdownPage } from "./components/MarkdownPage";
-import { RepositoryResourcePage } from "./components/RepositoryResourcePage";
 import { findRepositoryResource } from "./pages/repository-resources";
+import { routes } from "./routes";
 
 type Theme = "dark" | "light";
 
@@ -51,27 +51,33 @@ export function App() {
 
   useEffect(() => {
     setMenuOpen(false);
-    const title = activeDocument?.label ?? activeResource?.label ?? (pathname === routes.home ? "PSBT Interop Lab" : "Page not found");
+    const title =
+      activeDocument?.label ??
+      activeResource?.label ??
+      (pathname === routes.home ? "PSBT Interop Lab" : "Page not found");
     window.document.title = title === "PSBT Interop Lab" ? title : `${title} | PSBT Interop Lab`;
   }, [activeDocument, activeResource, pathname]);
 
-  const page = pathname === routes.home ? (
-    <>
-      <Hero />
-      <CompatibilityReport />
-      <Sections />
-    </>
-  ) : activeDocument ? (
-    <MarkdownPage document={activeDocument} />
-  ) : activeResource ? (
-    <RepositoryResourcePage resource={activeResource} />
-  ) : (
-    <NotFoundPage />
-  );
+  const page =
+    pathname === routes.home ? (
+      <>
+        <Hero />
+        <CompatibilityReport />
+        <Sections />
+      </>
+    ) : activeDocument ? (
+      <MarkdownPage document={activeDocument} />
+    ) : activeResource ? (
+      <RepositoryResourcePage resource={activeResource} />
+    ) : (
+      <NotFoundPage />
+    );
 
   return (
     <div className="site-frame">
-      <a className="skip-link" href="#main-content">Skip to content</a>
+      <a className="skip-link" href="#main-content">
+        Skip to content
+      </a>
       <Header
         pathname={pathname}
         theme={theme}

@@ -42,14 +42,14 @@ export function Hero() {
           </a>
         </div>
         <InstallCommand />
-        <div className="hero__metrics" aria-label="Project coverage">
+        <ul className="hero__metrics" aria-label="Project coverage">
           {metrics.map(({ icon: Icon, label }) => (
-            <span key={label}>
+            <li key={label}>
               <Icon aria-hidden="true" />
               {label}
-            </span>
+            </li>
           ))}
-        </div>
+        </ul>
       </div>
     </section>
   );

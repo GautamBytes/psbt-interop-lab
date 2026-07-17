@@ -41,6 +41,7 @@ export function SearchDialog({ open, onClose }: SearchDialogProps) {
   if (!open) return null;
 
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: The backdrop is pointer-only; Escape and the close button provide keyboard dismissal.
     <div className="dialog-backdrop" role="presentation" onMouseDown={onClose}>
       <section
         className="search-dialog"
