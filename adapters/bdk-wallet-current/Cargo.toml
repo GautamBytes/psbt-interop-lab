@@ -1,0 +1,25 @@
+[package]
+name = "psbt-lab-bdk-wallet-adapter"
+version = "3.1.0"
+edition = "2024"
+rust-version = "1.97"
+license = "MIT"
+publish = false
+
+[dependencies]
+base64 = "=0.22.1"
+bdk_wallet = "=3.1.0"
+bitcoin = { version = "=0.32.102", features = ["base64"] }
+serde = { version = "=1.0.228", features = ["derive"] }
+serde_json = "=1.0.150"
+sha2 = "=0.10.9"
+
+[profile.release]
+codegen-units = 1
+lto = "thin"
+panic = "abort"
+strip = true
+
+[[bin]]
+name = "psbt-lab-bdk-wallet-adapter"
+path = "src/main.rs"
