@@ -1,5 +1,6 @@
 import type { PsbtFixture } from "../core/fixtures.js";
 import type { AdapterOperation } from "../protocol/types.js";
+import { readCompactSize } from "../psbt/compact-size.js";
 import { type PsbtMapLocation, parsePsbtDocument } from "../psbt/document.js";
 import type { ScenarioExecutionContext } from "./context.js";
 import type { ScenarioAssertionEvidence, ScenarioDefinition } from "./definition.js";
@@ -69,6 +70,76 @@ function finalizePayload(
       ? { inputIndexes: Array.from({ length: fixture.inputCount }, (_, index) => index) }
       : {}),
   };
+}
+
+function decodeWitness(value: Buffer): readonly Buffer[] {
+  const count = readCompactSize(value, 0);
+  if (count.value !== 3) throw new TypeError("Taproot script-path witness must have three items");
+  const items: Buffer[] = [];
+  let offset = count.nextOffset;
+  for (let index = 0; index < count.value; index += 1) {
+    const length = readCompactSize(value, offset);
+    offset = length.nextOffset;
+    if (length.value > value.byteLength - offset) {
+      throw new TypeError("Taproot script-path witness item is truncated");
+    }
+    items.push(Buffer.from(value.subarray(offset, offset + length.value)));
+    offset += length.value;
+  }
+  if (offset !== value.byteLength) throw new TypeError("Taproot script-path witness has trailing data");
+  return items;
+}
+
+function requireExactScriptPathWitness(
+  name: string,
+  fixturePsbt: string,
+  finalizedPsbt: string,
+  inputIndexes: readonly number[],
+): ScenarioAssertionEvidence {
+  try {
+    const fixture = parsePsbtDocument(fixturePsbt);
+    const finalized = parsePsbtDocument(finalizedPsbt);
+    for (const index of inputIndexes) {
+      const fixtureInput = fixture.maps.find(
+        ({ location }) => location.kind === "input" && location.index === index,
+      );
+      const finalizedInput = finalized.maps.find(
+        ({ location }) => location.kind === "input" && location.index === index,
+      );
+      const leaves = fixtureInput?.entries.filter(({ keyType }) => keyType === TAPROOT_LEAF_SCRIPT);
+      const witnesses = finalizedInput?.entries.filter(
+        ({ keyType }) => keyType === FINAL_SCRIPT_WITNESS,
+      );
+      if (leaves?.length !== 1 || witnesses?.length !== 1) {
+        throw new TypeError("Expected one committed leaf and one final witness");
+      }
+      const leaf = leaves[0];
+      const finalWitness = witnesses[0];
+      if (!leaf || !finalWitness) {
+        throw new TypeError("Expected one committed leaf and one final witness");
+      }
+      const witness = decodeWitness(Buffer.from(finalWitness.value));
+      const expectedScript = leaf.value.subarray(0, -1);
+      if (
+        witness[0]?.byteLength !== 64 ||
+        !witness[1]?.equals(expectedScript) ||
+        !witness[2]?.equals(leaf.keyData)
+      ) {
+        throw new TypeError("Final witness is not the committed default-sighash script path");
+      }
+    }
+    return {
+      name,
+      passed: true,
+      summary: "Final witness uses the exact committed Taproot leaf script and control block",
+    };
+  } catch (error) {
+    return {
+      name,
+      passed: false,
+      summary: error instanceof Error ? error.message : "Final script-path witness is invalid",
+    };
+  }
 }
 
 function createHandoffScenario(
@@ -151,6 +222,14 @@ function createHandoffScenario(
           `${direction.finalizer}-returned-final-witness`,
           finalizedPsbt,
           [FINAL_SCRIPT_WITNESS],
+          inputIndexes,
+        ),
+      );
+      assertions.push(
+        requireExactScriptPathWitness(
+          `${direction.finalizer}-returned-exact-script-path-witness`,
+          fixture.initialPsbt,
+          finalizedPsbt,
           inputIndexes,
         ),
       );

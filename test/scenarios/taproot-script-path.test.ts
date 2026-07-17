@@ -131,6 +131,17 @@ function finalizedPsbt(psbt: string): string {
   );
 }
 
+function keyPathFinalizedPsbt(psbt: string): string {
+  const finalWitness = Buffer.concat([Buffer.from([1, signature.length]), signature]);
+  return serializePsbt(psbt, (field) =>
+    [0x14, 0x15, 0x16, 0x17, 0x18].includes(field.keyType)
+      ? field.keyType === 0x14
+        ? { keyType: 0x08, keyData: Buffer.alloc(0), value: finalWitness }
+        : undefined
+      : field,
+  );
+}
+
 function fixture(): PsbtFixture {
   const initial = initialPsbt();
   return {
@@ -322,6 +333,33 @@ describe("Taproot script-path handoff scenarios", () => {
         expect.objectContaining({
           code: expect.stringMatching(/^ENTRY_(?:REMOVED|CHANGED)$/),
           keyType: 0x15,
+        }),
+      ]),
+    );
+  });
+
+  test("rejects a Core-valid key-path witness in the script-path scenario", async () => {
+    const input = fixture();
+    const signed = signedPsbt(input.initialPsbt);
+    const keyPathFinalized = keyPathFinalizedPsbt(signed);
+    const execution = context((name, request) =>
+      success(
+        request,
+        implementations[name],
+        request.operation === "sign" ? signed : keyPathFinalized,
+      ),
+    );
+    const definition = createTaprootScriptPathHandoffScenarios(input)[0];
+    if (!definition) throw new Error("Missing rust-to-BDK handoff scenario");
+
+    const [result] = await runScenarioCatalog([definition], execution, negotiated());
+
+    expect(result).toMatchObject({ outcome: "failed" });
+    expect(result?.assertions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "bdk-wallet-current-returned-exact-script-path-witness",
+          passed: false,
         }),
       ]),
     );
