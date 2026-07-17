@@ -66,8 +66,10 @@ rejected.
 
 The adapters contain only deterministic private scalars one and two. These are widely known public
 test values used for single-key fixtures and the first two keys of the 2-of-3 fixture; they must
-never hold funds. The Taproot path uses only key-path signing with the fixture internal key and does
-not accept arbitrary keys or script paths. The Go adapter retains the full-previous-transaction
+never hold funds. Taproot key-path signing is restricted to the fixture internal key. Taproot
+script-path signing is restricted to the committed `p2tr-scriptpath` regtest fixture, its fixed
+public test key, exact leaf script, leaf version, Merkle root, and control block. The adapters reject
+arbitrary keys, leaves, and control blocks. The Go adapter retains the full-previous-transaction
 requirement for SegWit v0 signing to avoid the incomplete-UTXO safety issue described by
 CVE-2020-14199.
 

@@ -307,6 +307,17 @@ describe("proof runtime", () => {
       resources: { core: false, fixtures: [], adapters: ["rust-psbt-v2"] },
     });
     expect(
+      proofModule.PROOF_SCENARIO_REGISTRATIONS.find(
+        ({ id }) => id === "taproot-scriptpath-rust-to-bdk",
+      ),
+    ).toMatchObject({
+      resources: {
+        core: true,
+        fixtures: ["p2tr-scriptpath"],
+        adapters: ["rust-bitcoin", "bdk-wallet-current"],
+      },
+    });
+    expect(
       proofModule.resolveProofSelection({
         scenarios: ["happy-path", "happy-path", "p2wpkh-sign-rust-bitcoin"],
         category: "cross-library-signing",
@@ -490,6 +501,9 @@ describe("proof runtime", () => {
       "p2tr-keypath-sign-bdk-wallet-current",
       "nested-segwit-roundtrip-matrix",
       "taproot-scriptpath-roundtrip-matrix",
+      "taproot-scriptpath-rust-to-bdk",
+      "taproot-scriptpath-bdk-to-rust",
+      "taproot-scriptpath-negative-canaries",
       "bip370-official-vectors-rust-psbt-v2",
     ]);
   });
@@ -589,6 +603,7 @@ describe("proof runtime", () => {
       p2wpkh: `sha256:${"d".repeat(64)}`,
       "p2wsh-2-of-3": `sha256:${"d".repeat(64)}`,
       "p2tr-keypath": `sha256:${"d".repeat(64)}`,
+      "p2tr-scriptpath": `sha256:${"d".repeat(64)}`,
       "intent-rich-p2wpkh": `sha256:${"d".repeat(64)}`,
     });
     expect(harness.created).toEqual([

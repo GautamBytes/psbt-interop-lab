@@ -43,6 +43,10 @@ import {
 import { createInvalidInputScenario } from "./invalid-inputs.js";
 import { createMetadataPreservationScenario } from "./metadata-preservation.js";
 import { createScriptProfileRoundtripScenario } from "./script-profile-roundtrip.js";
+import {
+  createTaprootScriptPathCanaryScenario,
+  createTaprootScriptPathHandoffScenarios,
+} from "./taproot-script-path.js";
 
 export { classifyHappyPath, classifyRegression };
 export type PolicyResult = CorePolicyResult;
@@ -226,6 +230,21 @@ export const PROOF_SCENARIOS: readonly ProofScenarioSummary[] = [
     category: "script-profile-roundtrip",
   },
   {
+    id: "taproot-scriptpath-rust-to-bdk",
+    title: "Taproot script-path rust-bitcoin to BDK handoff",
+    category: "taproot-scriptpath",
+  },
+  {
+    id: "taproot-scriptpath-bdk-to-rust",
+    title: "Taproot script-path BDK to rust-bitcoin handoff",
+    category: "taproot-scriptpath",
+  },
+  {
+    id: "taproot-scriptpath-negative-canaries",
+    title: "Taproot script-path metadata rejection canaries",
+    category: "taproot-scriptpath",
+  },
+  {
     id: "bip370-official-vectors-rust-psbt-v2",
     title: "Official BIP370 vectors through rust-psbt-v2",
     category: "psbtv2-conformance",
@@ -303,6 +322,18 @@ function registerScenario(
   const summary = PROOF_SCENARIOS.find((scenario) => scenario.id === id);
   if (!summary) throw new Error(`Missing proof scenario summary for ${id}`);
   return { ...summary, resources, create };
+}
+
+function taprootScriptPathHandoff(
+  fixtures: PreparedFixtureSet | undefined,
+  id: "taproot-scriptpath-rust-to-bdk" | "taproot-scriptpath-bdk-to-rust",
+): ScenarioDefinition<ScenarioExecutionContext> {
+  const fixture = requiredFixture(fixtures, "p2tr-scriptpath");
+  const scenario = createTaprootScriptPathHandoffScenarios(fixture).find(
+    (candidate) => candidate.id === id,
+  );
+  if (!scenario) throw new Error(`Missing Taproot script-path scenario ${id}`);
+  return scenario;
 }
 
 export const PROOF_SCENARIO_REGISTRATIONS: readonly ProofScenarioRegistration[] = [
@@ -514,6 +545,29 @@ export const PROOF_SCENARIO_REGISTRATIONS: readonly ProofScenarioRegistration[] 
         }),
     ),
   ),
+  ...(
+    ["taproot-scriptpath-rust-to-bdk", "taproot-scriptpath-bdk-to-rust"] as const
+  ).map((id) =>
+    registerScenario(
+      id,
+      {
+        core: true,
+        fixtures: ["p2tr-scriptpath"],
+        adapters: ["rust-bitcoin", "bdk-wallet-current"],
+      },
+      (fixtures) => taprootScriptPathHandoff(fixtures, id),
+    ),
+  ),
+  registerScenario(
+    "taproot-scriptpath-negative-canaries",
+    {
+      core: true,
+      fixtures: ["p2tr-scriptpath"],
+      adapters: ["rust-bitcoin", "bdk-wallet-current"],
+    },
+    (fixtures) =>
+      createTaprootScriptPathCanaryScenario(requiredFixture(fixtures, "p2tr-scriptpath")),
+  ),
   registerScenario(
     "bip370-official-vectors-rust-psbt-v2",
     { core: false, fixtures: [], adapters: ["rust-psbt-v2"] },
@@ -711,6 +765,7 @@ const COMMON_COMMITMENT_FIXTURES: readonly BuiltInFixtureId[] = [
 ];
 const RUST_COMMITMENT_FIXTURES: readonly BuiltInFixtureId[] = [
   ...COMMON_COMMITMENT_FIXTURES,
+  "p2tr-scriptpath",
   "intent-rich-p2wpkh",
 ];
 
