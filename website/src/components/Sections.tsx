@@ -11,6 +11,8 @@ import { Package } from "@phosphor-icons/react/Package";
 import { ShieldCheck } from "@phosphor-icons/react/ShieldCheck";
 import { TerminalWindow } from "@phosphor-icons/react/TerminalWindow";
 import { npmUrl, repositoryUrl, workflowSteps } from "../content";
+import { routes } from "../routes";
+import { SiteLink } from "./SiteLink";
 
 const coverage = [
   "P2WPKH, nested SegWit, P2WSH, and Taproot fixtures",
@@ -114,10 +116,10 @@ export function Sections() {
               against the bundled scenarios and semantic invariants.
             </p>
             <div className="adapter-actions">
-              <a className="button button--primary" href={`${repositoryUrl}/blob/main/docs/adapters.md`}>
+              <SiteLink className="button button--primary" href={routes.adapterKit}>
                 <BracketsCurly aria-hidden="true" />
                 Build an adapter
-              </a>
+              </SiteLink>
               <a className="button button--text" href={`${repositoryUrl}/blob/main/src/conformance/adapter-manifest.schema.json`}>
                 View the schema <ArrowSquareOut aria-hidden="true" />
               </a>

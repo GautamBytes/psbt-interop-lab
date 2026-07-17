@@ -6,6 +6,7 @@ import { installCommand } from "./content";
 
 describe("PSBT Interop Lab website", () => {
   beforeEach(() => {
+    window.history.replaceState({}, "", "/");
     window.localStorage.clear();
     document.documentElement.removeAttribute("data-theme");
   });

@@ -1,0 +1,152 @@
+import { ArrowSquareOut } from "@phosphor-icons/react/ArrowSquareOut";
+import type { ReactNode } from "react";
+import ReactMarkdown, { type Components } from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { repositoryUrl } from "../content";
+import { routes } from "../routes";
+import type { WebsiteDocument } from "../pages/documents";
+import { SiteLink } from "./SiteLink";
+
+interface MarkdownPageProps {
+  document: WebsiteDocument;
+}
+
+interface TocItem {
+  depth: number;
+  label: string;
+  id: string;
+}
+
+function textFromChildren(children: ReactNode): string {
+  if (typeof children === "string" || typeof children === "number") return String(children);
+  if (Array.isArray(children)) return children.map(textFromChildren).join("");
+  return "";
+}
+
+function slugify(value: string): string {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9\s-]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-");
+}
+
+function extractToc(markdown: string): TocItem[] {
+  let fenced = false;
+  const items: TocItem[] = [];
+
+  for (const line of markdown.split("\n")) {
+    if (line.trim().startsWith("```")) {
+      fenced = !fenced;
+      continue;
+    }
+    if (fenced) continue;
+
+    const match = /^(##|###)\s+(.+)$/.exec(line);
+    if (match) {
+      const label = match[2].replace(/[`*_]/g, "").trim();
+      items.push({ depth: match[1].length, label, id: slugify(label) });
+    }
+  }
+
+  return items;
+}
+
+function normalizeRepoPath(baseDir: string, href: string): string {
+  const path = href.split("#")[0];
+  const parts = `${baseDir}/${path}`.split("/");
+  const normalized: string[] = [];
+
+  for (const part of parts) {
+    if (!part || part === ".") continue;
+    if (part === "..") normalized.pop();
+    else normalized.push(part);
+  }
+
+  return normalized.join("/");
+}
+
+function resolveDocumentHref(href: string | undefined, baseDir: string): string {
+  if (!href || href.startsWith("#") || /^(https?:|mailto:)/.test(href)) return href ?? "#";
+
+  const hash = href.includes("#") ? `#${href.split("#").slice(1).join("#")}` : "";
+  const path = normalizeRepoPath(baseDir, href);
+
+  if (path === "README.md") return `${routes.docs}${hash}`;
+  if (path === "docs/adapters.md") return `${routes.adapterKit}${hash}`;
+  if (path === "SECURITY.md") return `${routes.security}${hash}`;
+
+  return `${repositoryUrl}/blob/main/${path}${hash}`;
+}
+
+function heading(level: 1 | 2 | 3) {
+  return function MarkdownHeading({ children }: { children?: ReactNode }) {
+    const id = slugify(textFromChildren(children));
+    const Tag = `h${level}` as const;
+    return <Tag id={id}>{children}</Tag>;
+  };
+}
+
+export function MarkdownPage({ document }: MarkdownPageProps) {
+  const toc = extractToc(document.markdown);
+  const components: Components = {
+    h1: heading(1),
+    h2: heading(2),
+    h3: heading(3),
+    a: ({ href, children, node, ...props }) => {
+      void node;
+      const resolved = resolveDocumentHref(href, document.baseDir);
+      return resolved.startsWith("/") ? (
+        <SiteLink {...props} href={resolved}>{children}</SiteLink>
+      ) : (
+        <a {...props} href={resolved}>{children}</a>
+      );
+    },
+    table: ({ children, node, ...props }) => {
+      void node;
+      return (
+        <div className="markdown-table-wrap">
+          <table {...props}>{children}</table>
+        </div>
+      );
+    },
+  };
+
+  return (
+    <section className="docs-page" aria-labelledby="document-title">
+      <header className="docs-page__intro">
+        <div className="page-shell">
+          <span className="eyebrow">Project knowledge base</span>
+          <div className="docs-page__intro-row">
+            <div>
+              <p className="docs-page__label">{document.label}</p>
+              <p>{document.description}</p>
+            </div>
+            <a className="button button--secondary" href={document.sourceUrl}>
+              View source <ArrowSquareOut aria-hidden="true" />
+            </a>
+          </div>
+        </div>
+      </header>
+      <div className="docs-layout page-shell">
+        <aside className="docs-toc" aria-label={`${document.label} sections`}>
+          <span>On this page</span>
+          <nav>
+            {toc.map((item) => (
+              <a className={item.depth === 3 ? "is-nested" : ""} href={`#${item.id}`} key={`${item.id}-${item.depth}`}>
+                {item.label}
+              </a>
+            ))}
+          </nav>
+          <code>{document.sourcePath}</code>
+        </aside>
+        <article className="markdown-body">
+          <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+            {document.markdown}
+          </ReactMarkdown>
+        </article>
+      </div>
+    </section>
+  );
+}

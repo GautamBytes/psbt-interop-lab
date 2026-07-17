@@ -27,10 +27,10 @@
 **Interfaces:**
 - Produces: expected route paths, internal navigation behavior, and Markdown page assertions.
 
-- [ ] Add tests that set `/docs`, `/adapter-kit`, `/security`, and an unknown pathname before rendering `App`.
-- [ ] Assert each documentation route renders a heading and recognizable source-document text.
-- [ ] Assert header links use internal URLs and an internal click changes content without a full reload.
-- [ ] Run `npm test` and verify the new assertions fail because routing does not exist.
+- [x] Add tests that set `/docs`, `/adapter-kit`, `/security`, and an unknown pathname before rendering `App`.
+- [x] Assert each documentation route renders a heading and recognizable source-document text.
+- [x] Assert header links use internal URLs and an internal click changes content without a full reload.
+- [x] Run `npm test` and verify the new assertions fail because routing does not exist.
 
 ### Task 2: Routing And Markdown Rendering
 
@@ -47,11 +47,11 @@
 **Interfaces:**
 - Produces: `routes`, `resolveRoute(pathname)`, `navigate(href)`, `useRoute()`, and `MarkdownPage`.
 
-- [ ] Allow Vite to read Markdown from the repository parent and declare `*?raw` modules.
-- [ ] Implement route resolution and History API navigation with `popstate` support.
-- [ ] Import the three Markdown sources using `?raw` and render the selected page through `MarkdownPage`.
-- [ ] Add heading IDs, GitHub source links, internal Markdown link rewriting, and a not-found page.
-- [ ] Run the focused route tests and verify they pass.
+- [x] Allow Vite to read Markdown from the repository parent and declare `*?raw` modules.
+- [x] Implement route resolution and History API navigation with `popstate` support.
+- [x] Import the three Markdown sources using `?raw` and render the selected page through `MarkdownPage`.
+- [x] Add heading IDs, GitHub source links, internal Markdown link rewriting, and a not-found page.
+- [x] Run the focused route tests and verify they pass.
 
 ### Task 3: Shared Navigation And Documentation Layout
 
@@ -68,11 +68,11 @@
 - Consumes: internal route constants and `SiteLink`.
 - Produces: consistent internal navigation and responsive documentation presentation.
 
-- [ ] Replace Docs, Adapter Kit, and Security GitHub destinations with internal routes.
-- [ ] Keep Matrix as a homepage anchor and make it work from documentation routes.
-- [ ] Add title band, sticky table of contents, article typography, code, table, blockquote, and mobile styles.
-- [ ] Add active navigation state and retain the GitHub icon/source links.
-- [ ] Run the full website test suite and resolve regressions.
+- [x] Replace Docs, Adapter Kit, and Security GitHub destinations with internal routes.
+- [x] Keep Matrix as a homepage anchor and make it work from documentation routes.
+- [x] Add title band, sticky table of contents, article typography, code, table, blockquote, and mobile styles.
+- [x] Add active navigation state and retain the GitHub icon/source links.
+- [x] Run the full website test suite and resolve regressions.
 
 ### Task 4: Verification And Handoff
 
@@ -82,7 +82,7 @@
 **Interfaces:**
 - Produces: verified build and QA evidence for the three new routes.
 
-- [ ] Run `npm test`, `npm run lint`, `npm run build`, `npm audit --omit=dev`, and `git diff --check`.
-- [ ] Verify `/docs`, `/adapter-kit`, and `/security` at desktop and mobile widths in the browser.
-- [ ] Confirm direct loading, back/forward, internal search links, zero console errors, and zero horizontal overflow.
-- [ ] Record results in `website/design-qa.md` and commit the completed feature.
+- [x] Run `npm test`, `npm run lint`, `npm run build`, `npm audit --omit=dev`, and `git diff --check`.
+- [x] Verify `/docs`, `/adapter-kit`, and `/security` at desktop and mobile widths in the browser.
+- [x] Confirm direct loading, back/forward, internal search links, zero console errors, and zero horizontal overflow.
+- [x] Record results in `website/design-qa.md` and commit the completed feature.

@@ -4,7 +4,13 @@ import { Header } from "./components/Header";
 import { Hero } from "./components/Hero";
 import { SearchDialog } from "./components/SearchDialog";
 import { Sections } from "./components/Sections";
+import { SiteLink } from "./components/SiteLink";
 import { repositoryUrl } from "./content";
+import { useRoute } from "./hooks/useRoute";
+import { findDocument } from "./pages/documents";
+import { NotFoundPage } from "./pages/NotFoundPage";
+import { routes } from "./routes";
+import { MarkdownPage } from "./components/MarkdownPage";
 
 type Theme = "dark" | "light";
 
@@ -19,6 +25,8 @@ export function App() {
   const [theme, setTheme] = useState<Theme>(initialTheme);
   const [searchOpen, setSearchOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const pathname = useRoute();
+  const activeDocument = findDocument(pathname);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -38,26 +46,41 @@ export function App() {
     return () => document.removeEventListener("keydown", handleShortcut);
   }, []);
 
+  useEffect(() => {
+    setMenuOpen(false);
+    const title = activeDocument?.label ?? (pathname === routes.home ? "PSBT Interop Lab" : "Page not found");
+    window.document.title = title === "PSBT Interop Lab" ? title : `${title} | PSBT Interop Lab`;
+  }, [activeDocument, pathname]);
+
+  const page = pathname === routes.home ? (
+    <>
+      <Hero />
+      <CompatibilityReport />
+      <Sections />
+    </>
+  ) : activeDocument ? (
+    <MarkdownPage document={activeDocument} />
+  ) : (
+    <NotFoundPage />
+  );
+
   return (
     <div className="site-frame">
       <a className="skip-link" href="#main-content">Skip to content</a>
       <Header
+        pathname={pathname}
         theme={theme}
         menuOpen={menuOpen}
         onMenuToggle={() => setMenuOpen((open) => !open)}
         onSearchOpen={() => setSearchOpen(true)}
         onThemeToggle={() => setTheme((current) => (current === "dark" ? "light" : "dark"))}
       />
-      <main id="main-content">
-        <Hero />
-        <CompatibilityReport />
-        <Sections />
-      </main>
+      <main id="main-content">{page}</main>
       <footer className="site-footer">
         <div className="page-shell">
           <span>PSBT Interop Lab 0.4.0</span>
           <span>MIT licensed</span>
-          <a href={`${repositoryUrl}/blob/main/SECURITY.md`}>Security</a>
+          <SiteLink href={routes.security}>Security</SiteLink>
           <a href={repositoryUrl}>GitHub</a>
         </div>
       </footer>

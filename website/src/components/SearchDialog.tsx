@@ -3,6 +3,7 @@ import { MagnifyingGlass } from "@phosphor-icons/react/MagnifyingGlass";
 import { X } from "@phosphor-icons/react/X";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { docLinks } from "../content";
+import { SiteLink } from "./SiteLink";
 
 interface SearchDialogProps {
   open: boolean;
@@ -71,13 +72,13 @@ export function SearchDialog({ open, onClose }: SearchDialogProps) {
         <div className="search-dialog__results" aria-live="polite">
           {matches.length ? (
             matches.map((link) => (
-              <a key={link.label} href={link.href} onClick={onClose}>
+              <SiteLink key={link.label} href={link.href} onClick={onClose}>
                 <span>
                   <strong>{link.label}</strong>
                   <small>{link.detail}</small>
                 </span>
                 <ArrowUpRight aria-hidden="true" />
-              </a>
+              </SiteLink>
             ))
           ) : (
             <p className="search-dialog__empty">No matching documentation.</p>

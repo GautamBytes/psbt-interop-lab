@@ -1,11 +1,14 @@
 import { GithubLogo } from "@phosphor-icons/react/GithubLogo";
 import { MagnifyingGlass } from "@phosphor-icons/react/MagnifyingGlass";
 import { repositoryUrl } from "../content";
+import { routes } from "../routes";
 import { Brand } from "./Brand";
 import { MobileMenu } from "./MobileMenu";
+import { SiteLink } from "./SiteLink";
 import { ThemeToggle } from "./ThemeToggle";
 
 interface HeaderProps {
+  pathname: string;
   theme: "dark" | "light";
   menuOpen: boolean;
   onMenuToggle: () => void;
@@ -14,6 +17,7 @@ interface HeaderProps {
 }
 
 export function Header({
+  pathname,
   theme,
   menuOpen,
   onMenuToggle,
@@ -23,14 +27,14 @@ export function Header({
   return (
     <header className="site-header">
       <div className="site-header__inner">
-        <a className="site-header__brand" href="#top" aria-label="PSBT Interop Lab home">
+        <SiteLink className="site-header__brand" href={routes.home} aria-label="PSBT Interop Lab home">
           <Brand />
-        </a>
+        </SiteLink>
         <nav className="desktop-nav" aria-label="Primary navigation">
-          <a href={`${repositoryUrl}#quick-start`}>Docs</a>
-          <a href="#matrix">Matrix</a>
-          <a href={`${repositoryUrl}/blob/main/docs/adapters.md`}>Adapter kit</a>
-          <a href={`${repositoryUrl}/blob/main/SECURITY.md`}>Security</a>
+          <SiteLink href={routes.docs} aria-current={pathname === routes.docs ? "page" : undefined}>Docs</SiteLink>
+          <SiteLink href="/#matrix">Matrix</SiteLink>
+          <SiteLink href={routes.adapterKit} aria-current={pathname === routes.adapterKit ? "page" : undefined}>Adapter kit</SiteLink>
+          <SiteLink href={routes.security} aria-current={pathname === routes.security ? "page" : undefined}>Security</SiteLink>
         </nav>
         <div className="site-header__actions">
           <button
@@ -47,7 +51,7 @@ export function Header({
             <GithubLogo aria-hidden="true" weight="fill" />
           </a>
           <ThemeToggle theme={theme} onToggle={onThemeToggle} />
-          <MobileMenu open={menuOpen} onToggle={onMenuToggle} />
+          <MobileMenu open={menuOpen} onToggle={onMenuToggle} pathname={pathname} />
         </div>
       </div>
     </header>

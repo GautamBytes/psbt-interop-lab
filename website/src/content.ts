@@ -157,9 +157,9 @@ export const workflowSteps = [
 ] as const;
 
 export const docLinks = [
-  { label: "Quick start", detail: "Install and run the matrix", href: `${repositoryUrl}#quick-start` },
-  { label: "Scenario coverage", detail: "See all 24 bundled scenarios", href: `${repositoryUrl}#current-coverage` },
-  { label: "Adapter kit", detail: "Bring another wallet or library", href: `${repositoryUrl}/blob/main/docs/adapters.md` },
+  { label: "Quick start", detail: "Install and run the matrix", href: "/docs#quick-start" },
+  { label: "Scenario coverage", detail: "See all 24 bundled scenarios", href: "/docs#current-coverage" },
+  { label: "Adapter kit", detail: "Bring another wallet or library", href: "/adapter-kit" },
   { label: "Architecture", detail: "Understand the trust boundaries", href: `${repositoryUrl}/blob/main/docs/architecture.md` },
-  { label: "Security", detail: "Read the safety model", href: `${repositoryUrl}/blob/main/SECURITY.md` },
+  { label: "Security", detail: "Read the safety model", href: "/security" },
 ] as const;
