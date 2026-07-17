@@ -103,6 +103,17 @@ async function resolveManifest(
   throw new TypeError("A local runtime manifest or manifest path is required");
 }
 
+async function createSnapshotDirectory(): Promise<string> {
+  const directory = await mkdtemp(join(tmpdir(), "psbt-lab-local-adapters-"));
+  try {
+    await chmod(directory, 0o700);
+    return directory;
+  } catch (error) {
+    await rm(directory, { recursive: true, force: true });
+    throw error;
+  }
+}
+
 export async function createLocalRuntimeProvider(
   options: CreateLocalRuntimeProviderOptions,
 ): Promise<RuntimeProvider> {
@@ -111,8 +122,7 @@ export async function createLocalRuntimeProvider(
   const createProcess =
     options.createProcess ?? ((processOptions) => new AdapterProcess(processOptions));
   const adapters: RuntimeAdapter[] = [];
-  const snapshotDirectory = await mkdtemp(join(tmpdir(), "psbt-lab-local-adapters-"));
-  await chmod(snapshotDirectory, 0o700);
+  const snapshotDirectory = await createSnapshotDirectory();
 
   try {
     for (const definition of manifest.adapters) {
@@ -165,12 +175,15 @@ export async function createLocalRuntimeProvider(
     async close() {
       if (closed) return;
       closed = true;
-      await Promise.all(
-        adapters.flatMap((adapter) =>
-          adapter.availability === "available" ? [adapter.process.close()] : [],
-        ),
-      );
-      await rm(snapshotDirectory, { recursive: true, force: true });
+      try {
+        await Promise.all(
+          adapters.flatMap((adapter) =>
+            adapter.availability === "available" ? [adapter.process.close()] : [],
+          ),
+        );
+      } finally {
+        await rm(snapshotDirectory, { recursive: true, force: true });
+      }
     },
   };
 }

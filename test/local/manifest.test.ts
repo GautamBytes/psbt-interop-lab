@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import {
+  existsSync,
   mkdtempSync,
   readFileSync,
   realpathSync,
@@ -128,6 +129,32 @@ describe("local runtime manifest", () => {
 
     await provider.close();
     expect(createProcess).toHaveBeenCalledOnce();
+  });
+
+  test("removes the private snapshot when process shutdown fails", async () => {
+    const directory = temporaryDirectory();
+    const source = "process.stdin.resume();\n";
+    writeFileSync(resolve(directory, "adapter.mjs"), source, { mode: 0o600 });
+    let launchedPath = "";
+    const createProcess = vi.fn((options: AdapterProcessOptions) => {
+      launchedPath = options.args?.[0] ?? "";
+      return {
+        request: vi.fn(),
+        close: vi.fn(async () => {
+          throw new Error("shutdown failed");
+        }),
+      };
+    });
+    const local = await import("../../src/local/provider.js");
+    const provider = await local.createLocalRuntimeProvider({
+      packageDirectory: directory,
+      manifest: manifest("adapter.mjs", sha256(source)),
+      createProcess,
+    });
+
+    expect(existsSync(launchedPath)).toBe(true);
+    await expect(provider.close()).rejects.toThrow("shutdown failed");
+    expect(existsSync(launchedPath)).toBe(false);
   });
 
   test("rejects paths that escape through a symlink", async () => {
