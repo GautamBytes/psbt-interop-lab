@@ -47,7 +47,8 @@ function missingForRequirement(
   if (!negotiated) {
     return [{ adapter: requirement.adapter, kind: "adapter", value: requirement.adapter }];
   }
-  if (negotiated.implementation.name !== requirement.adapter) {
+  const negotiatedRegistryId = negotiated.registryId ?? negotiated.implementation.name;
+  if (negotiatedRegistryId !== requirement.adapter) {
     return [
       {
         adapter: requirement.adapter,

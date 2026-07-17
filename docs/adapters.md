@@ -1,8 +1,8 @@
 # External Adapter Guide
 
 `psbt-lab adapter check` lets a wallet or library maintainer validate a local adapter without
-changing PSBT Interop Lab source. This is protocol onboarding, not automatic enrollment in every
-built-in compatibility scenario.
+changing PSBT Interop Lab source. The same manifest can enroll conforming adapters in the full
+matrix while preserving the 18 bundled scenarios.
 
 ## Adapter Manifest
 
@@ -24,6 +24,8 @@ Create a JSON file that follows `psbt-lab.adapters/0.1`:
         "--read-only",
         "--cap-drop",
         "ALL",
+        "--env",
+        "PSBT_LAB_FIXTURE_COMMITMENTS",
         "--security-opt",
         "no-new-privileges:true",
         "example/wallet-psbt-adapter:1.0.0"
@@ -40,6 +42,10 @@ Create a JSON file that follows `psbt-lab.adapters/0.1`:
 ```
 
 `cwd` is optional and resolves relative to the manifest file. `args` and `env` are optional.
+`PSBT_LAB_FIXTURE_COMMITMENTS` is reserved and cannot be set in manifest `env`; the matrix runner
+injects its run-scoped value. A Docker command must include
+`--env PSBT_LAB_FIXTURE_COMMITMENTS`, as above, so Docker forwards that injected value into the
+container without placing it in command arguments.
 `expected.artifactDigest` can pin the adapter's self-reported SHA256 value, but that value is still
 not cryptographic runtime attestation. The complete schema is
 [`src/conformance/adapter-manifest.schema.json`](../src/conformance/adapter-manifest.schema.json).
@@ -52,6 +58,39 @@ psbt-lab adapter check ./adapters.json --json
 ```
 
 The command exits with status 1 when any required check fails.
+
+After conformance passes, run the built-in and external matrix together:
+
+```bash
+psbt-lab matrix --adapter-manifest ./adapters.json
+psbt-lab run --suite proof --adapter-manifest ./adapters.json
+```
+
+The manifest `id` is the stable registry and report identity. It may differ from `expected.name`.
+It must not collide with `rust-bitcoin`, `btcsuite-go`, `bitcoinjs-lib`, `bdkpython`, or another ID
+in the same manifest. Every response must continue reporting the expected name, version, source
+revision, and optional pinned artifact digest. The configured timeout caps every request.
+
+## Matrix Participation
+
+Each external adapter receives a native-parse and semantic-roundtrip scenario for the built-in
+P2WPKH, P2WSH, and Taproot key-path fixtures. A cell is reported as unsupported when its declared
+PSBT version, script type, parser role, or operation-specific roundtrip support does not match.
+
+A signing scenario is added only when `hello` declares all of the following:
+
+- `roundtrip` and `sign` operations
+- `parser` and `signer` roles
+- PSBTv0 and the matching `p2wpkh`, `p2wsh`, or `p2tr-keypath` script type
+- Matching `operationScriptTypes` entries for both `roundtrip` and `sign`
+- The `fixture-commitment-sha256` feature
+
+Signing requests contain `psbt`, `network: "regtest"`, and one of the deterministic fixture IDs
+`p2wpkh`, `happy-path` for P2WSH, or `p2tr-keypath`. These fixtures use the public key derived from
+the 32-byte test scalar `1`; this key is public test material and must never be used for real funds.
+The adapter must return the signed PSBT in `output.psbt` and must reject signing unless the fixture
+ID and unsigned transaction match the run-scoped SHA256 commitment supplied at startup. Caller
+supplied keys or commitment values must not be accepted.
 
 ## JSONL Protocol
 
@@ -83,4 +122,5 @@ you trust, and prefer a networkless, read-only container with dropped capabiliti
 
 The conformance report proves that an adapter follows the transport and parser baseline during that
 run. It does not prove the identity of a malicious binary, audit wallet security, authorize mainnet
-signing, or add the adapter to the built-in 18-scenario matrix automatically.
+signing, or make an untrusted manifest safe. Matrix signing is restricted to deterministic regtest
+fixtures and does not repair or rewrite wallet PSBTs.

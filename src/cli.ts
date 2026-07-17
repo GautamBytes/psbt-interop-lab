@@ -32,6 +32,7 @@ interface RunOptions {
   suite: string;
   artifacts: string;
   rpcUrl: string;
+  adapterManifest?: string;
   build: boolean;
   startCore: boolean;
 }
@@ -128,6 +129,7 @@ function addRuntimeOptions(command: Command): Command {
       resolve(process.cwd(), "artifacts"),
     )
     .option("--rpc-url <url>", "Loopback Bitcoin Core RPC URL", DEFAULT_RPC_URL)
+    .option("--adapter-manifest <path>", "Add trusted external adapters to the matrix")
     .option("--no-build", "Use existing Docker images without rebuilding")
     .option("--no-start-core", "Use an already-running Core instance");
 }
@@ -136,6 +138,10 @@ async function executeProof(options: RunOptions): Promise<void> {
   if (options.suite !== "proof") {
     throw new Error(`Unknown suite ${options.suite}; the available suite is proof`);
   }
+  const adapterManifest =
+    options.adapterManifest === undefined
+      ? undefined
+      : await loadAdapterManifest(options.adapterManifest);
   await prepareRuntime(options);
   const rpc = new CoreRpc({
     url: options.rpcUrl,
@@ -147,6 +153,7 @@ async function executeProof(options: RunOptions): Promise<void> {
     rpc,
     artifactRoot: resolve(options.artifacts),
     projectDirectory: PROJECT_DIRECTORY,
+    ...(adapterManifest === undefined ? {} : { adapterManifest }),
   });
   process.stdout.write(`${formatProofSummary(result)}\n`);
   if (result.manifest.outcome !== "passed") {

@@ -69,6 +69,12 @@ describe("CLI program", () => {
     expect(artifacts?.defaultValue).toBe(resolve(process.cwd(), "artifacts"));
   });
 
+  test.each(["run", "matrix"])("accepts an external adapter manifest for %s", (commandName) => {
+    const command = createProgram().commands.find((candidate) => candidate.name() === commandName);
+
+    expect(command?.options.some((option) => option.long === "--adapter-manifest")).toBe(true);
+  });
+
   test("runs when launched through an npm-style executable symlink", () => {
     const directory = mkdtempSync(resolve(tmpdir(), "psbt-lab-cli-"));
     const entrypoint = resolve(directory, "psbt-lab.ts");

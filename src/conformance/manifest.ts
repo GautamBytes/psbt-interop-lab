@@ -4,6 +4,7 @@ import { validateAdapterManifest as generatedValidateManifest } from "../generat
 import type { AdapterProcessOptions } from "../protocol/adapter-process.js";
 
 export const ADAPTER_MANIFEST_SCHEMA = "psbt-lab.adapters/0.1" as const;
+export const FIXTURE_COMMITMENTS_ENV = "PSBT_LAB_FIXTURE_COMMITMENTS" as const;
 const MAX_MANIFEST_BYTES = 1024 * 1024;
 const DEFAULT_TIMEOUT_MS = 10_000;
 
@@ -74,6 +75,9 @@ export function parseAdapterManifest(value: unknown, baseDirectory: string): Ada
   const ids = new Set<string>();
   const adapters = value.adapters.map((entry) => {
     if (ids.has(entry.id)) throw manifestError(`duplicate adapter id ${entry.id}`);
+    if (entry.env?.[FIXTURE_COMMITMENTS_ENV] !== undefined) {
+      throw manifestError(`${FIXTURE_COMMITMENTS_ENV} is reserved for the matrix runner`);
+    }
     ids.add(entry.id);
     return {
       id: entry.id,

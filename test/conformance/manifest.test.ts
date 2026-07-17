@@ -65,6 +65,18 @@ describe("external adapter manifest", () => {
       },
     ],
     [
+      "the reserved fixture commitment environment",
+      {
+        ...validManifest(),
+        adapters: [
+          {
+            ...validManifest().adapters[0],
+            env: { PSBT_LAB_FIXTURE_COMMITMENTS: "caller-controlled" },
+          },
+        ],
+      },
+    ],
+    [
       "unbounded timeout",
       {
         ...validManifest(),

@@ -1,5 +1,8 @@
 import { randomBytes } from "node:crypto";
 import { resolve } from "node:path";
+import { type AdapterManifest, FIXTURE_COMMITMENTS_ENV } from "../conformance/manifest.js";
+import { createExternalAdapterScenarios } from "../conformance/matrix.js";
+import { createExternalAdapterRegistry, negotiateExternalAdapter } from "../conformance/runtime.js";
 import { type PreparedFixtures, type PsbtFixture, prepareFixtures } from "../core/fixtures.js";
 import type { CoreRpc } from "../core/rpc.js";
 import { AdapterProcess, type AdapterProcessOptions } from "../protocol/adapter-process.js";
@@ -34,15 +37,16 @@ const RUST_IMAGE = "psbt-interop-lab/rust-bitcoin:0.1.0";
 const GO_IMAGE = "psbt-interop-lab/btcsuite-go:1.2.0";
 const BITCOINJS_IMAGE = "psbt-interop-lab/bitcoinjs-lib:7.0.1";
 const BDK_IMAGE = "psbt-interop-lab/bdkpython:2.3.1";
-const FIXTURE_COMMITMENTS_ENV = "PSBT_LAB_FIXTURE_COMMITMENTS";
 const MAX_COMMITMENT_ENV_BYTES = 4 * 1024;
 const SAFE_FIXTURE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+const BUILT_IN_ADAPTER_IDS = ["rust-bitcoin", "btcsuite-go", "bitcoinjs-lib", "bdkpython"] as const;
 
 export interface ProofOptions {
   rpc: CoreRpc;
   artifactRoot: string;
   projectDirectory: string;
   adapterTimeoutMs?: number;
+  adapterManifest?: AdapterManifest;
 }
 
 export interface ProofResult {
@@ -181,8 +185,10 @@ export interface ProofDependencies {
     projectDirectory: string,
     options?: DockerAdapterOptions,
   ): ProofRuntimeAdapter;
+  createExternalAdapter?(options: AdapterProcessOptions): ProofRuntimeAdapter;
   createCatalog(
     fixtures: PreparedFixtures,
+    externalAdapters?: ReadonlyMap<string, NegotiatedAdapter>,
   ): readonly ScenarioDefinition<ScenarioExecutionContext>[];
 }
 
@@ -262,11 +268,14 @@ function createDockerAdapter(
 }
 
 function negotiatedMap(adapters: readonly NegotiatedAdapter[]): Map<string, NegotiatedAdapter> {
-  return new Map(adapters.map((adapter) => [adapter.implementation.name, adapter]));
+  return new Map(
+    adapters.map((adapter) => [adapter.registryId ?? adapter.implementation.name, adapter]),
+  );
 }
 
 export function createProofCatalog(
   fixtures: PreparedFixtures,
+  externalAdapters: ReadonlyMap<string, NegotiatedAdapter> = new Map(),
 ): readonly ScenarioDefinition<ScenarioExecutionContext>[] {
   const definitions = [
     createHappyPathScenario(fixtures.happy),
@@ -354,13 +363,14 @@ export function createProofCatalog(
       throw new Error(`Proof scenario catalog metadata mismatch at index ${index}`);
     }
   }
-  return definitions;
+  return [...definitions, ...createExternalAdapterScenarios(fixtures, externalAdapters)];
 }
 
 const DEFAULT_DEPENDENCIES: ProofDependencies = {
   createArtifacts: ArtifactRun.create,
   prepareFixtures,
   createAdapter: createDockerAdapter,
+  createExternalAdapter: (options) => new AdapterProcess(options),
   createCatalog: createProofCatalog,
 };
 
@@ -388,6 +398,11 @@ export async function runProofWithDependencies(
     fixtures.profiles["p2tr-keypath"],
     fixtures.profiles["intent-rich-p2wpkh"],
   ] satisfies readonly PsbtFixture[]);
+  const externalCommitmentConfiguration = serializeFixtureCommitments([
+    fixtures.happy,
+    fixtures.profiles.p2wpkh,
+    fixtures.profiles["p2tr-keypath"],
+  ] satisfies readonly PsbtFixture[]);
   const projectDirectory = resolve(options.projectDirectory);
   const rust = dependencies.createAdapter(RUST_IMAGE, projectDirectory, {
     env: { [FIXTURE_COMMITMENTS_ENV]: rustCommitmentConfiguration },
@@ -401,6 +416,15 @@ export async function runProofWithDependencies(
   const bdk = dependencies.createAdapter(BDK_IMAGE, projectDirectory, {
     platform: "linux/amd64",
   });
+  const externalRuntime = options.adapterManifest
+    ? createExternalAdapterRegistry(
+        options.adapterManifest,
+        externalCommitmentConfiguration,
+        dependencies.createExternalAdapter ??
+          ((processOptions) => new AdapterProcess(processOptions)),
+        BUILT_IN_ADAPTER_IDS,
+      )
+    : new Map();
   const context = new ScenarioExecutionContext({
     rpc: options.rpc,
     artifacts,
@@ -409,6 +433,7 @@ export async function runProofWithDependencies(
       ["btcsuite-go", go],
       ["bitcoinjs-lib", bitcoinjs],
       ["bdkpython", bdk],
+      ...[...externalRuntime].map(([id, runtime]) => [id, runtime.process] as const),
     ]),
     adapterTimeoutMs: timeoutMs,
   });
@@ -430,9 +455,19 @@ export async function runProofWithDependencies(
       await context.request("bitcoinjs-lib", "hello", {}),
       BITCOINJS_ADAPTER_CONTRACT,
     );
-    const negotiated = [rustHello, goHello, bitcoinjsHello, bdkHello];
+    const externalNegotiated = new Map<string, NegotiatedAdapter>();
+    for (const [id, runtime] of externalRuntime) {
+      externalNegotiated.set(id, await negotiateExternalAdapter(runtime));
+    }
+    const negotiated = [
+      rustHello,
+      goHello,
+      bitcoinjsHello,
+      bdkHello,
+      ...externalNegotiated.values(),
+    ];
     const scenarios = await runScenarioCatalog(
-      dependencies.createCatalog(fixtures),
+      dependencies.createCatalog(fixtures, externalNegotiated),
       context,
       negotiatedMap(negotiated),
     );
@@ -462,7 +497,13 @@ export async function runProofWithDependencies(
     await artifacts.writeReportHtml(generateHtmlReport(manifest));
     return { artifactDirectory: artifacts.directory, manifest };
   } finally {
-    await Promise.all([rust.close(), go.close(), bitcoinjs.close(), bdk.close()]);
+    await Promise.all([
+      rust.close(),
+      go.close(),
+      bitcoinjs.close(),
+      bdk.close(),
+      ...[...externalRuntime.values()].map((runtime) => runtime.process.close()),
+    ]);
   }
 }
 

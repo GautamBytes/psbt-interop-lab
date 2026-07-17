@@ -8,7 +8,6 @@ feedback from wallet and library developers using the released tool.
 ## Broader Compatibility
 
 - Add adapters for more wallet projects, signing libraries, and implementation languages.
-- Let external adapters participate in the complete scenario matrix without repository changes.
 - Add executable PSBTv2 workflows and official BIP370 interoperability vectors.
 - Expand script coverage to Taproot script-path, nested SegWit, and legacy profiles where useful.
 - Support deterministic user-defined fixtures and handoff scenarios for real regtest regressions.

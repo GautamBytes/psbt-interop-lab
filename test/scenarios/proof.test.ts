@@ -1,6 +1,12 @@
 import { describe, expect, test, vi } from "vitest";
+import { parseAdapterManifest } from "../../src/conformance/manifest.js";
 import type { PreparedFixtures, PsbtFixture } from "../../src/core/fixtures.js";
-import type { AdapterRequest, AdapterResponse } from "../../src/protocol/types.js";
+import type { AdapterProcessOptions } from "../../src/protocol/adapter-process.js";
+import type {
+  AdapterRequest,
+  AdapterResponse,
+  NegotiatedAdapter,
+} from "../../src/protocol/types.js";
 import type { ScenarioExecutionContext } from "../../src/scenarios/context.js";
 import {
   BDK_ADAPTER_CONTRACT,
@@ -282,6 +288,45 @@ describe("proof runtime", () => {
     ).toEqual(PROOF_SCENARIOS);
   });
 
+  test("appends external scenarios without changing the 18 built-in definitions", () => {
+    const external: NegotiatedAdapter = {
+      registryId: "wallet-alias",
+      implementation: {
+        name: "actual-wallet-library",
+        version: "2.0.0",
+        sourceRevision: "actual-wallet-v2.0.0",
+        artifactDigest: `sha256:${"f".repeat(64)}`,
+      },
+      capabilities: {
+        operations: ["hello", "native-parse", "roundtrip", "sign"],
+        roles: ["parser", "signer"],
+        psbtVersions: [0],
+        scriptTypes: ["p2wpkh", "p2wsh", "p2tr-keypath"],
+        operationScriptTypes: {
+          roundtrip: ["p2wpkh", "p2wsh", "p2tr-keypath"],
+          sign: ["p2wpkh", "p2wsh", "p2tr-keypath"],
+        },
+        features: ["fixture-commitment-sha256"],
+      },
+    };
+
+    const catalog = createProofCatalog(preparedFixtures(), new Map([["wallet-alias", external]]));
+
+    expect(
+      catalog.slice(0, PROOF_SCENARIOS.length).map(({ id, title, category }) => ({
+        id,
+        title,
+        category,
+      })),
+    ).toEqual(PROOF_SCENARIOS);
+    expect(catalog).toHaveLength(PROOF_SCENARIOS.length + 6);
+    expect(
+      catalog
+        .slice(PROOF_SCENARIOS.length)
+        .every(({ requirements }) => requirements[0]?.adapter === "wallet-alias"),
+    ).toBe(true);
+  });
+
   test("passes commitments through environment values without placing them in Docker arguments", () => {
     const commitment = JSON.stringify({ "happy-path": `sha256:${"a".repeat(64)}` });
     const options = dockerAdapterProcessOptions("adapter:image", "/project", {
@@ -366,5 +411,94 @@ describe("proof runtime", () => {
       ),
     ).rejects.toThrow(/Core unavailable/);
     for (const adapter of harness.adapters) expect(adapter.close).toHaveBeenCalledTimes(1);
+  });
+
+  test("registers, negotiates, runs, reports, and closes a manifest adapter by id", async () => {
+    const harness = proofHarness();
+    const externalContract: ExpectedAdapterContract = {
+      name: "actual-wallet-library",
+      version: "2.0.0",
+      sourceRevision: "actual-wallet-v2.0.0",
+      operations: ["hello", "native-parse", "roundtrip", "sign"],
+      roles: ["parser", "signer"],
+      psbtVersions: [0],
+      scriptTypes: ["p2wpkh", "p2wsh", "p2tr-keypath"],
+      operationScriptTypes: {
+        roundtrip: ["p2wpkh", "p2wsh", "p2tr-keypath"],
+        sign: ["p2wpkh", "p2wsh", "p2tr-keypath"],
+      },
+      features: ["fixture-commitment-sha256"],
+    };
+    const externalAdapter = runtimeAdapter(externalContract);
+    const createExternalAdapter = vi.fn((_options: AdapterProcessOptions) => externalAdapter);
+    const externalScenario: ScenarioDefinition<ScenarioExecutionContext> = {
+      id: "external-runtime",
+      title: "External runtime",
+      category: "test",
+      summary: "External runtime test",
+      requirements: [{ adapter: "wallet-alias", operations: ["hello"] }],
+      async run(context) {
+        const response = await context.request("wallet-alias", "hello", {});
+        return {
+          assertions: [{ name: "external-request-completed", passed: response.status === "ok" }],
+        };
+      },
+    };
+    const createCatalog = vi.fn(
+      (_fixtures: PreparedFixtures, external: ReadonlyMap<string, NegotiatedAdapter>) => {
+        expect([...external.keys()]).toEqual(["wallet-alias"]);
+        return [externalScenario];
+      },
+    );
+    const dependencies = {
+      ...harness.dependencies,
+      createExternalAdapter,
+      createCatalog,
+    } as unknown as ProofDependencies;
+    const adapterManifest = parseAdapterManifest(
+      {
+        schema: "psbt-lab.adapters/0.1",
+        adapters: [
+          {
+            id: "wallet-alias",
+            command: "/usr/bin/example-adapter",
+            env: { EXAMPLE_NETWORK: "regtest" },
+            expected: {
+              name: "actual-wallet-library",
+              version: "2.0.0",
+              sourceRevision: "actual-wallet-v2.0.0",
+            },
+          },
+        ],
+      },
+      "/project",
+    );
+
+    const result = await runProofWithDependencies(
+      {
+        rpc: {} as never,
+        artifactRoot: "/tmp/psbt-lab-test",
+        projectDirectory: "/project",
+        adapterManifest,
+      } as never,
+      dependencies,
+    );
+
+    expect(result.manifest.outcome).toBe("passed");
+    expect(result.manifest.adapters).toHaveLength(5);
+    expect(result.manifest.adapters[4]).toMatchObject({ name: "actual-wallet-library" });
+    expect(createExternalAdapter).toHaveBeenCalledOnce();
+    const processOptions = createExternalAdapter.mock.calls[0]?.[0];
+    expect(processOptions).toMatchObject({
+      command: "/usr/bin/example-adapter",
+      env: { EXAMPLE_NETWORK: "regtest" },
+    });
+    const commitments = JSON.parse(processOptions?.env?.["PSBT_LAB_FIXTURE_COMMITMENTS"] ?? "{}");
+    expect(commitments).toEqual({
+      "happy-path": `sha256:${"c".repeat(64)}`,
+      p2wpkh: `sha256:${"d".repeat(64)}`,
+      "p2tr-keypath": `sha256:${"d".repeat(64)}`,
+    });
+    expect(externalAdapter.close).toHaveBeenCalledOnce();
   });
 });

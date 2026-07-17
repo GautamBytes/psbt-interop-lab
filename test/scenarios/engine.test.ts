@@ -225,6 +225,28 @@ describe("scenario engine", () => {
     });
   });
 
+  test("accepts a validated external adapter registered under its manifest id", async () => {
+    const run = vi.fn(async () => ({ assertions: passingEvidence("external-ran") }));
+    const externalAdapter: NegotiatedAdapter = {
+      ...rustAdapter,
+      registryId: "wallet-alias",
+      implementation: { ...rustAdapter.implementation, name: "actual-wallet-library" },
+    };
+
+    const [result] = await runScenarioCatalog(
+      [
+        scenario("external-alias", run, {
+          requirements: [{ adapter: "wallet-alias", operations: ["sign"] }],
+        }),
+      ],
+      { calls: [] },
+      new Map([["wallet-alias", externalAdapter]]),
+    );
+
+    expect(run).toHaveBeenCalledOnce();
+    expect(result).toMatchObject({ outcome: "passed" });
+  });
+
   test.each([
     ["operation", { operations: ["combine"] }, "combine"],
     ["role", { roles: ["combiner"] }, "combiner"],

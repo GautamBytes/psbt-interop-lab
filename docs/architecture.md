@@ -140,9 +140,13 @@ sequence, and removes a signature. It passes only when the semantic detectors id
 
 ## Extension Points
 
-`psbt-lab adapter check <manifest>` is the first external onboarding boundary. A strict versioned
+`psbt-lab adapter check <manifest>` validates the external onboarding boundary. A strict versioned
 manifest starts a trusted local command with `shell: false`, negotiates the JSONL protocol, verifies
 the expected identity and baseline parser capabilities, probes valid and malformed native parsing,
-and requires semantic roundtrip preservation. The built-in 18-scenario matrix still
-names its four reviewed adapters in source; passing conformance does not yet inject an external
-adapter into every scenario automatically. See [the adapter guide](adapters.md).
+and requires semantic roundtrip preservation.
+
+`psbt-lab matrix --adapter-manifest <manifest>` then registers each external process by its manifest
+ID while retaining the separately validated implementation identity. The runner preserves all 18
+bundled scenarios and appends capability-gated P2WPKH, P2WSH, and Taproot key-path parse, roundtrip,
+and signing scenarios. Run-scoped unsigned-transaction commitments authorize only deterministic
+regtest fixtures. See [the adapter guide](adapters.md).

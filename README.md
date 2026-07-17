@@ -55,6 +55,7 @@ the built-in matrix:
 ```bash
 psbt-lab adapter check ./adapters.json
 psbt-lab adapter check ./adapters.json --json
+psbt-lab matrix --adapter-manifest ./adapters.json
 ```
 
 The command validates the strict manifest, process transport, self-reported implementation
@@ -62,6 +63,11 @@ identity, capabilities, valid and malformed native-parser behavior, and semantic
 preservation. It executes the configured command directly with `shell: false`; the
 manifest must therefore be treated as trusted local code. See [the adapter guide](docs/adapters.md)
 and the bundled [manifest schema](src/conformance/adapter-manifest.schema.json).
+
+The matrix keeps all 18 bundled scenarios and appends native-parse and semantic-roundtrip cells for
+each external adapter across P2WPKH, P2WSH, and Taproot key-path fixtures. It also appends signing
+handoffs when the adapter declares the matching signer capabilities and the
+`fixture-commitment-sha256` safety feature.
 
 ## Current Coverage
 

@@ -77,6 +77,7 @@ export interface AdapterImplementation {
 }
 
 export interface NegotiatedAdapter {
+  registryId?: string;
   implementation: AdapterImplementation;
   capabilities: AdapterHelloCapabilities;
 }
