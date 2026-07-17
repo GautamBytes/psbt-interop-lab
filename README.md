@@ -157,6 +157,19 @@ This is test infrastructure, not a wallet or signer:
 Read [SECURITY.md](SECURITY.md) and the
 [threat model](psbt-interop-lab-threat-model.md) before extending the signing surface.
 
+## Website
+
+The public project website is a standalone Vite application under [`website/`](website/). Its
+dependencies and build output are isolated from the published CLI package.
+
+```bash
+cd website
+npm install
+npm test
+npm run build
+npm run dev
+```
+
 ## Development
 
 ```bash

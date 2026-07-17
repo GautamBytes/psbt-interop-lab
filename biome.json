@@ -3,12 +3,16 @@
   "files": {
     "includes": [
       "**",
-      "!!dist",
+      "!!**/dist",
+      "!!.vercel",
       "!!artifacts",
       "!!adapters/rust-bitcoin/target",
       "!!adapters/bdk-wallet-current/target",
       "!!adapters/rust-psbt-v2/target",
-      "!!src/generated/validators.ts"
+      "!!src/generated/validators.ts",
+      "!!website/*.tsbuildinfo",
+      "!!website/vite.config.js",
+      "!!website/vite.config.d.ts"
     ]
   },
   "formatter": {
