@@ -128,6 +128,43 @@ describe("CLI program", () => {
     }
   }, 35_000);
 
+  test("rejects filtered custom suites before invoking Docker", () => {
+    const directory = mkdtempSync(resolve(tmpdir(), "psbt-lab-selector-suite-"));
+    const marker = resolve(directory, "docker-invoked");
+    const docker = resolve(directory, "docker");
+    const entrypoint = fileURLToPath(new URL("../src/cli.ts", import.meta.url));
+    const suite = fileURLToPath(new URL("../examples/custom-suite.json", import.meta.url));
+    writeFileSync(docker, `#!/bin/sh\ntouch ${JSON.stringify(marker)}\nexit 99\n`);
+    chmodSync(docker, 0o700);
+
+    try {
+      const result = spawnSync(
+        process.execPath,
+        [
+          "--import",
+          "tsx",
+          entrypoint,
+          "run",
+          "--scenario",
+          "happy-path",
+          "--suite-manifest",
+          suite,
+        ],
+        {
+          encoding: "utf8",
+          timeout: 30_000,
+          env: { ...process.env, PATH: `${directory}:${process.env["PATH"] ?? ""}` },
+        },
+      );
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toMatch(/scenario selection.*suite manifest/i);
+      expect(existsSync(marker)).toBe(false);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  }, 35_000);
+
   test("runs when launched through an npm-style executable symlink", () => {
     const directory = mkdtempSync(resolve(tmpdir(), "psbt-lab-cli-"));
     const entrypoint = resolve(directory, "psbt-lab.ts");

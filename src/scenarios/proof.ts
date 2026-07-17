@@ -565,6 +565,22 @@ export function resolveProofSelection(selectors: ProofSelectors = {}): ResolvedP
   };
 }
 
+export function assertProofSelectionCompatibility(
+  selection: ResolvedProofSelection,
+  manifests: { readonly adapter: boolean; readonly suite: boolean },
+): void {
+  if (selection.filtered && manifests.suite) {
+    throw new Error(
+      "Scenario selection cannot be combined with a suite manifest because custom scenarios are not statically registered",
+    );
+  }
+  if (selection.filtered && manifests.adapter) {
+    throw new Error(
+      "Scenario selection cannot be combined with an adapter manifest because external scenarios require capability negotiation",
+    );
+  }
+}
+
 function runIdentifier(date = new Date()): string {
   const timestamp = date
     .toISOString()
@@ -771,16 +787,10 @@ export async function runProofWithDependencies(
   dependencies: ProofDependencies,
 ): Promise<ProofResult> {
   const selection = resolveProofSelection(options.selectors);
-  if (selection.filtered && options.customSuite) {
-    throw new Error(
-      "Scenario selection cannot be combined with a suite manifest because custom scenarios are not statically registered",
-    );
-  }
-  if (selection.filtered && options.adapterManifest) {
-    throw new Error(
-      "Scenario selection cannot be combined with an adapter manifest because external scenarios require capability negotiation",
-    );
-  }
+  assertProofSelectionCompatibility(selection, {
+    adapter: options.adapterManifest !== undefined,
+    suite: options.customSuite !== undefined,
+  });
   const startedAt = new Date().toISOString();
   const runId = runIdentifier();
   const artifacts = await dependencies.createArtifacts(resolve(options.artifactRoot), runId);

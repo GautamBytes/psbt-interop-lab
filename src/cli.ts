@@ -23,6 +23,7 @@ import { formatParseMatrix, runParseMatrix } from "./local/parse-matrix.js";
 import { createLocalRuntimeProvider } from "./local/provider.js";
 import { verifyReplay } from "./runner/replay.js";
 import {
+  assertProofSelectionCompatibility,
   type BuiltInAdapterId,
   PROOF_SCENARIOS,
   type ProofScenarioResources,
@@ -165,6 +166,15 @@ async function executeProof(options: RunOptions): Promise<void> {
   if (options.suite !== "proof") {
     throw new Error(`Unknown suite ${options.suite}; the available suite is proof`);
   }
+  const selectors = {
+    ...(options.scenario.length > 0 ? { scenarios: options.scenario } : {}),
+    ...(options.category !== undefined ? { category: options.category } : {}),
+  };
+  const selection = resolveProofSelection(selectors);
+  assertProofSelectionCompatibility(selection, {
+    adapter: options.adapterManifest !== undefined,
+    suite: options.suiteManifest !== undefined,
+  });
   const adapterManifest =
     options.adapterManifest === undefined
       ? undefined
@@ -173,11 +183,6 @@ async function executeProof(options: RunOptions): Promise<void> {
     options.suiteManifest === undefined
       ? undefined
       : await loadCustomSuiteManifest(options.suiteManifest);
-  const selectors = {
-    ...(options.scenario.length > 0 ? { scenarios: options.scenario } : {}),
-    ...(options.category !== undefined ? { category: options.category } : {}),
-  };
-  const selection = resolveProofSelection(selectors);
   await prepareRuntime(options, selection.resources);
   const rpc = new CoreRpc({
     url: options.rpcUrl,
