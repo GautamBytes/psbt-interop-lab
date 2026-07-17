@@ -17,6 +17,17 @@ export interface CheckpointRecord {
 
 export type ScenarioRecord = ScenarioResult;
 
+export interface RunSelectors {
+  requested: {
+    scenarios?: string[];
+    category?: string;
+  };
+  executed: {
+    scenarios: string[];
+    categories: string[];
+  };
+}
+
 export interface RunManifest {
   schema: "psbt-lab.run/0.1";
   runId: string;
@@ -24,12 +35,13 @@ export interface RunManifest {
   startedAt: string;
   completedAt: string;
   outcome: "passed" | "failed";
-  core: {
+  core?: {
     version: number;
     subversion: string;
     blocks: number;
     connections: number;
   };
+  selectors?: RunSelectors;
   adapters: AdapterImplementation[];
   scenarios: ScenarioRecord[];
   checkpoints: CheckpointRecord[];

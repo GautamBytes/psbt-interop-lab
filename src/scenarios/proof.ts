@@ -3,7 +3,14 @@ import { resolve } from "node:path";
 import { type AdapterManifest, FIXTURE_COMMITMENTS_ENV } from "../conformance/manifest.js";
 import { createExternalAdapterScenarios } from "../conformance/matrix.js";
 import { createExternalAdapterRegistry, negotiateExternalAdapter } from "../conformance/runtime.js";
-import { type PreparedFixtures, type PsbtFixture, prepareFixtures } from "../core/fixtures.js";
+import {
+  type BuiltInFixtureId,
+  type PreparedFixtureSet,
+  type PreparedFixtures,
+  type PreparedPsbtFixture,
+  type PsbtFixture,
+  prepareFixtures,
+} from "../core/fixtures.js";
 import type { CoreRpc } from "../core/rpc.js";
 import { type CompiledUserFixturePlan, compileUserFixturePlans } from "../custom/fixtures.js";
 import type { CustomSuiteManifest } from "../custom/manifest.js";
@@ -56,6 +63,7 @@ const BUILT_IN_ADAPTER_IDS = [
   "bdk-wallet-current",
   "rust-psbt-v2",
 ] as const;
+export type BuiltInAdapterId = (typeof BUILT_IN_ADAPTER_IDS)[number];
 const MODERN_ROUNDTRIP_ADAPTERS = [
   "rust-bitcoin",
   "btcsuite-go",
@@ -70,6 +78,7 @@ export interface ProofOptions {
   adapterTimeoutMs?: number;
   adapterManifest?: AdapterManifest;
   customSuite?: CustomSuiteManifest;
+  selectors?: ProofSelectors;
 }
 
 export interface ProofResult {
@@ -81,6 +90,23 @@ export interface ProofScenarioSummary {
   readonly id: string;
   readonly title: string;
   readonly category: string;
+}
+
+export interface ProofSelectors {
+  readonly scenarios?: readonly string[];
+  readonly category?: string;
+}
+
+export interface ProofScenarioResources {
+  readonly core: boolean;
+  readonly fixtures: readonly BuiltInFixtureId[];
+  readonly adapters: readonly BuiltInAdapterId[];
+}
+
+export interface ResolvedProofSelection {
+  readonly scenarioIds: readonly string[];
+  readonly resources: ProofScenarioResources;
+  readonly filtered: boolean;
 }
 
 export const PROOF_SCENARIOS: readonly ProofScenarioSummary[] = [
@@ -235,7 +261,8 @@ export interface ProofDependencies {
   prepareFixtures(
     rpc: CoreRpc,
     customPlans?: readonly CompiledUserFixturePlan[],
-  ): Promise<PreparedFixtures>;
+    requiredFixtureIds?: readonly BuiltInFixtureId[],
+  ): Promise<PreparedFixtureSet>;
   createAdapter(
     image: string,
     projectDirectory: string,
@@ -243,9 +270,299 @@ export interface ProofDependencies {
   ): ProofRuntimeAdapter;
   createExternalAdapter?(options: AdapterProcessOptions): ProofRuntimeAdapter;
   createCatalog(
-    fixtures: PreparedFixtures,
+    fixtures: PreparedFixtureSet | undefined,
     externalAdapters?: ReadonlyMap<string, NegotiatedAdapter>,
+    selectedIds?: readonly string[],
   ): readonly ScenarioDefinition<ScenarioExecutionContext>[];
+}
+
+export interface ProofScenarioRegistration extends ProofScenarioSummary {
+  readonly resources: ProofScenarioResources;
+  create(fixtures: PreparedFixtureSet | undefined): ScenarioDefinition<ScenarioExecutionContext>;
+}
+
+function requiredFixture(
+  fixtures: PreparedFixtureSet | undefined,
+  id: BuiltInFixtureId,
+): PreparedPsbtFixture {
+  const fixture =
+    id === "happy-path"
+      ? fixtures?.happy
+      : id === "bdk-finalize-regression"
+        ? fixtures?.regression
+        : fixtures?.profiles[id];
+  if (!fixture) throw new Error(`Required fixture ${id} was not prepared`);
+  return fixture;
+}
+
+function registerScenario(
+  id: string,
+  resources: ProofScenarioResources,
+  create: ProofScenarioRegistration["create"],
+): ProofScenarioRegistration {
+  const summary = PROOF_SCENARIOS.find((scenario) => scenario.id === id);
+  if (!summary) throw new Error(`Missing proof scenario summary for ${id}`);
+  return { ...summary, resources, create };
+}
+
+export const PROOF_SCENARIO_REGISTRATIONS: readonly ProofScenarioRegistration[] = [
+  registerScenario(
+    "happy-path",
+    { core: true, fixtures: ["happy-path"], adapters: ["rust-bitcoin"] },
+    (fixtures) => createHappyPathScenario(requiredFixture(fixtures, "happy-path")),
+  ),
+  registerScenario(
+    "p2wsh-sign-btcsuite-go",
+    { core: true, fixtures: ["happy-path"], adapters: ["btcsuite-go"] },
+    (fixtures) =>
+      createHappyPathScenario(requiredFixture(fixtures, "happy-path"), {
+        adapter: "btcsuite-go",
+        id: "p2wsh-sign-btcsuite-go",
+        title: "Core to btcsuite signing handoff",
+      }),
+  ),
+  registerScenario(
+    "p2wsh-sign-bitcoinjs-lib",
+    { core: true, fixtures: ["happy-path"], adapters: ["bitcoinjs-lib"] },
+    (fixtures) =>
+      createHappyPathScenario(requiredFixture(fixtures, "happy-path"), {
+        adapter: "bitcoinjs-lib",
+        id: "p2wsh-sign-bitcoinjs-lib",
+        title: "Core to bitcoinjs-lib signing handoff",
+      }),
+  ),
+  ...(
+    [
+      ["p2wpkh-sign-rust-bitcoin", "rust-bitcoin", "P2WPKH signing through rust-bitcoin"],
+      ["p2wpkh-sign-btcsuite-go", "btcsuite-go", "P2WPKH signing through btcsuite"],
+      ["p2wpkh-sign-bitcoinjs-lib", "bitcoinjs-lib", "P2WPKH signing through bitcoinjs-lib"],
+    ] as const
+  ).map(([id, adapter, title]) =>
+    registerScenario(id, { core: true, fixtures: ["p2wpkh"], adapters: [adapter] }, (fixtures) =>
+      createHappyPathScenario(requiredFixture(fixtures, "p2wpkh"), {
+        adapter,
+        id,
+        title,
+        scriptType: "p2wpkh",
+        signatureKeyTypes: [0x02],
+      }),
+    ),
+  ),
+  ...(
+    [
+      [
+        "p2tr-keypath-sign-rust-bitcoin",
+        "rust-bitcoin",
+        "Taproot key-path signing through rust-bitcoin",
+      ],
+      ["p2tr-keypath-sign-btcsuite-go", "btcsuite-go", "Taproot key-path signing through btcsuite"],
+      [
+        "p2tr-keypath-sign-bitcoinjs-lib",
+        "bitcoinjs-lib",
+        "Taproot key-path signing through bitcoinjs-lib",
+      ],
+    ] as const
+  ).map(([id, adapter, title]) =>
+    registerScenario(
+      id,
+      { core: true, fixtures: ["p2tr-keypath"], adapters: [adapter] },
+      (fixtures) =>
+        createHappyPathScenario(requiredFixture(fixtures, "p2tr-keypath"), {
+          adapter,
+          id,
+          title,
+          category: "taproot-key-path",
+          scriptType: "p2tr-keypath",
+          signatureKeyTypes: [0x13],
+        }),
+    ),
+  ),
+  registerScenario(
+    "same-input-2-of-3-multisig",
+    {
+      core: true,
+      fixtures: ["p2wsh-2-of-3"],
+      adapters: ["rust-bitcoin", "bitcoinjs-lib"],
+    },
+    (fixtures) => createSameInputMultisigScenario(requiredFixture(fixtures, "p2wsh-2-of-3")),
+  ),
+  registerScenario(
+    "four-library-roundtrip-chain",
+    {
+      core: true,
+      fixtures: ["happy-path"],
+      adapters: ["rust-bitcoin", "btcsuite-go", "bitcoinjs-lib", "bdkpython"],
+    },
+    (fixtures) => createRoundtripChainScenario(requiredFixture(fixtures, "happy-path")),
+  ),
+  registerScenario(
+    "parallel-sign-and-combine",
+    {
+      core: true,
+      fixtures: ["bdk-finalize-regression"],
+      adapters: ["rust-bitcoin", "btcsuite-go", "bitcoinjs-lib"],
+    },
+    (fixtures) =>
+      createParallelCombineScenario(requiredFixture(fixtures, "bdk-finalize-regression")),
+  ),
+  registerScenario(
+    "transaction-intent-preservation",
+    {
+      core: true,
+      fixtures: ["intent-rich-p2wpkh"],
+      adapters: ["rust-bitcoin", "btcsuite-go", "bitcoinjs-lib"],
+    },
+    (fixtures) => createTransactionIntentScenario(requiredFixture(fixtures, "intent-rich-p2wpkh")),
+  ),
+  registerScenario(
+    "invalid-and-unsupported-inputs",
+    {
+      core: true,
+      fixtures: ["happy-path"],
+      adapters: ["rust-bitcoin", "btcsuite-go", "bitcoinjs-lib", "bdkpython"],
+    },
+    (fixtures) => createInvalidInputScenario(requiredFixture(fixtures, "happy-path")),
+  ),
+  registerScenario(
+    "proprietary-metadata-preservation",
+    {
+      core: true,
+      fixtures: ["p2wsh-2-of-3"],
+      adapters: ["rust-bitcoin", "btcsuite-go", "bitcoinjs-lib", "bdkpython"],
+    },
+    (fixtures) => createMetadataPreservationScenario(requiredFixture(fixtures, "p2wsh-2-of-3")),
+  ),
+  ...(
+    [
+      ["bdk-finalize-regression", "rust-bitcoin", "BDK mixed-input finalization regression"],
+      ["bdk-regression-btcsuite-go", "btcsuite-go", "BDK regression through btcsuite finalization"],
+      [
+        "bdk-regression-bitcoinjs-lib",
+        "bitcoinjs-lib",
+        "BDK regression through bitcoinjs-lib finalization",
+      ],
+    ] as const
+  ).map(([id, adapter, title]) =>
+    registerScenario(
+      id,
+      {
+        core: true,
+        fixtures: ["bdk-finalize-regression"],
+        adapters: [adapter, "bdkpython"],
+      },
+      (fixtures) =>
+        createBdkRegressionScenario(requiredFixture(fixtures, "bdk-finalize-regression"), {
+          adapter,
+          id,
+          title,
+        }),
+    ),
+  ),
+  ...(
+    [
+      ["p2wsh-sign-bdk-wallet-current", "happy-path", "P2WSH signing through current BDK Wallet"],
+      ["p2wpkh-sign-bdk-wallet-current", "p2wpkh", "P2WPKH signing through current BDK Wallet"],
+      [
+        "p2tr-keypath-sign-bdk-wallet-current",
+        "p2tr-keypath",
+        "Taproot key-path signing through current BDK Wallet",
+      ],
+    ] as const
+  ).map(([id, fixtureId, title]) =>
+    registerScenario(
+      id,
+      { core: true, fixtures: [fixtureId], adapters: ["bdk-wallet-current"] },
+      (fixtures) =>
+        createHappyPathScenario(requiredFixture(fixtures, fixtureId), {
+          adapter: "bdk-wallet-current",
+          id,
+          title,
+          ...(fixtureId === "p2wpkh"
+            ? { scriptType: "p2wpkh" as const, signatureKeyTypes: [0x02] }
+            : fixtureId === "p2tr-keypath"
+              ? {
+                  category: "taproot-key-path",
+                  scriptType: "p2tr-keypath" as const,
+                  signatureKeyTypes: [0x13],
+                }
+              : {}),
+        }),
+    ),
+  ),
+  ...(
+    [
+      ["nested-segwit-roundtrip-matrix", "p2sh-p2wpkh", "Nested SegWit roundtrip matrix"],
+      [
+        "taproot-scriptpath-roundtrip-matrix",
+        "p2tr-scriptpath",
+        "Taproot script-path roundtrip matrix",
+      ],
+    ] as const
+  ).map(([id, fixtureId, title]) =>
+    registerScenario(
+      id,
+      {
+        core: true,
+        fixtures: [fixtureId],
+        adapters: ["rust-bitcoin", "btcsuite-go", "bitcoinjs-lib", "bdk-wallet-current"],
+      },
+      (fixtures) =>
+        createScriptProfileRoundtripScenario(requiredFixture(fixtures, fixtureId), {
+          id,
+          title,
+          adapters: MODERN_ROUNDTRIP_ADAPTERS,
+        }),
+    ),
+  ),
+  registerScenario(
+    "bip370-official-vectors-rust-psbt-v2",
+    { core: false, fixtures: [], adapters: ["rust-psbt-v2"] },
+    () => createBip370VectorScenario("rust-psbt-v2"),
+  ),
+];
+
+export function resolveProofSelection(selectors: ProofSelectors = {}): ResolvedProofSelection {
+  const requestedIds = [...new Set(selectors.scenarios ?? [])];
+  const byId = new Map(
+    PROOF_SCENARIO_REGISTRATIONS.map((registration) => [registration.id, registration]),
+  );
+  const unknownIds = requestedIds.filter((id) => !byId.has(id));
+  if (unknownIds.length > 0) {
+    throw new TypeError(
+      `Unknown scenario${unknownIds.length === 1 ? "" : "s"} ${unknownIds.join(", ")}. Available scenarios: ${PROOF_SCENARIOS.map(({ id }) => id).join(", ")}`,
+    );
+  }
+  const categories = [...new Set(PROOF_SCENARIOS.map(({ category }) => category))];
+  if (selectors.category !== undefined && !categories.includes(selectors.category)) {
+    throw new TypeError(
+      `Unknown category ${selectors.category}. Available categories: ${categories.join(", ")}`,
+    );
+  }
+  const selected = (
+    requestedIds.length > 0
+      ? requestedIds.map((id) => byId.get(id) as ProofScenarioRegistration)
+      : [...PROOF_SCENARIO_REGISTRATIONS]
+  ).filter((registration) =>
+    selectors.category === undefined ? true : registration.category === selectors.category,
+  );
+  if (selected.length === 0) {
+    throw new TypeError(
+      `No requested scenarios match category ${selectors.category ?? "selection"}`,
+    );
+  }
+  const fixtureIds = [
+    ...new Set(selected.flatMap((registration) => registration.resources.fixtures)),
+  ];
+  const adapterIds = new Set(selected.flatMap((registration) => registration.resources.adapters));
+  return {
+    scenarioIds: selected.map(({ id }) => id),
+    resources: {
+      core: selected.some((registration) => registration.resources.core),
+      fixtures: fixtureIds,
+      adapters: BUILT_IN_ADAPTER_IDS.filter((id) => adapterIds.has(id)),
+    },
+    filtered: requestedIds.length > 0 || selectors.category !== undefined,
+  };
 }
 
 function runIdentifier(date = new Date()): string {
@@ -330,127 +647,35 @@ function negotiatedMap(adapters: readonly NegotiatedAdapter[]): Map<string, Nego
 }
 
 export function createProofCatalog(
-  fixtures: PreparedFixtures,
+  fixtures: PreparedFixtureSet | undefined,
   externalAdapters: ReadonlyMap<string, NegotiatedAdapter> = new Map(),
+  selectedIds?: readonly string[],
 ): readonly ScenarioDefinition<ScenarioExecutionContext>[] {
-  const definitions = [
-    createHappyPathScenario(fixtures.happy),
-    createHappyPathScenario(fixtures.happy, {
-      adapter: "btcsuite-go",
-      id: "p2wsh-sign-btcsuite-go",
-      title: "Core to btcsuite signing handoff",
-    }),
-    createHappyPathScenario(fixtures.happy, {
-      adapter: "bitcoinjs-lib",
-      id: "p2wsh-sign-bitcoinjs-lib",
-      title: "Core to bitcoinjs-lib signing handoff",
-    }),
-    createHappyPathScenario(fixtures.profiles.p2wpkh, {
-      adapter: "rust-bitcoin",
-      id: "p2wpkh-sign-rust-bitcoin",
-      title: "P2WPKH signing through rust-bitcoin",
-      scriptType: "p2wpkh",
-      signatureKeyTypes: [0x02],
-    }),
-    createHappyPathScenario(fixtures.profiles.p2wpkh, {
-      adapter: "btcsuite-go",
-      id: "p2wpkh-sign-btcsuite-go",
-      title: "P2WPKH signing through btcsuite",
-      scriptType: "p2wpkh",
-      signatureKeyTypes: [0x02],
-    }),
-    createHappyPathScenario(fixtures.profiles.p2wpkh, {
-      adapter: "bitcoinjs-lib",
-      id: "p2wpkh-sign-bitcoinjs-lib",
-      title: "P2WPKH signing through bitcoinjs-lib",
-      scriptType: "p2wpkh",
-      signatureKeyTypes: [0x02],
-    }),
-    createHappyPathScenario(fixtures.profiles["p2tr-keypath"], {
-      adapter: "rust-bitcoin",
-      id: "p2tr-keypath-sign-rust-bitcoin",
-      title: "Taproot key-path signing through rust-bitcoin",
-      category: "taproot-key-path",
-      scriptType: "p2tr-keypath",
-      signatureKeyTypes: [0x13],
-    }),
-    createHappyPathScenario(fixtures.profiles["p2tr-keypath"], {
-      adapter: "btcsuite-go",
-      id: "p2tr-keypath-sign-btcsuite-go",
-      title: "Taproot key-path signing through btcsuite",
-      category: "taproot-key-path",
-      scriptType: "p2tr-keypath",
-      signatureKeyTypes: [0x13],
-    }),
-    createHappyPathScenario(fixtures.profiles["p2tr-keypath"], {
-      adapter: "bitcoinjs-lib",
-      id: "p2tr-keypath-sign-bitcoinjs-lib",
-      title: "Taproot key-path signing through bitcoinjs-lib",
-      category: "taproot-key-path",
-      scriptType: "p2tr-keypath",
-      signatureKeyTypes: [0x13],
-    }),
-    createSameInputMultisigScenario(fixtures.profiles["p2wsh-2-of-3"]),
-    createRoundtripChainScenario(fixtures.happy),
-    createParallelCombineScenario(fixtures.regression),
-    createTransactionIntentScenario(fixtures.profiles["intent-rich-p2wpkh"]),
-    createInvalidInputScenario(fixtures.happy),
-    createMetadataPreservationScenario(fixtures.profiles["p2wsh-2-of-3"]),
-    createBdkRegressionScenario(fixtures.regression),
-    createBdkRegressionScenario(fixtures.regression, {
-      adapter: "btcsuite-go",
-      id: "bdk-regression-btcsuite-go",
-      title: "BDK regression through btcsuite finalization",
-    }),
-    createBdkRegressionScenario(fixtures.regression, {
-      adapter: "bitcoinjs-lib",
-      id: "bdk-regression-bitcoinjs-lib",
-      title: "BDK regression through bitcoinjs-lib finalization",
-    }),
-    createHappyPathScenario(fixtures.happy, {
-      adapter: "bdk-wallet-current",
-      id: "p2wsh-sign-bdk-wallet-current",
-      title: "P2WSH signing through current BDK Wallet",
-    }),
-    createHappyPathScenario(fixtures.profiles.p2wpkh, {
-      adapter: "bdk-wallet-current",
-      id: "p2wpkh-sign-bdk-wallet-current",
-      title: "P2WPKH signing through current BDK Wallet",
-      scriptType: "p2wpkh",
-      signatureKeyTypes: [0x02],
-    }),
-    createHappyPathScenario(fixtures.profiles["p2tr-keypath"], {
-      adapter: "bdk-wallet-current",
-      id: "p2tr-keypath-sign-bdk-wallet-current",
-      title: "Taproot key-path signing through current BDK Wallet",
-      category: "taproot-key-path",
-      scriptType: "p2tr-keypath",
-      signatureKeyTypes: [0x13],
-    }),
-    createScriptProfileRoundtripScenario(fixtures.profiles["p2sh-p2wpkh"], {
-      id: "nested-segwit-roundtrip-matrix",
-      title: "Nested SegWit roundtrip matrix",
-      adapters: MODERN_ROUNDTRIP_ADAPTERS,
-    }),
-    createScriptProfileRoundtripScenario(fixtures.profiles["p2tr-scriptpath"], {
-      id: "taproot-scriptpath-roundtrip-matrix",
-      title: "Taproot script-path roundtrip matrix",
-      adapters: MODERN_ROUNDTRIP_ADAPTERS,
-    }),
-    createBip370VectorScenario("rust-psbt-v2"),
-  ];
+  const selected = selectedIds
+    ? selectedIds.map((id) => {
+        const registration = PROOF_SCENARIO_REGISTRATIONS.find((candidate) => candidate.id === id);
+        if (!registration) throw new TypeError(`Unknown selected scenario ${id}`);
+        return registration;
+      })
+    : PROOF_SCENARIO_REGISTRATIONS;
+  const definitions = selected.map((registration) => registration.create(fixtures));
   for (const [index, definition] of definitions.entries()) {
-    const declared = PROOF_SCENARIOS[index];
+    const registration = selected[index];
     if (
-      !declared ||
-      definition.id !== declared.id ||
-      definition.title !== declared.title ||
-      definition.category !== declared.category
+      !registration ||
+      definition.id !== registration.id ||
+      definition.title !== registration.title ||
+      definition.category !== registration.category
     ) {
       throw new Error(`Proof scenario catalog metadata mismatch at index ${index}`);
     }
   }
-  return [...definitions, ...createExternalAdapterScenarios(fixtures, externalAdapters)];
+  if (selectedIds || externalAdapters.size === 0) return definitions;
+  if (!fixtures) throw new Error("External adapter scenarios require prepared fixtures");
+  return [
+    ...definitions,
+    ...createExternalAdapterScenarios(fixtures as PreparedFixtures, externalAdapters),
+  ];
 }
 
 const DEFAULT_DEPENDENCIES: ProofDependencies = {
@@ -461,128 +686,165 @@ const DEFAULT_DEPENDENCIES: ProofDependencies = {
   createCatalog: createProofCatalog,
 };
 
+const COMMON_COMMITMENT_FIXTURES: readonly BuiltInFixtureId[] = [
+  "happy-path",
+  "bdk-finalize-regression",
+  "p2wpkh",
+  "p2wsh-2-of-3",
+  "p2tr-keypath",
+];
+const RUST_COMMITMENT_FIXTURES: readonly BuiltInFixtureId[] = [
+  ...COMMON_COMMITMENT_FIXTURES,
+  "intent-rich-p2wpkh",
+];
+
+function preparedFixture(
+  fixtures: PreparedFixtureSet | undefined,
+  id: BuiltInFixtureId,
+): PreparedPsbtFixture | undefined {
+  return id === "happy-path"
+    ? fixtures?.happy
+    : id === "bdk-finalize-regression"
+      ? fixtures?.regression
+      : fixtures?.profiles[id];
+}
+
+function adapterImage(id: BuiltInAdapterId): string {
+  switch (id) {
+    case "rust-bitcoin":
+      return RUST_IMAGE;
+    case "btcsuite-go":
+      return GO_IMAGE;
+    case "bitcoinjs-lib":
+      return BITCOINJS_IMAGE;
+    case "bdkpython":
+      return BDK_IMAGE;
+    case "bdk-wallet-current":
+      return BDK_CURRENT_IMAGE;
+    case "rust-psbt-v2":
+      return PSBTV2_IMAGE;
+  }
+}
+
+function adapterOptions(
+  id: BuiltInAdapterId,
+  fixtures: PreparedFixtureSet | undefined,
+): DockerAdapterOptions {
+  if (id === "bdkpython") return { platform: "linux/amd64" };
+  if (id === "rust-psbt-v2") return {};
+  const commitmentIds =
+    id === "rust-bitcoin" || id === "bdk-wallet-current"
+      ? RUST_COMMITMENT_FIXTURES
+      : COMMON_COMMITMENT_FIXTURES;
+  const commitments = commitmentIds.flatMap((fixtureId) => {
+    const fixture = preparedFixture(fixtures, fixtureId);
+    return fixture ? [fixture] : [];
+  });
+  return {
+    env: { [FIXTURE_COMMITMENTS_ENV]: serializeFixtureCommitments(commitments) },
+  };
+}
+
+async function negotiateBuiltInAdapter(
+  id: BuiltInAdapterId,
+  context: ScenarioExecutionContext,
+): Promise<NegotiatedAdapter> {
+  const response = await context.request(id, "hello", {});
+  switch (id) {
+    case "rust-bitcoin":
+      return assertAdapterHello(response, RUST_ADAPTER_CONTRACT);
+    case "btcsuite-go":
+      return assertAdapterHello(response, GO_ADAPTER_CONTRACT);
+    case "bitcoinjs-lib":
+      return assertAdapterHello(response, BITCOINJS_ADAPTER_CONTRACT);
+    case "bdkpython":
+      return assertAdapterHello(response, BDK_ADAPTER_CONTRACT);
+    case "bdk-wallet-current":
+      return assertAdapterHello(response, BDK_CURRENT_ADAPTER_CONTRACT);
+    case "rust-psbt-v2":
+      return assertAdapterHello(response, PSBTV2_ADAPTER_CONTRACT);
+  }
+}
+
 export async function runProofWithDependencies(
   options: ProofOptions,
   dependencies: ProofDependencies,
 ): Promise<ProofResult> {
+  const selection = resolveProofSelection(options.selectors);
   const startedAt = new Date().toISOString();
   const runId = runIdentifier();
   const artifacts = await dependencies.createArtifacts(resolve(options.artifactRoot), runId);
-  const customPlans = options.customSuite
-    ? compileUserFixturePlans(options.customSuite.fixtures)
-    : [];
-  const fixtures = await dependencies.prepareFixtures(options.rpc, customPlans);
+  const customPlans =
+    !selection.filtered && options.customSuite
+      ? compileUserFixturePlans(options.customSuite.fixtures)
+      : [];
+  const fixtures = selection.resources.core
+    ? selection.filtered
+      ? await dependencies.prepareFixtures(options.rpc, customPlans, selection.resources.fixtures)
+      : await dependencies.prepareFixtures(options.rpc, customPlans)
+    : undefined;
   const timeoutMs = options.adapterTimeoutMs ?? 60_000;
-  const commonCommitmentConfiguration = serializeFixtureCommitments([
-    fixtures.happy,
-    fixtures.regression,
-    fixtures.profiles.p2wpkh,
-    fixtures.profiles["p2wsh-2-of-3"],
-    fixtures.profiles["p2tr-keypath"],
-  ] satisfies readonly PsbtFixture[]);
-  const rustCommitmentConfiguration = serializeFixtureCommitments([
-    fixtures.happy,
-    fixtures.regression,
-    fixtures.profiles.p2wpkh,
-    fixtures.profiles["p2wsh-2-of-3"],
-    fixtures.profiles["p2tr-keypath"],
-    fixtures.profiles["intent-rich-p2wpkh"],
-  ] satisfies readonly PsbtFixture[]);
-  const externalCommitmentConfiguration = serializeFixtureCommitments([
-    fixtures.happy,
-    fixtures.profiles.p2wpkh,
-    fixtures.profiles["p2sh-p2wpkh"],
-    fixtures.profiles["p2tr-keypath"],
-    fixtures.profiles["p2tr-scriptpath"],
-    ...Object.values(fixtures.custom),
-  ] satisfies readonly PsbtFixture[]);
   const projectDirectory = resolve(options.projectDirectory);
-  const rust = dependencies.createAdapter(RUST_IMAGE, projectDirectory, {
-    env: { [FIXTURE_COMMITMENTS_ENV]: rustCommitmentConfiguration },
-  });
-  const go = dependencies.createAdapter(GO_IMAGE, projectDirectory, {
-    env: { [FIXTURE_COMMITMENTS_ENV]: commonCommitmentConfiguration },
-  });
-  const bitcoinjs = dependencies.createAdapter(BITCOINJS_IMAGE, projectDirectory, {
-    env: { [FIXTURE_COMMITMENTS_ENV]: commonCommitmentConfiguration },
-  });
-  const bdk = dependencies.createAdapter(BDK_IMAGE, projectDirectory, {
-    platform: "linux/amd64",
-  });
-  const bdkCurrent = dependencies.createAdapter(BDK_CURRENT_IMAGE, projectDirectory, {
-    env: { [FIXTURE_COMMITMENTS_ENV]: rustCommitmentConfiguration },
-  });
-  const psbtv2 = dependencies.createAdapter(PSBTV2_IMAGE, projectDirectory);
-  const externalRuntime = options.adapterManifest
-    ? createExternalAdapterRegistry(
-        options.adapterManifest,
-        externalCommitmentConfiguration,
-        dependencies.createExternalAdapter ??
-          ((processOptions) => new AdapterProcess(processOptions)),
-        BUILT_IN_ADAPTER_IDS,
-      )
-    : new Map();
+  const builtInRuntime = new Map<BuiltInAdapterId, ProofRuntimeAdapter>();
+  for (const id of selection.resources.adapters) {
+    builtInRuntime.set(
+      id,
+      dependencies.createAdapter(adapterImage(id), projectDirectory, adapterOptions(id, fixtures)),
+    );
+  }
+  const externalCommitmentConfiguration =
+    !selection.filtered && options.adapterManifest && fixtures
+      ? serializeFixtureCommitments([
+          requiredFixture(fixtures, "happy-path"),
+          requiredFixture(fixtures, "p2wpkh"),
+          requiredFixture(fixtures, "p2sh-p2wpkh"),
+          requiredFixture(fixtures, "p2tr-keypath"),
+          requiredFixture(fixtures, "p2tr-scriptpath"),
+          ...Object.values(fixtures.custom),
+        ] satisfies readonly PsbtFixture[])
+      : undefined;
+  const externalRuntime =
+    !selection.filtered && options.adapterManifest
+      ? createExternalAdapterRegistry(
+          options.adapterManifest,
+          externalCommitmentConfiguration as string,
+          dependencies.createExternalAdapter ??
+            ((processOptions) => new AdapterProcess(processOptions)),
+          BUILT_IN_ADAPTER_IDS,
+        )
+      : new Map();
   const context = new ScenarioExecutionContext({
     rpc: options.rpc,
     artifacts,
     adapters: new Map([
-      ["rust-bitcoin", rust],
-      ["btcsuite-go", go],
-      ["bitcoinjs-lib", bitcoinjs],
-      ["bdkpython", bdk],
-      ["bdk-wallet-current", bdkCurrent],
-      ["rust-psbt-v2", psbtv2],
+      ...builtInRuntime,
       ...[...externalRuntime].map(([id, runtime]) => [id, runtime.process] as const),
     ]),
     adapterTimeoutMs: timeoutMs,
   });
 
   try {
-    const rustHello = assertAdapterHello(
-      await context.request("rust-bitcoin", "hello", {}),
-      RUST_ADAPTER_CONTRACT,
-    );
-    const bdkHello = assertAdapterHello(
-      await context.request("bdkpython", "hello", {}),
-      BDK_ADAPTER_CONTRACT,
-    );
-    const bdkCurrentHello = assertAdapterHello(
-      await context.request("bdk-wallet-current", "hello", {}),
-      BDK_CURRENT_ADAPTER_CONTRACT,
-    );
-    const goHello = assertAdapterHello(
-      await context.request("btcsuite-go", "hello", {}),
-      GO_ADAPTER_CONTRACT,
-    );
-    const bitcoinjsHello = assertAdapterHello(
-      await context.request("bitcoinjs-lib", "hello", {}),
-      BITCOINJS_ADAPTER_CONTRACT,
-    );
-    const psbtv2Hello = assertAdapterHello(
-      await context.request("rust-psbt-v2", "hello", {}),
-      PSBTV2_ADAPTER_CONTRACT,
-    );
+    const builtInNegotiated: NegotiatedAdapter[] = [];
+    for (const id of selection.resources.adapters) {
+      builtInNegotiated.push(await negotiateBuiltInAdapter(id, context));
+    }
     const externalNegotiated = new Map<string, NegotiatedAdapter>();
     for (const [id, runtime] of externalRuntime) {
       externalNegotiated.set(id, await negotiateExternalAdapter(runtime));
     }
-    const negotiated = [
-      rustHello,
-      goHello,
-      bitcoinjsHello,
-      bdkHello,
-      bdkCurrentHello,
-      psbtv2Hello,
-      ...externalNegotiated.values(),
-    ];
-    const customScenarios = options.customSuite
-      ? compileUserScenarios(
-          options.customSuite.scenarios,
-          new Map(Object.entries(fixtures.custom)),
-        )
-      : [];
+    const negotiated = [...builtInNegotiated, ...externalNegotiated.values()];
+    const customScenarios =
+      !selection.filtered && options.customSuite && fixtures
+        ? compileUserScenarios(
+            options.customSuite.scenarios,
+            new Map(Object.entries(fixtures.custom)),
+          )
+        : [];
+    const builtInCatalog = selection.filtered
+      ? dependencies.createCatalog(fixtures, externalNegotiated, selection.scenarioIds)
+      : dependencies.createCatalog(fixtures, externalNegotiated);
     const scenarios = await runScenarioCatalog(
-      [...dependencies.createCatalog(fixtures, externalNegotiated), ...customScenarios],
+      [...builtInCatalog, ...customScenarios],
       context,
       negotiatedMap(negotiated),
     );
@@ -596,7 +858,21 @@ export async function runProofWithDependencies(
       startedAt,
       completedAt: new Date().toISOString(),
       outcome,
-      core: fixtures.core,
+      ...(fixtures ? { core: fixtures.core } : {}),
+      selectors: {
+        requested: {
+          ...(options.selectors?.scenarios?.length
+            ? { scenarios: [...options.selectors.scenarios] }
+            : {}),
+          ...(options.selectors?.category !== undefined
+            ? { category: options.selectors.category }
+            : {}),
+        },
+        executed: {
+          scenarios: scenarios.map(({ id }) => id),
+          categories: [...new Set(scenarios.map(({ category }) => category))],
+        },
+      },
       adapters: negotiated.map((adapter) => adapter.implementation),
       scenarios,
       checkpoints: [...context.checkpoints],
@@ -613,12 +889,7 @@ export async function runProofWithDependencies(
     return { artifactDirectory: artifacts.directory, manifest };
   } finally {
     await Promise.all([
-      rust.close(),
-      go.close(),
-      bitcoinjs.close(),
-      bdk.close(),
-      bdkCurrent.close(),
-      psbtv2.close(),
+      ...[...builtInRuntime.values()].map((runtime) => runtime.close()),
       ...[...externalRuntime.values()].map((runtime) => runtime.process.close()),
     ]);
   }

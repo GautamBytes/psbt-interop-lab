@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -76,6 +76,57 @@ describe("CLI program", () => {
     expect(command?.options.some((option) => option.long === "--adapter-manifest")).toBe(true);
     expect(command?.options.some((option) => option.long === "--suite-manifest")).toBe(true);
   });
+
+  test.each(["run", "matrix"])(
+    "accepts repeatable scenarios and an optional category for %s",
+    (commandName) => {
+      const command = createProgram().commands.find(
+        (candidate) => candidate.name() === commandName,
+      );
+
+      command?.parseOptions([
+        "--scenario",
+        "happy-path",
+        "--scenario",
+        "p2wpkh-sign-rust-bitcoin",
+        "--category",
+        "cross-library-signing",
+      ]);
+
+      expect(command?.opts()).toMatchObject({
+        scenario: ["happy-path", "p2wpkh-sign-rust-bitcoin"],
+        category: "cross-library-signing",
+      });
+    },
+  );
+
+  test("rejects an unknown scenario with available selectors before invoking Docker", () => {
+    const directory = mkdtempSync(resolve(tmpdir(), "psbt-lab-selector-"));
+    const marker = resolve(directory, "docker-invoked");
+    const docker = resolve(directory, "docker");
+    const entrypoint = fileURLToPath(new URL("../src/cli.ts", import.meta.url));
+    writeFileSync(docker, `#!/bin/sh\ntouch ${JSON.stringify(marker)}\nexit 99\n`);
+    chmodSync(docker, 0o700);
+
+    try {
+      const result = spawnSync(
+        process.execPath,
+        ["--import", "tsx", entrypoint, "run", "--scenario", "does-not-exist"],
+        {
+          encoding: "utf8",
+          timeout: 30_000,
+          env: { ...process.env, PATH: `${directory}:${process.env["PATH"] ?? ""}` },
+        },
+      );
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toMatch(/Unknown scenario.*does-not-exist/i);
+      expect(result.stderr).toMatch(/happy-path/);
+      expect(existsSync(marker)).toBe(false);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  }, 35_000);
 
   test("runs when launched through an npm-style executable symlink", () => {
     const directory = mkdtempSync(resolve(tmpdir(), "psbt-lab-cli-"));

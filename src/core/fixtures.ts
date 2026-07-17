@@ -12,7 +12,6 @@ import {
 } from "./fixture-profiles.js";
 
 const COINBASE_MATURITY_BLOCKS = 100;
-const LEGACY_SINGLE_KEY_UTXOS = 3;
 const LEGACY_DESCRIPTOR_ID = "p2wsh-single-key" as const;
 const DEFAULT_GENERATE_MAX_TRIES = 1_000_000;
 const DEFAULT_SEQUENCE = 0xffff_fffd;
@@ -106,19 +105,27 @@ export interface PreparedPsbtFixture extends PsbtFixture {
   readonly transactionIntent: FixtureTransactionIntent;
 }
 
-export interface PreparedFixtures {
-  descriptor: string;
-  address: string;
+export interface PreparedFixtureSet {
+  descriptor?: string;
+  address?: string;
   core: {
     version: number;
     subversion: string;
     blocks: number;
     connections: number;
   };
+  happy?: PreparedPsbtFixture;
+  regression?: PreparedPsbtFixture;
+  profiles: Partial<Record<FixtureProfileId, PreparedPsbtFixture>>;
+  custom: Readonly<Record<string, PreparedPsbtFixture>>;
+}
+
+export interface PreparedFixtures extends PreparedFixtureSet {
+  descriptor: string;
+  address: string;
   happy: PreparedPsbtFixture;
   regression: PreparedPsbtFixture;
   profiles: Record<FixtureProfileId, PreparedPsbtFixture>;
-  custom: Readonly<Record<string, PreparedPsbtFixture>>;
 }
 
 interface BlockchainInfo {
@@ -349,10 +356,12 @@ export function satsToBtcString(sats: number): string {
 
 async function canonicalizeDescriptors(
   rpc: RpcCaller,
+  requiredIds: ReadonlySet<FixtureDescriptorId>,
 ): Promise<Record<FixtureDescriptorId, CanonicalDescriptor>> {
   const entries = await Promise.all(
-    (Object.entries(FIXTURE_DESCRIPTORS) as Array<[FixtureDescriptorId, string]>).map(
-      async ([id, raw]) => {
+    (Object.entries(FIXTURE_DESCRIPTORS) as Array<[FixtureDescriptorId, string]>)
+      .filter(([id]) => requiredIds.has(id))
+      .map(async ([id, raw]) => {
         const descriptorInfo = parseDescriptorInfo(
           await rpc.call("getdescriptorinfo", { descriptor: raw }),
         );
@@ -377,8 +386,7 @@ async function canonicalizeDescriptors(
             ),
           },
         ] as const;
-      },
-    ),
+      }),
   );
   return Object.fromEntries(entries) as Record<FixtureDescriptorId, CanonicalDescriptor>;
 }
@@ -427,8 +435,11 @@ async function scanFixtureUtxos(
   return selected;
 }
 
-function fixturePlans(customPlans: readonly CompiledUserFixturePlan[]): readonly FixturePlan[] {
-  const plans: readonly FixturePlan[] = [
+function fixturePlans(
+  customPlans: readonly CompiledUserFixturePlan[],
+  requiredFixtureIds?: readonly BuiltInFixtureId[],
+): readonly FixturePlan[] {
+  const builtInPlans: readonly FixturePlan[] = [
     {
       id: "happy-path",
       scriptTypes: ["p2wsh"],
@@ -459,6 +470,16 @@ function fixturePlans(customPlans: readonly CompiledUserFixturePlan[]): readonly
       transactionVersion: profile.transactionVersion,
       feeSats: profile.feeSats,
     })),
+  ];
+  const selectedIds = requiredFixtureIds ? new Set(requiredFixtureIds) : undefined;
+  if (selectedIds) {
+    const knownIds = new Set(builtInPlans.map((plan) => plan.id));
+    for (const id of selectedIds) {
+      if (!knownIds.has(id)) throw new TypeError(`Unknown built-in fixture ${id}`);
+    }
+  }
+  const plans: readonly FixturePlan[] = [
+    ...builtInPlans.filter((plan) => selectedIds?.has(plan.id as BuiltInFixtureId) ?? true),
     ...customPlans.map((plan) => ({
       id: plan.id,
       scriptTypes: plan.scriptTypes,
@@ -537,10 +558,13 @@ function requiredUtxos(plans: readonly FixturePlan[]): Record<FixtureDescriptorI
   for (const plan of plans) {
     for (const id of plan.inputDescriptorIds) required[id] += 1;
   }
-  if (required[LEGACY_DESCRIPTOR_ID] < LEGACY_SINGLE_KEY_UTXOS) {
-    throw new Error("Fixture plan no longer reserves the legacy P2WSH UTXOs");
-  }
   return required;
+}
+
+function requiredDescriptorIds(plans: readonly FixturePlan[]): Set<FixtureDescriptorId> {
+  return new Set(
+    plans.flatMap((plan) => [...plan.inputDescriptorIds, ...plan.outputDescriptorIds]),
+  );
 }
 
 async function scanAllFixtureUtxos(
@@ -930,10 +954,20 @@ function takeOutpoint(
   return outpoint;
 }
 
+export function prepareFixtures(
+  rpc: RpcCaller,
+  customPlans?: readonly CompiledUserFixturePlan[],
+): Promise<PreparedFixtures>;
+export function prepareFixtures(
+  rpc: RpcCaller,
+  customPlans: readonly CompiledUserFixturePlan[],
+  requiredFixtureIds: readonly BuiltInFixtureId[],
+): Promise<PreparedFixtureSet>;
 export async function prepareFixtures(
   rpc: RpcCaller,
   customPlans: readonly CompiledUserFixturePlan[] = [],
-): Promise<PreparedFixtures> {
+  requiredFixtureIds?: readonly BuiltInFixtureId[],
+): Promise<PreparedFixtureSet> {
   let blockchain = parseBlockchainInfo(await rpc.call("getblockchaininfo"));
   if (blockchain.chain !== "regtest") {
     throw new Error("PSBT Interop Lab refuses to run outside Bitcoin Core regtest");
@@ -951,8 +985,9 @@ export async function prepareFixtures(
     throw new Error("PSBT Interop Lab requires Bitcoin Core networking to be disabled");
   }
 
-  const descriptors = await canonicalizeDescriptors(rpc);
-  const plans = fixturePlans(customPlans);
+  const plans = fixturePlans(customPlans, requiredFixtureIds);
+  if (plans.length === 0) throw new TypeError("At least one fixture must be requested");
+  const descriptors = await canonicalizeDescriptors(rpc, requiredDescriptorIds(plans));
   const funded = await ensureMatureUtxos(rpc, blockchain, descriptors, plans);
   blockchain = funded.blockchain;
   const available = Object.fromEntries(
@@ -965,14 +1000,13 @@ export async function prepareFixtures(
   }
   const happy = fixtures.get("happy-path");
   const regression = fixtures.get("bdk-finalize-regression");
-  if (!happy || !regression) throw new Error("Legacy fixture construction failed");
   const profiles = Object.fromEntries(
-    FIXTURE_PROFILES.map((profile) => {
+    FIXTURE_PROFILES.filter((profile) => fixtures.has(profile.id)).map((profile) => {
       const fixture = fixtures.get(profile.id);
       if (!fixture) throw new Error(`Profile fixture construction failed for ${profile.id}`);
       return [profile.id, fixture] as const;
     }),
-  ) as Record<FixtureProfileId, PreparedPsbtFixture>;
+  ) as Partial<Record<FixtureProfileId, PreparedPsbtFixture>>;
   const custom = Object.fromEntries(
     customPlans.map((plan) => {
       const fixture = fixtures.get(plan.id);
@@ -980,18 +1014,29 @@ export async function prepareFixtures(
       return [plan.id, fixture] as const;
     }),
   );
-  return {
-    descriptor: descriptors[LEGACY_DESCRIPTOR_ID].descriptor,
-    address: descriptors[LEGACY_DESCRIPTOR_ID].address,
+  const legacyDescriptor = descriptors[LEGACY_DESCRIPTOR_ID];
+  const prepared: PreparedFixtureSet = {
     core: {
       version: network.version,
       subversion: network.subversion,
       blocks: blockchain.blocks,
       connections: network.connections,
     },
-    happy,
-    regression,
+    ...(legacyDescriptor
+      ? { descriptor: legacyDescriptor.descriptor, address: legacyDescriptor.address }
+      : {}),
+    ...(happy ? { happy } : {}),
+    ...(regression ? { regression } : {}),
     profiles,
     custom,
   };
+  if (requiredFixtureIds === undefined) {
+    if (!prepared.descriptor || !prepared.address || !happy || !regression) {
+      throw new Error("Legacy fixture construction failed");
+    }
+    if (Object.keys(profiles).length !== FIXTURE_PROFILES.length) {
+      throw new Error("Profile fixture construction failed");
+    }
+  }
+  return prepared;
 }

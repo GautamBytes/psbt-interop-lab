@@ -240,15 +240,14 @@ function proofHarness(failScenario = false): {
   };
   const adapters: ProofRuntimeAdapter[] = [];
   const created: Array<{ image: string; options: { env?: Readonly<Record<string, string>> } }> = [];
-  const contracts = [
-    RUST_ADAPTER_CONTRACT,
-    GO_ADAPTER_CONTRACT,
-    BITCOINJS_ADAPTER_CONTRACT,
-    BDK_ADAPTER_CONTRACT,
-    BDK_CURRENT_ADAPTER_CONTRACT,
-    PSBTV2_ADAPTER_CONTRACT,
-  ];
-  let adapterIndex = 0;
+  const contracts = new Map<string, ExpectedAdapterContract>([
+    ["psbt-interop-lab/rust-bitcoin:0.1.0", RUST_ADAPTER_CONTRACT],
+    ["psbt-interop-lab/btcsuite-go:1.2.0", GO_ADAPTER_CONTRACT],
+    ["psbt-interop-lab/bitcoinjs-lib:7.0.1", BITCOINJS_ADAPTER_CONTRACT],
+    ["psbt-interop-lab/bdkpython:2.3.1", BDK_ADAPTER_CONTRACT],
+    ["psbt-interop-lab/bdk-wallet-current:3.1.0", BDK_CURRENT_ADAPTER_CONTRACT],
+    ["psbt-interop-lab/rust-psbt-v2:0.1.0", PSBTV2_ADAPTER_CONTRACT],
+  ]);
   const scenario: ScenarioDefinition<ScenarioExecutionContext> = {
     id: "runtime-lifecycle",
     title: "Runtime lifecycle",
@@ -272,8 +271,9 @@ function proofHarness(failScenario = false): {
       prepareFixtures: vi.fn(async () => preparedFixtures()),
       createAdapter: vi.fn((image, _projectDirectory, options = {}) => {
         created.push({ image, options });
-        const value = runtimeAdapter(contracts[adapterIndex] as ExpectedAdapterContract);
-        adapterIndex += 1;
+        const contract = contracts.get(image);
+        if (!contract) throw new Error(`Unexpected test adapter image ${image}`);
+        const value = runtimeAdapter(contract);
         adapters.push(value);
         return value;
       }),
@@ -283,6 +283,92 @@ function proofHarness(failScenario = false): {
 }
 
 describe("proof runtime", () => {
+  test("publishes static resource metadata and resolves selectors without runtime state", async () => {
+    const proofModule = (await import("../../src/scenarios/proof.js")) as unknown as {
+      PROOF_SCENARIO_REGISTRATIONS?: ReadonlyArray<{
+        id: string;
+        resources: { core: boolean; fixtures: readonly string[]; adapters: readonly string[] };
+      }>;
+      resolveProofSelection?: (selectors: { scenarios?: readonly string[]; category?: string }) => {
+        scenarioIds: readonly string[];
+        resources: { core: boolean; fixtures: readonly string[]; adapters: readonly string[] };
+      };
+    };
+
+    expect(proofModule.PROOF_SCENARIO_REGISTRATIONS).toBeDefined();
+    expect(proofModule.resolveProofSelection).toBeDefined();
+    if (!proofModule.PROOF_SCENARIO_REGISTRATIONS || !proofModule.resolveProofSelection) return;
+
+    expect(
+      proofModule.PROOF_SCENARIO_REGISTRATIONS.find(
+        ({ id }) => id === "bip370-official-vectors-rust-psbt-v2",
+      ),
+    ).toMatchObject({
+      resources: { core: false, fixtures: [], adapters: ["rust-psbt-v2"] },
+    });
+    expect(
+      proofModule.resolveProofSelection({
+        scenarios: ["happy-path", "happy-path", "p2wpkh-sign-rust-bitcoin"],
+        category: "cross-library-signing",
+      }),
+    ).toMatchObject({
+      scenarioIds: ["happy-path", "p2wpkh-sign-rust-bitcoin"],
+      resources: {
+        core: true,
+        fixtures: ["happy-path", "p2wpkh"],
+        adapters: ["rust-bitcoin"],
+      },
+    });
+    expect(() => proofModule.resolveProofSelection?.({ category: "not-a-category" })).toThrow(
+      /Unknown category.*cross-library-signing/i,
+    );
+  });
+
+  test("runs a Core-free selected scenario with only its adapter and records selectors", async () => {
+    const harness = proofHarness();
+    const scenarioId = "bip370-official-vectors-rust-psbt-v2";
+    const scenario: ScenarioDefinition<ScenarioExecutionContext> = {
+      id: scenarioId,
+      title: "Official BIP370 vectors through rust-psbt-v2",
+      category: "psbtv2-conformance",
+      summary: "Selected runtime test",
+      requirements: [{ adapter: "rust-psbt-v2", operations: ["hello"] }],
+      async run() {
+        return { assertions: [{ name: "selected-runtime-completed", passed: true }] };
+      },
+    };
+    harness.dependencies.createCatalog = vi.fn(
+      (_fixtures, _external, selectedIds?: readonly string[]) => {
+        expect(selectedIds).toEqual([scenarioId]);
+        return [scenario];
+      },
+    ) as never;
+
+    const result = await runProofWithDependencies(
+      {
+        rpc: {} as never,
+        artifactRoot: "/tmp/psbt-lab-test",
+        projectDirectory: "/project",
+        selectors: { scenarios: [scenarioId] },
+      } as never,
+      harness.dependencies,
+    );
+
+    expect(harness.dependencies.prepareFixtures).not.toHaveBeenCalled();
+    expect(harness.created).toEqual([
+      { image: "psbt-interop-lab/rust-psbt-v2:0.1.0", options: {} },
+    ]);
+    expect(result.manifest).not.toHaveProperty("core");
+    expect(result.manifest).toMatchObject({
+      selectors: {
+        requested: { scenarios: [scenarioId] },
+        executed: { scenarios: [scenarioId], categories: ["psbtv2-conformance"] },
+      },
+    });
+    expect(harness.adapters).toHaveLength(1);
+    expect(harness.adapters[0]?.close).toHaveBeenCalledOnce();
+  });
+
   test("compiles and runs deterministic fixtures and scenarios from a suite manifest", async () => {
     const harness = proofHarness();
     const prepared = preparedFixtures();

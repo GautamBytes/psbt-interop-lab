@@ -56,7 +56,9 @@ export function generateMarkdownReport(manifest: RunManifest): string {
     "",
     `Run: \`${manifest.runId}\``,
     `Outcome: **${manifest.outcome.toUpperCase()}**`,
-    `Bitcoin Core: \`${manifest.core.subversion}\` on regtest at height ${manifest.core.blocks}`,
+    manifest.core
+      ? `Bitcoin Core: \`${manifest.core.subversion}\` on regtest at height ${manifest.core.blocks}`
+      : "Bitcoin Core: not required by selected scenarios",
     "",
     "## Scenarios",
     "",
@@ -264,6 +266,9 @@ export function generateHtmlReport(manifest: RunManifest): string {
       </tr>`,
     )
     .join("\n");
+  const runtimeSummary = manifest.core
+    ? `${escapeHtml(manifest.core.subversion)} · regtest height ${escapeHtml(manifest.core.blocks)} · ${escapeHtml(manifest.core.connections)} peers`
+    : "Bitcoin Core not required by selected scenarios";
 
   return `<!doctype html>
 <html lang="en">
@@ -321,7 +326,7 @@ export function generateHtmlReport(manifest: RunManifest): string {
 <main>
   <header class="run-header">
     <h1>PSBT Interop Lab</h1>
-    <p class="run-meta">Run <code>${escapeHtml(manifest.runId)}</code> · ${escapeHtml(manifest.core.subversion)} · regtest height ${escapeHtml(manifest.core.blocks)} · ${escapeHtml(manifest.core.connections)} peers</p>
+    <p class="run-meta">Run <code>${escapeHtml(manifest.runId)}</code> · ${runtimeSummary}</p>
   </header>
   <section class="metrics" aria-label="Run totals">
     <div class="metric"><strong>${counts.passed}</strong><span>Passed</span></div>

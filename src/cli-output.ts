@@ -68,7 +68,9 @@ export function formatProofSummary(result: ProofResult): string {
   const findings = result.manifest.scenarios.flatMap((scenario) => scenario.findings ?? []);
   const lines = [
     `PSBT Interop Lab: ${result.manifest.outcome.toUpperCase()}${findings.length > 0 ? ` (${findings.length} ${findings.length === 1 ? "FINDING" : "FINDINGS"})` : ""}`,
-    `Core: ${result.manifest.core.subversion} (regtest height ${result.manifest.core.blocks}, ${result.manifest.core.connections} peers)`,
+    result.manifest.core
+      ? `Core: ${result.manifest.core.subversion} (regtest height ${result.manifest.core.blocks}, ${result.manifest.core.connections} peers)`
+      : "Core: not required by selected scenarios",
     "",
   ];
   for (const scenario of result.manifest.scenarios) {

@@ -693,6 +693,31 @@ describe("Bitcoin amount conversion", () => {
 });
 
 describe("prepareFixtures", () => {
+  test("prepares only the requested built-in fixture and its descriptors", async () => {
+    const { rpc, calls } = createFixtureRpc();
+    const prepareSelected = prepareFixtures as unknown as (
+      rpc: RpcCaller,
+      customPlans: readonly [],
+      requiredFixtureIds: readonly ["p2wpkh"],
+    ) => Promise<{
+      profiles: Partial<Record<"p2wpkh", { id: string }>>;
+      happy?: unknown;
+      regression?: unknown;
+    }>;
+
+    const fixtures = await prepareSelected(rpc, [], ["p2wpkh"]);
+
+    expect(calls.filter((call) => call.method === "createpsbt")).toHaveLength(1);
+    expect(
+      calls
+        .filter((call) => call.method === "getdescriptorinfo")
+        .map((call) => paramObject(call.params)["descriptor"]),
+    ).toEqual([FIXTURE_DESCRIPTORS.p2wpkh]);
+    expect(Object.keys(fixtures.profiles)).toEqual(["p2wpkh"]);
+    expect(fixtures.happy).toBeUndefined();
+    expect(fixtures.regression).toBeUndefined();
+  });
+
   test("refuses to operate on a non-regtest chain", async () => {
     const rpc: RpcCaller = {
       async call<T>(method: string): Promise<T> {

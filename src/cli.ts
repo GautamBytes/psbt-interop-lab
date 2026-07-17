@@ -22,7 +22,13 @@ import { loadCustomSuiteManifest } from "./custom/manifest.js";
 import { formatParseMatrix, runParseMatrix } from "./local/parse-matrix.js";
 import { createLocalRuntimeProvider } from "./local/provider.js";
 import { verifyReplay } from "./runner/replay.js";
-import { PROOF_SCENARIOS, runProof } from "./scenarios/proof.js";
+import {
+  type BuiltInAdapterId,
+  PROOF_SCENARIOS,
+  type ProofScenarioResources,
+  resolveProofSelection,
+  runProof,
+} from "./scenarios/proof.js";
 import { runCommand } from "./system/command.js";
 
 const VERSION = "0.4.0";
@@ -40,7 +46,18 @@ interface RunOptions {
   suiteManifest?: string;
   build: boolean;
   startCore: boolean;
+  scenario: string[];
+  category?: string;
 }
+
+const ADAPTER_COMPOSE_SERVICES: Readonly<Record<BuiltInAdapterId, string>> = {
+  "rust-bitcoin": "rust-adapter",
+  "btcsuite-go": "go-adapter",
+  "bitcoinjs-lib": "bitcoinjs-adapter",
+  bdkpython: "bdk-adapter",
+  "rust-psbt-v2": "psbt-v2-adapter",
+  "bdk-wallet-current": "bdk-wallet-current-adapter",
+};
 
 function nodeMajorVersion(): number {
   return Number.parseInt(process.versions.node.split(".")[0] ?? "0", 10);
@@ -97,30 +114,23 @@ async function doctor(): Promise<DoctorCheck[]> {
   return checks;
 }
 
-async function prepareRuntime(options: RunOptions): Promise<void> {
+async function prepareRuntime(
+  options: RunOptions,
+  resources: ProofScenarioResources,
+): Promise<void> {
   if (options.build) {
-    process.stderr.write("Building pinned Core and adapter images...\n");
-    await runCommand(
-      "docker",
-      [
-        "compose",
-        "build",
-        "core",
-        "rust-adapter",
-        "go-adapter",
-        "bitcoinjs-adapter",
-        "bdk-adapter",
-        "psbt-v2-adapter",
-        "bdk-wallet-current-adapter",
-      ],
-      {
-        cwd: PROJECT_DIRECTORY,
-        timeoutMs: 10 * 60_000,
-        maxOutputBytes: 8 * 1024 * 1024,
-      },
-    );
+    const services = [
+      ...(resources.core ? ["core"] : []),
+      ...resources.adapters.map((id) => ADAPTER_COMPOSE_SERVICES[id]),
+    ];
+    process.stderr.write("Building required pinned images...\n");
+    await runCommand("docker", ["compose", "build", ...services], {
+      cwd: PROJECT_DIRECTORY,
+      timeoutMs: 10 * 60_000,
+      maxOutputBytes: 8 * 1024 * 1024,
+    });
   }
-  if (options.startCore) {
+  if (options.startCore && resources.core) {
     process.stderr.write("Starting isolated Bitcoin Core regtest...\n");
     await runCommand("docker", ["compose", "up", "-d", "--wait", "core"], {
       cwd: PROJECT_DIRECTORY,
@@ -140,6 +150,13 @@ function addRuntimeOptions(command: Command): Command {
     .option("--rpc-url <url>", "Loopback Bitcoin Core RPC URL", DEFAULT_RPC_URL)
     .option("--adapter-manifest <path>", "Add trusted external adapters to the matrix")
     .option("--suite-manifest <path>", "Add deterministic fixtures and checked handoff scenarios")
+    .option(
+      "--scenario <id>",
+      "Run one scenario (repeat for multiple scenarios)",
+      (id: string, ids: string[]) => [...ids, id],
+      [],
+    )
+    .option("--category <name>", "Run scenarios in one category")
     .option("--no-build", "Use existing Docker images without rebuilding")
     .option("--no-start-core", "Use an already-running Core instance");
 }
@@ -156,7 +173,12 @@ async function executeProof(options: RunOptions): Promise<void> {
     options.suiteManifest === undefined
       ? undefined
       : await loadCustomSuiteManifest(options.suiteManifest);
-  await prepareRuntime(options);
+  const selectors = {
+    ...(options.scenario.length > 0 ? { scenarios: options.scenario } : {}),
+    ...(options.category !== undefined ? { category: options.category } : {}),
+  };
+  const selection = resolveProofSelection(selectors);
+  await prepareRuntime(options, selection.resources);
   const rpc = new CoreRpc({
     url: options.rpcUrl,
     username: process.env["PSBT_LAB_RPC_USER"] ?? DEFAULT_RPC_USER,
@@ -169,6 +191,7 @@ async function executeProof(options: RunOptions): Promise<void> {
     projectDirectory: PROJECT_DIRECTORY,
     ...(adapterManifest === undefined ? {} : { adapterManifest }),
     ...(customSuite === undefined ? {} : { customSuite }),
+    selectors,
   });
   process.stdout.write(`${formatProofSummary(result)}\n`);
   if (result.manifest.outcome !== "passed") {
