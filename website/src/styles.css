@@ -384,7 +384,7 @@ svg {
 }
 
 :root[data-theme="light"] .hero::before {
-  background: rgba(247, 248, 249, 0.22);
+  background: transparent;
 }
 
 .hero__asset {
@@ -399,8 +399,8 @@ svg {
 }
 
 :root[data-theme="light"] .hero__asset {
-  filter: invert(1) grayscale(1) contrast(0.96);
-  opacity: 0.62;
+  filter: invert(1) hue-rotate(180deg) saturate(1.8) brightness(0.92) contrast(1.12);
+  opacity: 1;
 }
 
 .hero__content {
