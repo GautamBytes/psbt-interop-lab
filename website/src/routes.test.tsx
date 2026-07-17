@@ -1,6 +1,6 @@
 import { act, cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 
 describe("website documentation routes", () => {
@@ -56,6 +56,21 @@ describe("website documentation routes", () => {
     render(<App />);
 
     expect(screen.getByRole("link", { name: "the adapter guide" })).not.toHaveAttribute("node");
+  });
+
+  it("copies fenced documentation commands", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
+    window.history.replaceState({}, "", "/docs");
+    render(<App />);
+
+    const copyButtons = screen.getAllByRole("button", { name: "Copy code block" });
+    expect(copyButtons.length).toBeGreaterThan(0);
+
+    await user.click(copyButtons[0]);
+
+    expect(writeText).toHaveBeenCalledWith(expect.stringContaining("npm install --global"));
+    expect(screen.getByText("Code block copied")).toBeInTheDocument();
   });
 
   it("renders a useful page for an unknown path", () => {

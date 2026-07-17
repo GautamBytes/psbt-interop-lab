@@ -1578,10 +1578,16 @@ svg {
   overflow-wrap: anywhere;
 }
 
-.markdown-body pre {
+.markdown-code-block {
+  position: relative;
   max-width: 100%;
   margin: 24px 0 30px;
-  padding: 20px 22px;
+}
+
+.markdown-body .markdown-code-block pre {
+  max-width: 100%;
+  margin: 0;
+  padding: 20px 58px 20px 22px;
   overflow-x: auto;
   border: 1px solid var(--border-strong);
   background: #050709;
@@ -1591,9 +1597,41 @@ svg {
   line-height: 1.65;
 }
 
-:root[data-theme="light"] .markdown-body pre {
+:root[data-theme="light"] .markdown-body .markdown-code-block pre {
   background: #171b1f;
   color: #edf0f2;
+}
+
+.markdown-code-block__copy {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: grid;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: #111519;
+  color: #aeb5bb;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.markdown-code-block__copy:hover {
+  border-color: rgba(255, 255, 255, 0.24);
+  background: #1a1f24;
+  color: #ffffff;
+}
+
+.markdown-code-block__copy:focus-visible {
+  outline: 2px solid var(--orange);
+  outline-offset: 2px;
+}
+
+.markdown-code-block__copy svg {
+  width: 16px;
+  height: 16px;
 }
 
 .markdown-body pre code {
@@ -1939,8 +1977,8 @@ svg {
     font-size: 19px;
   }
 
-  .markdown-body pre {
-    padding: 16px;
+  .markdown-body .markdown-code-block pre {
+    padding: 16px 52px 16px 16px;
     font-size: 11px;
   }
 

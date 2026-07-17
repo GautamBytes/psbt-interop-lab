@@ -5,6 +5,7 @@ import remarkGfm from "remark-gfm";
 import { repositoryUrl } from "../content";
 import { routes } from "../routes";
 import type { WebsiteDocument } from "../pages/documents";
+import { MarkdownCodeBlock } from "./MarkdownCodeBlock";
 import { SiteLink } from "./SiteLink";
 
 interface MarkdownPageProps {
@@ -110,6 +111,10 @@ export function MarkdownPage({ document }: MarkdownPageProps) {
           <table {...props}>{children}</table>
         </div>
       );
+    },
+    pre: ({ children, node }) => {
+      void node;
+      return <MarkdownCodeBlock>{children}</MarkdownCodeBlock>;
     },
   };
 
