@@ -1,8 +1,12 @@
 export const routes = {
   home: "/",
   docs: "/docs",
+  architecture: "/docs/architecture",
+  futureWork: "/docs/future-work",
+  sources: "/docs/sources",
   adapterKit: "/adapter-kit",
   security: "/security",
+  threatModel: "/security/threat-model",
 } as const;
 
 export type RoutePath = (typeof routes)[keyof typeof routes];

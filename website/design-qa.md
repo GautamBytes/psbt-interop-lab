@@ -13,6 +13,7 @@
 - Documentation, desktop: passed. `/docs` and `/adapter-kit` load directly with readable article widths, sticky tables of contents, contained code blocks, and working source links.
 - Documentation, mobile at 390 x 844: passed. `/security` keeps its title, table of contents, prose, code, and footer within the viewport without overlap.
 - Documentation routing: passed. Docs, Adapter Kit, and Security use first-party routes; route tests cover direct loading, client navigation, history events, and not-found behavior.
+- Linked Markdown routing: passed. Architecture, Future Work, Official Sources, and Threat Model render from repository Markdown on first-party nested routes, and cross-document links remain inside the website.
 - Documentation code blocks: passed. Every fenced block has a fixed copy control, clipboard feedback, keyboard focus styling, and reserved space above horizontally scrolling commands.
 - Mobile navigation: passed. The menu opens and closes with accessible expanded state.
 - Documentation search: passed. The dialog opens, receives focus, and filters results for a real query.
@@ -22,7 +23,7 @@
 
 - Browser console: 0 errors, 0 warnings on the homepage interaction pass; all documentation routes rendered without runtime error overlays.
 - Mobile width: 390 px document width at a 390 px viewport.
-- Automated tests: 13 passed.
+- Automated tests: 18 passed.
 - TypeScript: passed.
 - Production build: passed.
 

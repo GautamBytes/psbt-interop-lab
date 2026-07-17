@@ -3,8 +3,7 @@ import type { ReactNode } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { repositoryUrl } from "../content";
-import { routes } from "../routes";
-import type { WebsiteDocument } from "../pages/documents";
+import { findDocumentBySourcePath, type WebsiteDocument } from "../pages/documents";
 import { MarkdownCodeBlock } from "./MarkdownCodeBlock";
 import { SiteLink } from "./SiteLink";
 
@@ -74,9 +73,8 @@ function resolveDocumentHref(href: string | undefined, baseDir: string): string 
   const hash = href.includes("#") ? `#${href.split("#").slice(1).join("#")}` : "";
   const path = normalizeRepoPath(baseDir, href);
 
-  if (path === "README.md") return `${routes.docs}${hash}`;
-  if (path === "docs/adapters.md") return `${routes.adapterKit}${hash}`;
-  if (path === "SECURITY.md") return `${routes.security}${hash}`;
+  const internalDocument = findDocumentBySourcePath(path);
+  if (internalDocument) return `${internalDocument.route}${hash}`;
 
   return `${repositoryUrl}/blob/main/${path}${hash}`;
 }

@@ -31,10 +31,10 @@ export function Header({
           <Brand />
         </SiteLink>
         <nav className="desktop-nav" aria-label="Primary navigation">
-          <SiteLink href={routes.docs} aria-current={pathname === routes.docs ? "page" : undefined}>Docs</SiteLink>
+          <SiteLink href={routes.docs} aria-current={pathname.startsWith("/docs") ? "page" : undefined}>Docs</SiteLink>
           <SiteLink href="/#matrix">Matrix</SiteLink>
           <SiteLink href={routes.adapterKit} aria-current={pathname === routes.adapterKit ? "page" : undefined}>Adapter kit</SiteLink>
-          <SiteLink href={routes.security} aria-current={pathname === routes.security ? "page" : undefined}>Security</SiteLink>
+          <SiteLink href={routes.security} aria-current={pathname.startsWith("/security") ? "page" : undefined}>Security</SiteLink>
         </nav>
         <div className="site-header__actions">
           <button

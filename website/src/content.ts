@@ -160,6 +160,9 @@ export const docLinks = [
   { label: "Quick start", detail: "Install and run the matrix", href: "/docs#quick-start" },
   { label: "Scenario coverage", detail: "See all 24 bundled scenarios", href: "/docs#current-coverage" },
   { label: "Adapter kit", detail: "Bring another wallet or library", href: "/adapter-kit" },
-  { label: "Architecture", detail: "Understand the trust boundaries", href: `${repositoryUrl}/blob/main/docs/architecture.md` },
+  { label: "Architecture", detail: "Understand the system and trust boundaries", href: "/docs/architecture" },
+  { label: "Future work", detail: "Review planned compatibility and integration work", href: "/docs/future-work" },
+  { label: "Official sources", detail: "Check specifications, versions, and pinned artifacts", href: "/docs/sources" },
   { label: "Security", detail: "Read the safety model", href: "/security" },
+  { label: "Threat model", detail: "Inspect runtime and CI security boundaries", href: "/security/threat-model" },
 ] as const;

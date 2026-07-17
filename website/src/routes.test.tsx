@@ -15,6 +15,10 @@ describe("website documentation routes", () => {
     ["/docs", "PSBT Interop Lab", /local developer tool for finding interoperability failures/i],
     ["/adapter-kit", "External Adapter Guide", /enroll conforming adapters in the full matrix/i],
     ["/security", "Security Model", /boundary is kept intentionally smaller/i],
+    ["/docs/architecture", "Architecture", /proof suite answers one concrete question/i],
+    ["/docs/future-work", "Future Work", /driven by real wallet and library maintainers/i],
+    ["/docs/sources", "Official Source Ledger", /primary sources used to choose protocol behavior/i],
+    ["/security/threat-model", "PSBT Interop Lab Threat Model", /local generated-regtest workflow/i],
   ])("renders %s from repository Markdown", (pathname, heading, text) => {
     window.history.replaceState({}, "", pathname);
     render(<App />);
@@ -56,6 +60,16 @@ describe("website documentation routes", () => {
     render(<App />);
 
     expect(screen.getByRole("link", { name: "the adapter guide" })).not.toHaveAttribute("node");
+  });
+
+  it("keeps linked repository Markdown inside the website", () => {
+    window.history.replaceState({}, "", "/docs");
+    render(<App />);
+
+    expect(screen.getByRole("link", { name: "the architecture" })).toHaveAttribute("href", "/docs/architecture");
+    expect(screen.getByRole("link", { name: "future work" })).toHaveAttribute("href", "/docs/future-work");
+    expect(screen.getByRole("link", { name: "official source ledger" })).toHaveAttribute("href", "/docs/sources");
+    expect(screen.getByRole("link", { name: "threat model" })).toHaveAttribute("href", "/security/threat-model");
   });
 
   it("copies fenced documentation commands", async () => {

@@ -12,3 +12,4 @@ website/.playwright-cli/
 website/*.tsbuildinfo
 website/vite.config.js
 website/vite.config.d.ts
+.vercel

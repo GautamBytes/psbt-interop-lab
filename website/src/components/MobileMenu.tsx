@@ -24,12 +24,12 @@ export function MobileMenu({ open, onToggle, pathname }: MobileMenuProps) {
       </button>
       {open ? (
         <nav id="mobile-navigation" className="mobile-menu__panel" aria-label="Mobile navigation">
-          <SiteLink href={routes.docs} aria-current={pathname === routes.docs ? "page" : undefined} onClick={onToggle}>Docs</SiteLink>
+          <SiteLink href={routes.docs} aria-current={pathname.startsWith("/docs") ? "page" : undefined} onClick={onToggle}>Docs</SiteLink>
           <SiteLink href="/#matrix" onClick={onToggle}>Matrix</SiteLink>
           <SiteLink href="/#workflow" onClick={onToggle}>How it works</SiteLink>
           <SiteLink href="/#coverage" onClick={onToggle}>Coverage</SiteLink>
           <SiteLink href={routes.adapterKit} aria-current={pathname === routes.adapterKit ? "page" : undefined} onClick={onToggle}>Adapter kit</SiteLink>
-          <SiteLink href={routes.security} aria-current={pathname === routes.security ? "page" : undefined} onClick={onToggle}>Security</SiteLink>
+          <SiteLink href={routes.security} aria-current={pathname.startsWith("/security") ? "page" : undefined} onClick={onToggle}>Security</SiteLink>
         </nav>
       ) : null}
     </div>
