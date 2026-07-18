@@ -168,7 +168,7 @@ export function Sections() {
         <div className="page-shell">
           <Package aria-hidden="true" weight="duotone" />
           <h2 id="cta-title">Run the same PSBT through every handoff.</h2>
-          <p>Open source, MIT licensed, and available now as version 0.5.1.</p>
+          <p>Open source, MIT licensed, and available now as version 0.5.2.</p>
           <div>
             <a className="button button--primary" href={npmUrl}>
               <TerminalWindow aria-hidden="true" />

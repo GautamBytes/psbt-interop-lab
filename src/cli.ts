@@ -32,12 +32,26 @@ import {
 } from "./scenarios/proof.js";
 import { runCommand } from "./system/command.js";
 
-const VERSION = "0.5.1";
+const VERSION = "0.5.2";
 const PROJECT_DIRECTORY = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const DEFAULT_RPC_URL = "http://127.0.0.1:18443";
 const DEFAULT_RPC_USER = "psbtlab";
 const DEFAULT_RPC_PASSWORD = "psbtlab-regtest-only";
 const LOCAL_RUNTIME_MANIFEST = resolve(PROJECT_DIRECTORY, "src/local/local-adapters.json");
+export const QUICKSTART_SCENARIO = "happy-path";
+
+const DOCTOR_IMAGES = [
+  "psbt-interop-lab/core:31.1",
+  "psbt-interop-lab/rust-bitcoin:0.1.0",
+  "psbt-interop-lab/btcsuite-go:1.2.0",
+  "psbt-interop-lab/bitcoinjs-lib:7.0.1",
+  "psbt-interop-lab/bdkpython:2.3.1",
+  "psbt-interop-lab/rust-psbt-v2:0.1.0",
+  "psbt-interop-lab/bdk-wallet-current:3.1.0",
+  "psbt-interop-lab/libwally:1.5.4",
+] as const;
+
+const QUICKSTART_IMAGES = DOCTOR_IMAGES.slice(0, 2);
 
 interface RunOptions {
   suite: string;
@@ -49,6 +63,29 @@ interface RunOptions {
   startCore: boolean;
   scenario: string[];
   category?: string;
+}
+
+export interface QuickstartOptions {
+  readonly artifacts: string;
+  readonly build: boolean;
+  readonly keepCore: boolean;
+}
+
+interface QuickstartRunRequest {
+  readonly suite: "proof";
+  readonly artifacts: string;
+  readonly rpcUrl: string;
+  readonly build: boolean;
+  readonly startCore: true;
+  readonly scenario: string[];
+}
+
+export interface QuickstartDependencies {
+  readonly checkRuntime: () => Promise<DoctorCheck[]>;
+  readonly runCanaries: typeof runDetectorCanaries;
+  readonly execute: (options: QuickstartRunRequest) => Promise<void>;
+  readonly stopCore: () => Promise<void>;
+  readonly write: (value: string) => void;
 }
 
 const ADAPTER_COMPOSE_SERVICES: Readonly<Record<BuiltInAdapterId, string>> = {
@@ -82,7 +119,7 @@ async function dockerCheck(name: string, args: string[], required = true): Promi
   }
 }
 
-async function doctor(): Promise<DoctorCheck[]> {
+async function doctor(images: readonly string[] = DOCTOR_IMAGES): Promise<DoctorCheck[]> {
   const nodeMajor = nodeMajorVersion();
   const checks: DoctorCheck[] = [
     {
@@ -94,16 +131,7 @@ async function doctor(): Promise<DoctorCheck[]> {
     await dockerCheck("Docker", ["version", "--format", "{{.Server.Version}}"]),
     await dockerCheck("Docker Compose", ["compose", "version", "--short"]),
   ];
-  for (const image of [
-    "psbt-interop-lab/core:31.1",
-    "psbt-interop-lab/rust-bitcoin:0.1.0",
-    "psbt-interop-lab/btcsuite-go:1.2.0",
-    "psbt-interop-lab/bitcoinjs-lib:7.0.1",
-    "psbt-interop-lab/bdkpython:2.3.1",
-    "psbt-interop-lab/rust-psbt-v2:0.1.0",
-    "psbt-interop-lab/bdk-wallet-current:3.1.0",
-    "psbt-interop-lab/libwally:1.5.4",
-  ]) {
+  for (const image of images) {
     const check = await dockerCheck(
       `Image ${image}`,
       ["image", "inspect", "--format", "{{.Id}}", image],
@@ -206,12 +234,95 @@ async function executeProof(options: RunOptions): Promise<void> {
   }
 }
 
+async function stopCoreService(): Promise<void> {
+  await runCommand("docker", ["compose", "stop", "core"], {
+    cwd: PROJECT_DIRECTORY,
+    timeoutMs: 60_000,
+    maxOutputBytes: 1024 * 1024,
+  });
+}
+
+function defaultQuickstartDependencies(): QuickstartDependencies {
+  return {
+    checkRuntime: () => doctor(QUICKSTART_IMAGES),
+    runCanaries: runDetectorCanaries,
+    execute: executeProof,
+    stopCore: stopCoreService,
+    write: (value) => process.stdout.write(value),
+  };
+}
+
+export async function runQuickstart(
+  options: QuickstartOptions,
+  dependencies: QuickstartDependencies = defaultQuickstartDependencies(),
+): Promise<void> {
+  dependencies.write("PSBT Interop Lab quickstart\n\n[1/3] Checking the local runtime...\n");
+  const checks = await dependencies.checkRuntime();
+  dependencies.write(`${formatDoctorChecks(checks)}\n`);
+  if (doctorHasBlockingFailure(checks)) {
+    throw new Error("Quickstart cannot continue because required runtime checks failed");
+  }
+
+  dependencies.write("\n[2/3] Proving the semantic detectors...\n");
+  const canaries = dependencies.runCanaries();
+  dependencies.write(`${formatCanaryResults(canaries)}\n`);
+  if (!detectorCanariesPassed(canaries)) {
+    throw new Error("Quickstart cannot continue because the detector self-test failed");
+  }
+
+  dependencies.write("\n[3/3] Running one real Core -> rust-bitcoin -> Core handoff...\n");
+  let executionError: unknown;
+  try {
+    await dependencies.execute({
+      suite: "proof",
+      artifacts: options.artifacts,
+      rpcUrl: DEFAULT_RPC_URL,
+      build: options.build,
+      startCore: true,
+      scenario: [QUICKSTART_SCENARIO],
+    });
+  } catch (error) {
+    executionError = error;
+  }
+
+  let cleanupError: unknown;
+  if (!options.keepCore) {
+    try {
+      await dependencies.stopCore();
+      dependencies.write("\nCleanup: stopped the local Bitcoin Core regtest service.\n");
+    } catch (error) {
+      cleanupError = error;
+    }
+  }
+
+  if (executionError !== undefined) {
+    if (cleanupError !== undefined) {
+      const detail = cleanupError instanceof Error ? cleanupError.message : "unknown error";
+      dependencies.write(`\nWARN  Could not stop Bitcoin Core after the failed run: ${detail}\n`);
+    }
+    throw executionError;
+  }
+  if (cleanupError !== undefined) throw cleanupError;
+}
+
 export function createProgram(): Command {
   const program = new Command()
     .name("psbt-lab")
     .description("Deterministic PSBT interoperability proof for Bitcoin software")
     .version(VERSION)
     .showHelpAfterError();
+
+  program
+    .command("quickstart")
+    .description("Check the runtime and run one real PSBT handoff with automatic cleanup")
+    .option(
+      "--artifacts <directory>",
+      "Artifact root directory",
+      resolve(process.cwd(), "artifacts"),
+    )
+    .option("--no-build", "Use existing Docker images without rebuilding")
+    .option("--keep-core", "Leave the local Bitcoin Core regtest service running")
+    .action(async (options: QuickstartOptions) => runQuickstart(options));
 
   program
     .command("doctor")
@@ -307,11 +418,7 @@ export function createProgram(): Command {
     .command("stop")
     .description("Stop the bundled local Bitcoin Core regtest service")
     .action(async () => {
-      await runCommand("docker", ["compose", "stop", "core"], {
-        cwd: PROJECT_DIRECTORY,
-        timeoutMs: 60_000,
-        maxOutputBytes: 1024 * 1024,
-      });
+      await stopCoreService();
       process.stdout.write("Stopped the local Bitcoin Core regtest service.\n");
     });
 

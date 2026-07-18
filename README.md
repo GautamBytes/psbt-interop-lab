@@ -17,14 +17,24 @@ Requirements:
 
 - Docker Desktop or Docker Engine with Compose
 - Node.js 22 or 24
-- On ARM hosts, Docker must support `linux/amd64` emulation for the frozen BDK 2.3.1 specimen
 
 ```bash
-npm install --global psbt-interop-lab@0.5.1
-psbt-lab doctor
-psbt-lab self-test
+npx --yes psbt-interop-lab@0.5.2 quickstart
+```
+
+`quickstart` checks Node.js, Docker, and Compose, proves the semantic detectors, then runs one real
+Bitcoin Core -> rust-bitcoin -> Bitcoin Core signing and finalization handoff. It writes the same
+replayable reports as the full suite and stops the local regtest node automatically.
+
+For repeated use or the complete 31-scenario matrix, install the CLI once:
+
+```bash
+npm install --global psbt-interop-lab@0.5.2
 psbt-lab matrix
 ```
+
+The complete matrix includes the frozen BDK 2.3.1 regression specimen. On ARM hosts, that one
+legacy adapter requires Docker support for `linux/amd64` emulation; `quickstart` does not.
 
 The first matrix run builds checksum- and digest-pinned images. Later runs can reuse them:
 

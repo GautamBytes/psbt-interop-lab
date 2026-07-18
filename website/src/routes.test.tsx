@@ -200,7 +200,7 @@ describe("website documentation routes", () => {
 
     await user.click(copyButtons[0]);
 
-    expect(writeText).toHaveBeenCalledWith(expect.stringContaining("npm install --global"));
+    expect(writeText).toHaveBeenCalledWith(expect.stringContaining("quickstart"));
     expect(screen.getByText("Code block copied")).toBeInTheDocument();
   });
 

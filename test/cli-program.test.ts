@@ -11,6 +11,7 @@ describe("CLI program", () => {
     const commands = createProgram().commands.map((command) => command.name());
 
     expect(commands).toEqual([
+      "quickstart",
       "doctor",
       "self-test",
       "list",
@@ -21,6 +22,16 @@ describe("CLI program", () => {
       "stop",
       "replay",
     ]);
+  });
+
+  test("offers a bounded quickstart with reusable images and optional Core retention", () => {
+    const quickstart = createProgram().commands.find((command) => command.name() === "quickstart");
+
+    expect(quickstart?.options.some((option) => option.long === "--artifacts")).toBe(true);
+    expect(quickstart?.options.some((option) => option.long === "--no-build")).toBe(true);
+    expect(quickstart?.options.some((option) => option.long === "--keep-core")).toBe(true);
+    expect(quickstart?.options.some((option) => option.long === "--scenario")).toBe(false);
+    expect(quickstart?.options.some((option) => option.long === "--adapter-manifest")).toBe(false);
   });
 
   test("runs external adapter conformance from a manifest", () => {
@@ -178,7 +189,7 @@ describe("CLI program", () => {
 
       expect(result.status).toBe(0);
       expect(result.stderr).toBe("");
-      expect(result.stdout.trim()).toBe("0.5.1");
+      expect(result.stdout.trim()).toBe("0.5.2");
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }

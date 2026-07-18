@@ -1,6 +1,6 @@
 export const repositoryUrl = "https://github.com/GautamBytes/psbt-interop-lab";
 export const npmUrl = "https://www.npmjs.com/package/psbt-interop-lab";
-export const installCommand = "npm install --global psbt-interop-lab@0.5.1";
+export const installCommand = "npx --yes psbt-interop-lab@0.5.2 quickstart";
 
 export type ScenarioStatus = "pass" | "finding" | "supported";
 
