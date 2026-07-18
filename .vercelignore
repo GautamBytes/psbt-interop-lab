@@ -10,6 +10,9 @@
 !docs/architecture.md
 !docs/future-work.md
 !docs/sources.md
+!docs/assets
+!docs/assets/walkthrough
+!docs/assets/walkthrough/*.png
 
 !examples
 !examples/custom-suite.json
