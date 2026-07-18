@@ -22,6 +22,10 @@ describe("PSBT Interop Lab website", () => {
     expect(
       screen.getByText(/run the same transaction through real bitcoin libraries/i),
     ).toBeInTheDocument();
+    expect(screen.getByText("Dockerless parser checks")).toBeInTheDocument();
+    expect(
+      screen.getByText("Target one scenario or category for faster iteration"),
+    ).toBeInTheDocument();
     expect(screen.getByText("Native parser duplicate-key probe")).toBeInTheDocument();
   });
 

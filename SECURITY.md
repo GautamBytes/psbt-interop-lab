@@ -27,6 +27,15 @@ cannot provide commands, paths, private keys, arbitrary descriptors, raw PSBTs, 
 adapter payloads. Custom signing remains disabled unless an adapter explicitly supports the
 `user-fixture-template-v1` authorization contract.
 
+Dockerless `parse-matrix --runtime local` is intentionally parser-only. It loads the package's
+strict internal manifest, permits only safe package-relative adapter paths, rejects symlinks and
+path escapes, bounds adapter files at 16 MiB, verifies their pinned SHA256, and executes private
+read-only snapshots with the normal bounded JSONL protocol. The current release bundles one
+JavaScript parser and reports unavailable native binaries as `unsupported`. The snapshot process
+still has the invoking user's host privileges; checksum verification proves package-file identity,
+not sandboxing or publisher authenticity. This mode never starts Core or exposes signing and
+finalization operations.
+
 ## Dependency And Scanner Status
 
 The installed CLI has one production dependency, Commander. Ajv is development-only: it compiles
@@ -58,8 +67,9 @@ treating aggregate capability counts as runtime findings.
 
 ### Signing restrictions
 
-The Rust, Go, JavaScript, current BDK, rust-psbt-v2, and libwally adapters have no generic private-key input. They recognize only
-`network=regtest`, declared suite fixture identifiers, run-scoped unsigned-transaction commitments,
+The Rust, Go, JavaScript, current BDK, rust-psbt-v2, and libwally adapters have no
+generic private-key input. They recognize only `network=regtest`, declared suite fixture identifiers,
+run-scoped unsigned-transaction commitments,
 expected public keys and scripts, and internally consistent full/witness UTXO data. Each operation
 also enforces the exact fixture profile and supported script type. A request outside that policy is
 rejected.
@@ -88,7 +98,7 @@ strict JSON schemas, and matching request IDs.
 
 The runner compares canonical returned PSBT bytes independently of an adapter's `byteIdentical`
 claim. It also pins the adapter's self-reported name, implementation version, source revision,
-operations, and PSBTv0 support. A malicious adapter can spoof those expected identity strings and
+operations, and declared PSBT-version support. A malicious adapter can spoof those expected identity strings and
 supply any schema-valid self-reported digest; the runner does not compare a pinned content digest.
 These are compatibility assertions and do not attest which image or binary is running. Dockerfile
 base digests, downloaded checksums, lockfiles, and dependency hashes improve build reproducibility,

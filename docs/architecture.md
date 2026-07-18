@@ -30,6 +30,9 @@ The CLI owns scenario order, Core RPC, adapter lifecycle, strict request and res
 timeouts, result classification, artifact writing, and replay. TypeScript is used for developer
 experience and orchestration; no signature algorithm is implemented there.
 
+Scenario and category selections are resolved before the runtime provider is created. Unknown or
+empty selections therefore fail without starting Core, Docker, or adapter processes.
+
 For every adapter round trip, `ScenarioExecutionContext.requireTransition` parses the source and
 returned PSBT and applies the lossless `roundtrip` transition policy independently of the adapter's
 `byteIdentical` claim. Legal map reordering is diagnostic rather than failure. `CoreRpc.call` in
@@ -56,8 +59,8 @@ ID and includes implementation name, version, and artifact digest. The status is
 `unsupported`, `rejected`, `crashed`, or `timeout`; failures use stable error classes rather than
 language-specific stack traces.
 
-Startup pins each adapter's self-reported name, version, source revision, operations, and PSBTv0
-support as a compatibility check. A malicious adapter can spoof the expected identity strings and
+Startup pins each adapter's self-reported name, version, source revision, operations, and declared
+PSBT-version support as a compatibility check. A malicious adapter can spoof the expected identity strings and
 supply any schema-valid self-reported digest; the runner does not compare a pinned content digest.
 These values are not cryptographic attestation of the running image. Dockerfile base digests,
 downloaded checksums, and dependency hashes support reproducible build selection rather than
@@ -111,6 +114,15 @@ network, while Core JSON-RPC is published only to host loopback. These settings 
 process and resource exposure but do not protect against a compromised trusted host, Docker daemon,
 kernel, or base image.
 
+`psbt-lab parse-matrix --runtime local` is a separate Dockerless parser-only boundary. The package
+loads a strict internal manifest, resolves only safe package-relative adapter paths, rejects
+symlinks and paths outside the package, bounds each artifact at 16 MiB, verifies its pinned SHA256,
+and executes a private read-only snapshot through the same bounded JSONL process protocol. The
+current package provides one bundled JavaScript parser; native adapters without published local
+binaries are reported as unsupported. This path does not start Core, sign, finalize, or provide the
+complete interoperability proof. The spawned parser still runs with the invoking user's host
+privileges and is trusted as package code rather than sandboxed code.
+
 GitHub-hosted CI is separate from that runtime. `.github/workflows/ci.yml` gives jobs read-only
 repository permission, no persisted checkout credential or workflow secrets, pinned action commits,
 ephemeral runners, timeouts, and concurrency cancellation. Pull requests run the TypeScript, Rust,
@@ -160,6 +172,11 @@ completed transaction. Known strict-parser differences remain named findings.
 
 `psbt-lab self-test` deliberately drops metadata, changes an output amount, changes an input
 sequence, and removes a signature. It passes only when the semantic detectors identify every fault.
+
+`psbt-lab run --scenario <id>` and `psbt-lab run --category <name>` execute a validated subset of
+this catalog. The selection changes runtime cost, not assertion depth: each selected scenario keeps
+the same adapter checks, semantic transitions, Core policy oracle, and report artifacts as a full
+matrix run.
 
 ## Extension Points
 

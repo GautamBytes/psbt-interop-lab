@@ -1,5 +1,8 @@
 # PSBT Interop Lab Website Implementation Plan
 
+> Historical implementation record for the v0.4 website. Current product claims and commands live
+> in `README.md` and the website source; v0.5.1 supersedes the release-specific constraints below.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build a polished, responsive website that explains PSBT Interop Lab and gives developers a direct path to install, evaluate, and extend it.
@@ -11,7 +14,8 @@
 ## Global Constraints
 
 - Match the approved 1440 x 1024 visual target and support 390 x 844 without horizontal overflow.
-- Use the exact approved hero text and only claims supported by PSBT Interop Lab 0.4.0.
+- Use the exact approved hero text and only claims supported by PSBT Interop Lab 0.4.0 at the time
+  this plan was executed.
 - Keep the website dependency tree isolated from the CLI package.
 - Use a generated bitmap for the hero texture and an icon library for interface icons.
 - Use no gradients, decorative orbs, nested cards, or radii larger than 8px.

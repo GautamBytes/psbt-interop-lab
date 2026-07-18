@@ -1,7 +1,7 @@
 import { ArrowSquareOut } from "@phosphor-icons/react/ArrowSquareOut";
-import { FileCode } from "@phosphor-icons/react/FileCode";
 import { Flask } from "@phosphor-icons/react/Flask";
 import { FlowArrow } from "@phosphor-icons/react/FlowArrow";
+import { HardDrives } from "@phosphor-icons/react/HardDrives";
 import { ShieldCheck } from "@phosphor-icons/react/ShieldCheck";
 import { TerminalWindow } from "@phosphor-icons/react/TerminalWindow";
 import { repositoryUrl } from "../content";
@@ -11,7 +11,7 @@ const metrics = [
   { icon: Flask, label: "31 scenarios" },
   { icon: FlowArrow, label: "7 implementations" },
   { icon: ShieldCheck, label: "regtest only" },
-  { icon: FileCode, label: "replayable artifacts" },
+  { icon: HardDrives, label: "Dockerless parser checks" },
 ] as const;
 
 export function Hero() {

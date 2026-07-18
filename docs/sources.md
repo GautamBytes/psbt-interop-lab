@@ -1,6 +1,6 @@
 # Official Source Ledger
 
-Research and dependency snapshot: 2026-07-17.
+Research and dependency snapshot: 2026-07-18.
 
 This file records the primary sources used to choose protocol behavior, APIs, versions, and pinned
 artifacts. Runtime dependencies are also locked in `pnpm-lock.yaml`, `Cargo.lock`, and the hashed
@@ -13,14 +13,17 @@ Python requirement.
   roles, and PSBTv0 fields.
 - [BIP370: PSBT Version 2](https://bips.dev/370/) defines PSBTv2's global input/output counts and
   per-input/per-output transaction fields. The wire parser validates PSBTv2 and the rejection matrix
-  uses the official required-fields vector, while signing scenarios use Core-created PSBTv0. Its
+  uses the complete official valid and invalid vector corpus. Dedicated workflows convert
+  Core-funded fixtures to PSBTv2, then exercise bidirectional P2WPKH signing/finalization and
+  cross-library 2-of-3 P2WSH signing, combining, finalization, and extraction. Its
   Constructor rules permit `PSBT_GLOBAL_TX_MODIFIABLE` to be omitted or removed when no further
   inputs or outputs may be added; the semantic roundtrip rule therefore treats omission and an
   explicit zero byte as equivalent, and no other field-presence normalization.
 - [BIP371: Taproot Fields for PSBT](https://bips.dev/371/) defines Taproot key, signature, leaf,
   derivation, internal-key, and tree fields. The semantic parser validates their field layouts, and
   active scenarios create, key-path sign, finalize, and policy-check Core-generated P2TR PSBTs;
-  script-path fixtures exercise leaf-script, control-block, and internal-key preservation.
+  script-path fixtures exercise leaf-script, control-block, and internal-key preservation plus
+  bidirectional rust-bitcoin/BDK signing and finalization against an exact committed leaf witness.
 - [BIP382](https://bips.dev/382/) defines `wpkh()` output descriptors, including their use inside
   `sh()`, and [BIP386](https://bips.dev/386/) defines `tr()` descriptors. The fixture factory uses
   these forms for nested SegWit and Taproot script-path regtest outputs.

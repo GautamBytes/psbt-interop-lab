@@ -1083,7 +1083,7 @@ pub fn handle_value_with_commitments(
             digest,
             "unsupported",
             "operation.unsupported",
-            "Operation is outside this parser-only adapter scope",
+            "Operation is outside this adapter's declared capabilities",
         ),
     }
 }

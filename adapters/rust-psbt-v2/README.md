@@ -1,9 +1,9 @@
 # rust-psbt PSBTv2 adapter
 
-This is a bounded, parser-only PSBTv2 adapter for the `psbt-lab.adapter/0.2`
-JSONL protocol. It uses the Rust Bitcoin `psbt-v2` crate to parse, inspect, and
-serialize BIP370 PSBTs. It does not sign, finalize, combine, extract, or modify
-transactions.
+This is a bounded PSBTv2 workflow adapter for the `psbt-lab.adapter/0.2` JSONL
+protocol. It uses the Rust Bitcoin `psbt-v2` crate to parse, inspect, serialize,
+sign, combine, finalize, and extract BIP370 PSBTs. Signing and state-changing
+operations are restricted to committed deterministic regtest fixtures.
 
 ## Pinned source
 
@@ -15,9 +15,10 @@ transactions.
 
 `Cargo.toml` pins the crate exactly and `Cargo.lock` commits the complete
 dependency resolution. The tests copy the exact 14 valid and 21 invalid BIP370
-vector cases shipped by that pinned CC0 upstream source. The local harness also
-sends every vector through this adapter's `native-parse`, `inspect`, and
-`roundtrip` operations.
+vector cases shipped by that pinned CC0 upstream source. The local harness sends
+every vector through the native parser and also exercises bidirectional P2WPKH
+signing/finalization and cross-library 2-of-3 P2WSH signing, combining,
+finalization, and extraction.
 
 ## Capabilities
 
@@ -25,23 +26,30 @@ The `hello` response declares:
 
 ```json
 {
-  "operations": ["hello", "native-parse", "inspect", "roundtrip"],
-  "roles": ["parser"],
+  "operations": ["hello", "native-parse", "inspect", "roundtrip", "sign", "combine", "finalize", "extract"],
+  "roles": ["parser", "signer", "combiner", "finalizer", "extractor"],
   "psbtVersions": [2],
-  "scriptTypes": ["p2wpkh"]
+  "scriptTypes": ["p2wpkh", "p2wsh"]
 }
 ```
 
-The lab's current capability schema requires at least one `scriptTypes` value.
-This adapter declares only `p2wpkh`, the script profile present in and exercised
-by the pinned BIP370 vectors. Parsing is generic PSBT map parsing, but this
-declaration intentionally avoids claiming untested script-specific coverage. It
-is not a signing or finalization claim.
+The operation-specific capability map declares P2WPKH and P2WSH for inspection,
+roundtripping, signing, combining, finalization, and extraction. The adapter
+does not declare conversion or Taproot support.
 
 `roundtrip` uses the native serializer. PSBT map order is not semantically
 significant, and the library may materialize an explicit default field, so the
 response includes `byteIdentical` as diagnostic data. Correctness is based on
 the roundtripped PSBT parsing to the same native PSBT value, not byte equality.
+
+`sign` and `finalize` accept only `p2wpkh`, `intent-rich-p2wpkh`, or
+`p2wsh-2-of-3` and require a startup `PSBT_LAB_FIXTURE_COMMITMENTS` entry whose
+SHA256 matches the exact unsigned transaction. `combine` and `extract` are
+generic bounded PSBTv2 operations; the orchestrated workflows still apply them
+only to suite-generated fixtures. Existing signatures are verified,
+two-of-three workflows must preserve two distinct pubkey signatures, and
+extracted transactions remain subject to Bitcoin Core policy checks in the
+orchestrated suite.
 
 ## Run locally
 
@@ -75,7 +83,9 @@ docker run --rm -i --read-only --network=none --cap-drop=ALL \
   space.
 - Requests and payloads reject unknown JSON fields.
 - The process reads stdin and writes stdout only. It needs no network, wallet,
-  key, filesystem write, or Bitcoin node access.
+  filesystem write, or Bitcoin node access.
+- The only signing keys are public, valueless deterministic regtest scalars.
+  Caller-provided keys, arbitrary fixtures, and non-regtest signing are rejected.
 - Parse failures return stable error classes without echoing PSBT contents or
   native parser internals.
 

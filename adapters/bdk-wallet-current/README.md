@@ -26,8 +26,12 @@ stdout. It declares:
 operations: hello, native-parse, inspect, roundtrip, sign, finalize
 roles: parser, signer, finalizer
 psbtVersions: 0
-scriptTypes: p2wpkh, p2wsh, p2tr-keypath
+scriptTypes: p2wpkh, p2sh-p2wpkh, p2wsh, p2tr-keypath, p2tr-scriptpath
 ```
+
+Inspection and roundtripping cover all five declared script types. Signing and
+finalization cover P2WPKH, P2WSH, Taproot key-path, and Taproot script-path;
+nested P2SH-P2WPKH is deliberately roundtrip-only.
 
 `native-parse`, `inspect`, and `roundtrip` accept a payload containing only `psbt`. Signing and
 finalization accept `psbt`, `network`, and `fixtureId`; signing additionally accepts optional
@@ -43,6 +47,7 @@ intent-rich-p2wpkh
 p2wsh-single-key
 p2wsh-2-of-3
 p2tr-keypath
+p2tr-scriptpath
 ```
 
 For `p2wsh-2-of-3`, signing contributes only the scalar-1 fixture signature. Finalization succeeds
@@ -57,8 +62,8 @@ is the lab's public deterministic scalar-1 regtest key and must never control re
 
 Signing and finalization require `PSBT_LAB_FIXTURE_COMMITMENTS`, a startup-only JSON object mapping
 an allowlisted fixture ID to `sha256:<lowercase unsigned-transaction digest>`. Caller-provided keys,
-commitments, unknown payload fields, non-regtest networks, mismatched scripts, script-path Taproot
-metadata, and non-default fixture sighashes are rejected.
+commitments, unknown payload fields, non-regtest networks, mismatched scripts, uncommitted Taproot
+leaves or control blocks, and non-default fixture sighashes are rejected.
 
 Core-generated SegWit fixtures contain `witness_utxo` without `non_witness_utxo`. Accordingly,
 signing sets `trust_witness_utxo=true` only after the startup commitment and exact fixture script
@@ -67,10 +72,15 @@ policy pass. Other safety options remain strict:
 ```text
 try_finalize=false
 allow_all_sighashes=false
-tap_leaves_options=None
-sign_with_tap_internal_key=true
+tap_leaves_options=All for p2tr-scriptpath signing; None otherwise
+sign_with_tap_internal_key=false for p2tr-scriptpath; true otherwise
 allow_grinding=true
 ```
+
+The script-path profile verifies the exact fixed leaf script, leaf version,
+internal key, Merkle root, and control block before signing. Finalization
+verifies the existing script-path signature and exact witness shape before
+returning the PSBT.
 
 The adapter verifies existing partial and finalized signatures before BDK finalization. Input PSBTs
 must be canonical padded base64, PSBTv0, and small enough for the 4 MiB protocol line limit. BDK

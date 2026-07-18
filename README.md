@@ -20,7 +20,7 @@ Requirements:
 - On ARM hosts, Docker must support `linux/amd64` emulation for the frozen BDK 2.3.1 specimen
 
 ```bash
-npm install --global psbt-interop-lab@0.5.0
+npm install --global psbt-interop-lab@0.5.1
 psbt-lab doctor
 psbt-lab self-test
 psbt-lab matrix
@@ -41,6 +41,12 @@ psbt-lab run --category taproot-scriptpath
 psbt-lab parse-matrix --runtime local
 psbt-lab replay artifacts/<run-id>
 ```
+
+`--scenario` and `--category` validate the requested selection before starting Docker, so a typo
+cannot create resources or silently run a different test. `parse-matrix --runtime local` is the
+Dockerless parser-only path: the published package currently runs its checksum-pinned bundled
+JavaScript parser and reports native adapters without a published local binary as `unsupported`.
+Use `matrix` for the complete Core-backed, cross-library signing and finalization proof.
 
 Stop the local regtest node when finished:
 

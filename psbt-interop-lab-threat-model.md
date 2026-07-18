@@ -2,7 +2,8 @@
 
 ## 1. Executive Summary
 
-This model covers the local generated-regtest workflow and its separate GitHub-hosted build pipeline.
+This model covers the Docker-backed local generated-regtest workflow, the separate Dockerless
+parser-only runtime, and the GitHub-hosted build pipeline.
 Under the confirmed assumptions, no high or critical runtime threat remains: one trusted developer
 runs the CLI from a trusted host account and Docker daemon, and the signing adapters use only public,
 valueless deterministic regtest keys. The main security objectives are proof-result integrity,
@@ -31,6 +32,8 @@ The confirmed local assumptions are:
 - External adapter manifests are trusted executable configuration selected by the developer.
 - Custom suite manifests are bounded data that select only fixed public fixture templates and typed
   handoff operations.
+- The Dockerless parser runtime executes only checksum-pinned package artifacts selected by its
+  strict internal manifest. Those processes run with the trusted host account's privileges.
 
 The trusted developer chooses the checkout, Docker images, RPC endpoint, and artifact directory.
 The supported guarantee therefore excludes a malicious or compromised host account, Docker daemon,
@@ -72,7 +75,11 @@ flowchart TB
     JS["Networkless bitcoinjs-lib adapter"]
     BDK["Networkless BDK Wallet 3.1.0 adapter"]
     V2["Networkless rust-psbt PSBTv2 adapter"]
+    Wally["Networkless libwally 1.5.4 PSBTv0/v2 adapter"]
     Frozen["Networkless bdkpython 2.3.1 specimen"]
+    LocalManifest["Strict internal Dockerless manifest"]
+    Snapshot["Private checksum-verified adapter snapshot"]
+    LocalJS["Bundled Dockerless JavaScript parser"]
     Wire["Bounded PSBT wire parser"]
     Store["Private local artifact directory"]
     Replay["Offline replay verifier"]
@@ -87,7 +94,11 @@ flowchart TB
     CLI <-->|"bounded stdin/stdout JSONL"| JS
     CLI <-->|"bounded stdin/stdout JSONL"| BDK
     CLI <-->|"bounded stdin/stdout JSONL"| V2
+    CLI <-->|"bounded stdin/stdout JSONL"| Wally
     CLI <-->|"bounded stdin/stdout JSONL"| Frozen
+    LocalManifest -->|"safe package-relative path and SHA256"| Snapshot
+    Snapshot --> LocalJS
+    CLI <-->|"bounded host stdin/stdout JSONL"| LocalJS
     CLI -->|"canonical PSBTs"| Wire
     CLI -->|"atomic local writes"| Store
     Replay -->|"bounded offline reads; no adapters"| Store
@@ -123,11 +134,18 @@ The local components and their repository evidence are:
   requires the returned JSON-RPC ID to equal the request ID.
 - `prepareFixtures` in `src/core/fixtures.ts` requires regtest, zero peers, Bitcoin Core numeric
   version `310100`, and suite-generated PSBTv0 structure.
-- The Rust, Go, JavaScript, and current BDK adapters sign only declared suite fixture profiles whose
+- The Rust, Go, JavaScript, current BDK, rust-psbt-v2, and libwally adapters sign only declared
+  suite fixture profiles whose
   unsigned transactions match run-scoped commitments. Their hello responses declare script
   support per operation so signing support is not mistaken for finalization support. The
-  `rust-psbt-v2` adapter exercises official BIP370 vectors as a parser, while
+  rust-psbt-v2 and libwally adapters exercise the official BIP370 corpus and cross-library PSBTv2
+  signing, combining, finalization, and extraction workflows, while
   `adapters/bdkpython-2.3.1/` freezes the historical regression implementation.
+- `createLocalRuntimeProvider` in `src/local/provider.ts` validates the strict internal manifest,
+  contains package-relative paths, rejects symlinks, bounds and hashes adapter artifacts, copies
+  verified bytes to a private read-only snapshot, and launches them through `AdapterProcess`. The
+  current manifest marks unavailable native binaries unsupported and launches one bundled
+  JavaScript parser. This is host execution, not a sandbox or full proof runtime.
 - `AdapterProcess.request` in `src/protocol/adapter-process.ts` mediates one bounded JSONL request at
   a time, validates response schemas and IDs, and terminates on timeout or protocol violation.
 - `loadAdapterManifest` and `runAdapterConformance` in `src/conformance/` validate bounded,
@@ -150,6 +168,7 @@ The local components and their repository evidence are:
 | --- | --- | --- |
 | Proof outcome and checkpoints | Malformed round trips, disallowed field changes, mismatched RPC replies, and Core-rejected returned PSBTs must not produce PASS. | Scenario transition policies, the lossless semantic parser, and `CoreRpc.call` enforce those checks. The one baselined btcsuite duplicate-key acceptance is reported as a compatibility finding rather than hidden or counted as an unrecognized PASS. Core validation does not prove which binary executed; see TM-001. |
 | Host files and processes | Adapter and Core activity should remain within bounded containers and the selected local artifact directory. | `compose.yaml`, `createDockerAdapter`, and contained artifact paths reduce exposure. The host account, Docker daemon, and kernel remain trusted. |
+| Dockerless package artifacts and host process | The local parser runtime should execute only the exact bounded package artifact named by the internal manifest and should clean up its private snapshot. | `createLocalRuntimeProvider` contains paths, rejects symlinks, caps files at 16 MiB, checks SHA256, creates mode-`0700`/`0400` or `0500` snapshots, and removes them on close. The process still inherits the trusted host account's filesystem and network authority. |
 | Artifact confidentiality | Raw PSBT, script, and UTXO material should remain out of reports. Implementation identity metadata is intentionally recorded. | `ArtifactRun` uses `0700` directories and `0600` files; those local permissions are the only protection for recorded identity metadata and checkpoint contents. Files are not encrypted from the trusted host account. |
 | Local runner availability | Malformed or stalled adapters, Core replies, parsers, and replay input should have bounded time, memory, process, line, response, and file costs. | `AdapterProcess`, `CoreRpc`, `extractWireFacts`, `verifyReplay`, and container limits bound normal failure modes; a trusted-platform compromise is excluded. |
 | CI runner availability and credentials | Untrusted pull-request code should have bounded hosted compute/network access and no repository write credential or workflow secret. | `.github/workflows/ci.yml` uses read-only permissions, no persisted checkout credential, job timeouts, and concurrency cancellation. Build scripts retain network access until a job ends. |
@@ -164,6 +183,8 @@ hostile:
   wrong request ID, oversized output, invalid schema, stale implementation self-report, or hang.
 - A malformed external adapter manifest or an adapter command that violates the JSONL protocol.
 - A malformed custom suite manifest, including oversized structures or invalid scenario dataflow.
+- A modified, oversized, symlinked, path-escaping, or checksum-mismatched Dockerless adapter
+  artifact, plus a bundled local parser that hangs or violates the JSONL protocol.
 - Accidental operator misconfiguration, such as a wrong Core endpoint, wrong Core version, attached
   peer, stale local image tag, unsuitable artifact path, or an untrusted container on Core's bridge.
 - Corrupted local artifact files, including truncation, digest mismatch, absolute or lexically
@@ -185,10 +206,11 @@ a privileged environment. Those events violate the confirmed trust assumptions.
 | Host to Bitcoin Core | `src/core/rpc.ts`: `CoreRpc.call` | HTTP only, loopback by default, bounded body/response, timeout, strict envelope, exact response ID | Local credentials and the selected Core/Docker runtime are trusted. |
 | Core identity and fixtures | `src/core/fixtures.ts`: `prepareFixtures` | Requires regtest, zero connections, numeric version `310100`, and expected generated PSBTv0 structure | A compromised Core binary is not detected by these semantic checks. |
 | Host to adapters | `src/protocol/adapter-process.ts`: `AdapterProcess.request` | `shell: false`, one in-flight JSONL request, schema and ID checks, 4 MiB line limit, 64 KiB retained stderr, timeout and termination | Adapter content remains untrusted until scenario checks consume it. |
-| Adapter compatibility | `src/scenarios/contracts.ts`: `assertAdapterHello` | Pins self-reported name, version, source revision, operations, and PSBTv0 support | A malicious adapter can spoof the expected identity strings and supply any schema-valid self-reported digest; neither is image attestation. |
+| Adapter compatibility | `src/scenarios/contracts.ts`: `assertAdapterHello` | Pins self-reported name, version, source revision, operations, and declared PSBT-version support | A malicious adapter can spoof the expected identity strings and supply any schema-valid self-reported digest; neither is image attestation. |
 | Scenario transition | `src/scenarios/context.ts`: `ScenarioExecutionContext.requireTransition` | Parses both PSBTs and applies role-specific semantic field rules independently of `byteIdentical` | It establishes allowed state changes, not which binary produced the response. |
 | External adapter manifest | `src/conformance/manifest.ts`: `loadAdapterManifest`; `src/conformance/check.ts`: `runAdapterConformance` | 1 MiB strict schema, bounded command fields, `shell: false`, minimal environment, JSONL bounds, timeout, identity and parser checks | The selected command executes with the invoking user's host privileges and can spoof self-reported identity. Only trusted manifests are supported. |
 | Custom suite manifest | `src/custom/manifest.ts`: `loadCustomSuiteManifest`; `src/custom/scenarios.ts`: `compileUserScenarios` | 1 MiB strict schema, bounded fixtures/steps, fixed public templates, typed dataflow, capability-gated signing | It tests deterministic generated fixtures only and is not a safe arbitrary-PSBT or production signing interface. |
+| Dockerless parser manifest and artifact | `src/local/manifest.ts`: `parseLocalRuntimeManifest`; `src/local/provider.ts`: `createLocalRuntimeProvider` | Strict 1 MiB manifest; safe IDs and relative paths; no unknown fields; 16 MiB regular-file cap; no symlinks or path escape; exact SHA256; private read-only snapshot; bounded JSONL and timeout | The verified parser runs directly with the invoking user's host privileges. Package integrity and publisher authenticity remain part of the trusted installation boundary. |
 | PSBT parser | `src/psbt/wire-facts.ts`: `extractWireFacts` | Pre-decode encoded-length check; canonical base64; 4 MiB PSBT, key/value, map, and entry bounds; structural framing | It does not interpret wallet intent or prove native-library memory safety. |
 | Replay | `src/runner/replay.ts`: `verifyReplay` | Rejects absolute and lexically escaping paths; bounds manifest/files and checkpoint count; reparses each PSBT and verifies its SHA256 against the manifest and stored facts JSON `sha256` | Intermediate symlinks remain trusted. Final-component `O_NOFOLLOW` applies only where Node exposes it. Other facts/outcomes are not recomputed, and mutable hashes are not authenticity. |
 | Artifact writes | `src/runner/artifacts.ts`: `ArtifactRun` | Safe identifiers, contained paths, exclusive temporary files, `fsync`, atomic rename, private modes | The trusted account can read or replace local artifacts; directory contents are not signed. |
@@ -233,6 +255,12 @@ a privileged environment. Those events violate the confirmed trust assumptions.
    timeouts prevent shell interpolation and bound the conformance exchange, but cannot contain the
    process after launch. The operator must review the manifest and should use a networkless,
    read-only container. Safely executing untrusted manifests is not claimed.
+8. **Modified Dockerless adapter artifact or hostile bundled parser.** The local runtime rejects an
+   oversized file, unsafe path, symlink, package escape, or SHA256 mismatch before spawn, then runs a
+   private read-only snapshot through the bounded JSONL protocol. A correctly hashed package parser
+   can still use the invoking user's host privileges, network, and filesystem until it exits or is
+   terminated. The package installation and host account are trusted; Dockerless mode is a fast
+   parser check, not process isolation or a substitute for the containerized Core-backed proof.
 
 ## 8. Threat Model Table
 
@@ -247,6 +275,7 @@ a privileged environment. Those events violate the confirmed trust assumptions.
 | TM-007 | Real funds, production keys, users, or public services | The lab is extended or misused with arbitrary PSBTs, production keys, mainnet, uploads, hardware, public API/UI, or multiple tenants | Unsupported input reaches parser, native libraries, signing, storage, or policy decisions | Key/fund loss, privacy breach, or remote denial of service | The built-in matrix exposes only generated fixtures; fixture keys are public and valueless; Core is offline regtest; no broadcast or public endpoint exists | External conformance runs bounded parser probes but is not a production-input security audit. No key-isolation, authentication, authorization, rate-limit, tenancy, hardware, or public-service guarantee is provided. | Out of scope; requires a new threat model |
 | TM-008 | Host files, credentials, and processes | Developer runs an untrusted or insufficiently reviewed external adapter manifest | Manifest starts a host executable that reads files, uses network access, or persists after the check | Host compromise or data disclosure | Strict 1 MiB schema; bounded fields; argument-array spawn with `shell: false`; minimal inherited environment; bounded JSONL and timeout; reports omit command arguments and environment values; documentation recommends a constrained container | These controls do not sandbox the executable. Only trusted manifests are supported; executing untrusted manifests is explicitly out of scope. | Accepted only under trusted-manifest assumption |
 | TM-009 | Proof integrity and runner availability | A custom suite manifest is malformed or attempts to expand the signing surface | Oversized fixtures, unsafe descriptors/payloads, invalid dataflow, or unauthorized custom signing | Misleading result, local resource use, or unintended use of test signers | Strict 1 MiB schema; bounded counts and numeric values; fixed public templates; no command/path/key/raw-PSBT fields; typed step inputs; custom signing requires `fixture-commitment-sha256` and `user-fixture-template-v1` | The feature remains regtest-only and does not validate arbitrary production wallet inputs. | Mitigated, low residual risk under local generated-fixture scope |
+| TM-010 | Host files, credentials, and Dockerless parser result | Installed package or bundled local parser is modified, stale, or hostile | Unsafe path or artifact is executed directly on the host, or a parser lies, hangs, or abuses host authority | Host data disclosure, persistence, denial of service, or misleading parser result | Strict internal manifest; contained safe relative paths; symlink rejection; 16 MiB regular-file cap; exact SHA256; private read-only snapshots; minimal process arguments; bounded JSONL, stderr, and timeout; unsupported native adapters remain explicit | A correctly hashed package artifact is still trusted host code with the invoking user's filesystem and network authority. Checksums do not establish publisher authenticity or sandbox the process. | Mitigated against accidental substitution; trusted package and host execution remain explicit assumptions |
 
 ## 9. Criticality Calibration
 

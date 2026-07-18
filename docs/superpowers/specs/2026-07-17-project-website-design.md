@@ -1,10 +1,13 @@
 # PSBT Interop Lab Website Design
 
+> Historical design record for the v0.4 website. Current product claims and commands live in
+> `README.md` and the website source; v0.5.1 supersedes the release-specific copy below.
+
 ## Goal
 
 Build a responsive public website that gives Bitcoin wallet and library maintainers enough evidence
-to understand PSBT Interop Lab, install version 0.4.0, inspect current compatibility coverage, and
-reach the project documentation and source.
+to understand PSBT Interop Lab, install version 0.4.0 as released at that time, inspect its
+compatibility coverage, and reach the project documentation and source.
 
 ## Visual Target
 
@@ -73,4 +76,3 @@ connection, analytics, cookies, or user-supplied PSBT upload.
 - Production build completes without warnings that indicate broken output.
 - Desktop and mobile screenshots are compared against the selected mock.
 - Browser console errors, overlap, clipping, and horizontal overflow are blocking failures.
-

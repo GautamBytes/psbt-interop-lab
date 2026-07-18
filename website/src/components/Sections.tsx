@@ -18,6 +18,8 @@ const coverage = [
   "Signing, combining, finalization, and policy acceptance",
   "Unknown and proprietary metadata preservation",
   "All official BIP370 valid and invalid vectors",
+  "Target one scenario or category for faster iteration",
+  "Run bounded bundled parser checks without Docker",
   "Transaction intent, RBF, locktime, sighash, and derivations",
   "Malformed native-parser rejection without crashes",
 ] as const;
@@ -166,7 +168,7 @@ export function Sections() {
         <div className="page-shell">
           <Package aria-hidden="true" weight="duotone" />
           <h2 id="cta-title">Run the same PSBT through every handoff.</h2>
-          <p>Open source, MIT licensed, and available now as version 0.5.0.</p>
+          <p>Open source, MIT licensed, and available now as version 0.5.1.</p>
           <div>
             <a className="button button--primary" href={npmUrl}>
               <TerminalWindow aria-hidden="true" />
