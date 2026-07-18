@@ -584,9 +584,7 @@ export const PROOF_SCENARIO_REGISTRATIONS: readonly ProofScenarioRegistration[] 
         }),
     ),
   ),
-  ...(
-    ["taproot-scriptpath-rust-to-bdk", "taproot-scriptpath-bdk-to-rust"] as const
-  ).map((id) =>
+  ...(["taproot-scriptpath-rust-to-bdk", "taproot-scriptpath-bdk-to-rust"] as const).map((id) =>
     registerScenario(
       id,
       {
@@ -615,12 +613,9 @@ export const PROOF_SCENARIO_REGISTRATIONS: readonly ProofScenarioRegistration[] 
   registerScenario(
     "bip370-official-vectors-libwally",
     { core: false, fixtures: [], adapters: ["libwally"] },
-    () =>
-      createBip370VectorScenario("libwally", "libwally-core", ["valid-08", "valid-13"]),
+    () => createBip370VectorScenario("libwally", "libwally-core", ["valid-08", "valid-13"]),
   ),
-  ...(
-    ["psbtv2-p2wpkh-rust-to-libwally", "psbtv2-p2wpkh-libwally-to-rust"] as const
-  ).map((id) =>
+  ...(["psbtv2-p2wpkh-rust-to-libwally", "psbtv2-p2wpkh-libwally-to-rust"] as const).map((id) =>
     registerScenario(
       id,
       {
@@ -638,8 +633,7 @@ export const PROOF_SCENARIO_REGISTRATIONS: readonly ProofScenarioRegistration[] 
       fixtures: ["p2wsh-2-of-3"],
       adapters: ["rust-psbt-v2", "libwally"],
     },
-    (fixtures) =>
-      createMultisigPsbtv2InteropScenario(requiredFixture(fixtures, "p2wsh-2-of-3")),
+    (fixtures) => createMultisigPsbtv2InteropScenario(requiredFixture(fixtures, "p2wsh-2-of-3")),
   ),
 ];
 
@@ -836,6 +830,21 @@ const RUST_COMMITMENT_FIXTURES: readonly BuiltInFixtureId[] = [
   "p2tr-scriptpath",
   "intent-rich-p2wpkh",
 ];
+const BDK_CURRENT_COMMITMENT_FIXTURES: readonly BuiltInFixtureId[] = [
+  "happy-path",
+  "bdk-finalize-regression",
+  "p2wpkh",
+  "p2wsh-single-key",
+  "p2wsh-2-of-3",
+  "p2tr-keypath",
+  "p2tr-scriptpath",
+  "intent-rich-p2wpkh",
+];
+const PSBTV2_COMMITMENT_FIXTURES: readonly BuiltInFixtureId[] = [
+  "p2wpkh",
+  "intent-rich-p2wpkh",
+  "p2wsh-2-of-3",
+];
 
 function preparedFixture(
   fixtures: PreparedFixtureSet | undefined,
@@ -873,9 +882,13 @@ function adapterOptions(
 ): DockerAdapterOptions {
   if (id === "bdkpython") return { platform: "linux/amd64" };
   const commitmentIds =
-    id === "rust-bitcoin" || id === "bdk-wallet-current"
+    id === "rust-bitcoin"
       ? RUST_COMMITMENT_FIXTURES
-      : COMMON_COMMITMENT_FIXTURES;
+      : id === "bdk-wallet-current"
+        ? BDK_CURRENT_COMMITMENT_FIXTURES
+        : id === "rust-psbt-v2" || id === "libwally"
+          ? PSBTV2_COMMITMENT_FIXTURES
+          : COMMON_COMMITMENT_FIXTURES;
   const commitments = commitmentIds.flatMap((fixtureId) => {
     const fixture = preparedFixture(fixtures, fixtureId);
     return fixture ? [fixture] : [];
@@ -973,10 +986,17 @@ export async function runProofWithDependencies(
   try {
     const builtInNegotiated: NegotiatedAdapter[] = [];
     for (const id of selection.resources.adapters) {
-      builtInNegotiated.push({
-        ...(await negotiateBuiltInAdapter(id, context)),
-        registryId: id,
-      });
+      try {
+        builtInNegotiated.push({
+          ...(await negotiateBuiltInAdapter(id, context)),
+          registryId: id,
+        });
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : "unknown adapter error";
+        throw new Error(`Failed to negotiate built-in adapter ${id}: ${detail}`, {
+          cause: error,
+        });
+      }
     }
     const externalNegotiated = new Map<string, NegotiatedAdapter>();
     for (const [id, runtime] of externalRuntime) {

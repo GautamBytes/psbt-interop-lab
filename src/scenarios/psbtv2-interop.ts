@@ -14,10 +14,52 @@ const SIGNING_METADATA = [0x02, 0x03, 0x04, 0x05, 0x06] as const;
 const RUST = "rust-psbt-v2";
 const WALLY = "libwally";
 
+function partialSignatureKeys(psbt: string): readonly string[] {
+  const keys: string[] = [];
+  for (const map of parsePsbtDocument(psbt).maps) {
+    if (map.location.kind !== "input") continue;
+    for (const entry of map.entries) {
+      if (entry.keyType === PARTIAL_SIGNATURE) {
+        keys.push(`${map.location.index}:${entry.keyData.toString("hex")}`);
+      }
+    }
+  }
+  return keys.sort();
+}
+
+function sameKeys(actual: readonly string[], expected: readonly string[]): boolean {
+  return actual.length === expected.length && actual.every((key, index) => key === expected[index]);
+}
+
+export function distinctMultisigContributionEvidence(
+  unsigned: string,
+  rustSigned: string,
+  wallySigned: string,
+  combined: string,
+): ScenarioAssertionEvidence {
+  const unsignedKeys = partialSignatureKeys(unsigned);
+  const rustKeys = partialSignatureKeys(rustSigned);
+  const wallyKeys = partialSignatureKeys(wallySigned);
+  const combinedKeys = partialSignatureKeys(combined);
+  const expectedCombined = [...new Set([...rustKeys, ...wallyKeys])].sort();
+  const passed =
+    unsignedKeys.length === 0 &&
+    rustKeys.length === 1 &&
+    wallyKeys.length === 1 &&
+    rustKeys[0] !== wallyKeys[0] &&
+    expectedCombined.length === 2 &&
+    sameKeys(combinedKeys, expectedCombined);
+  return {
+    name: "psbtv2-distinct-multisig-contributions-preserved",
+    passed,
+    summary: passed
+      ? "rust-psbt-v2 and libwally added distinct pubkey signatures and the combiner preserved both"
+      : "The PSBTv2 branches did not contribute and preserve two distinct pubkey signatures",
+  };
+}
+
 interface Direction {
-  readonly id:
-    | "psbtv2-p2wpkh-rust-to-libwally"
-    | "psbtv2-p2wpkh-libwally-to-rust";
+  readonly id: "psbtv2-p2wpkh-rust-to-libwally" | "psbtv2-p2wpkh-libwally-to-rust";
   readonly signer: typeof RUST | typeof WALLY;
   readonly finalizer: typeof RUST | typeof WALLY;
 }
@@ -112,9 +154,7 @@ async function extractWithBoth(
   const rust = await context.request(RUST, "extract", { psbt: finalizedPsbt });
   const document = parsePsbtDocument(finalizedPsbt);
   const inputs = Array.from({ length: document.inputCount }, (_, index) =>
-    document.maps.find(
-      ({ location }) => location.kind === "input" && location.index === index,
-    ),
+    document.maps.find(({ location }) => location.kind === "input" && location.index === index),
   );
   const hasWitnessWithoutScriptSig = inputs.every(
     (input) =>
@@ -212,14 +252,7 @@ async function corePolicyCheck(
   const policy = libwallyCanParse
     ? await context.policyCheck(
         await context.finalizeWithCore(
-          await convert(
-            context,
-            fixture,
-            finalizedV2,
-            0,
-            assertions,
-            "finalized-v2-to-v0",
-          ),
+          await convert(context, fixture, finalizedV2, 0, assertions, "finalized-v2-to-v0"),
         ),
       )
     : await context.policyCheckTransaction(extractedTransaction);
@@ -276,13 +309,15 @@ function p2wpkhScenario(
       });
       const signed = context.outputString(sign, "psbt", "sign");
       assertions.push(
-        context.requireTransition("sign", `${direction.signer}-psbtv2-signing-transition`, v2, signed),
-        context.requireAddedInputField(
-          `${direction.signer}-added-psbtv2-signature`,
+        context.requireTransition(
+          "sign",
+          `${direction.signer}-psbtv2-signing-transition`,
           v2,
           signed,
-          [PARTIAL_SIGNATURE],
         ),
+        context.requireAddedInputField(`${direction.signer}-added-psbtv2-signature`, v2, signed, [
+          PARTIAL_SIGNATURE,
+        ]),
       );
       await context.checkpoint(direction.id, `${direction.signer}-signed`, signed);
 
@@ -402,6 +437,7 @@ export function createMultisigPsbtv2InteropScenario(
           rustSigned,
           combined,
         ),
+        distinctMultisigContributionEvidence(v2, rustSigned, wallySigned, combined),
       );
       await context.checkpoint("psbtv2-2-of-3-cross-library", "combined", combined);
 
@@ -415,7 +451,12 @@ export function createMultisigPsbtv2InteropScenario(
         "finalize",
       );
       assertions.push(
-        context.requireTransition("finalize", "libwally-finalized-combined-psbtv2", combined, finalized),
+        context.requireTransition(
+          "finalize",
+          "libwally-finalized-combined-psbtv2",
+          combined,
+          finalized,
+        ),
       );
       const extraction = await extractWithBoth(context, finalized, assertions);
       const policy = await corePolicyCheck(

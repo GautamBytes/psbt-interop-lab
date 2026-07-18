@@ -219,7 +219,10 @@ function runtimeAdapter(contract: ExpectedAdapterContract): ProofRuntimeAdapter 
   };
 }
 
-function proofHarness(failScenario = false): {
+function proofHarness(
+  failScenario = false,
+  failHelloImage?: string,
+): {
   dependencies: ProofDependencies;
   adapters: ProofRuntimeAdapter[];
   artifacts: ProofRuntimeArtifacts;
@@ -276,6 +279,11 @@ function proofHarness(failScenario = false): {
         const contract = contracts.get(image);
         if (!contract) throw new Error(`Unexpected test adapter image ${image}`);
         const value = runtimeAdapter(contract);
+        if (image === failHelloImage) {
+          value.request = vi.fn(async () => {
+            throw new Error("adapter exited during hello");
+          });
+        }
         adapters.push(value);
         return value;
       }),
@@ -623,6 +631,21 @@ describe("proof runtime", () => {
       "p2tr-scriptpath": `sha256:${"d".repeat(64)}`,
       "intent-rich-p2wpkh": `sha256:${"d".repeat(64)}`,
     });
+    const bdkCommitments = JSON.stringify({
+      "happy-path": `sha256:${"c".repeat(64)}`,
+      "bdk-finalize-regression": `sha256:${"d".repeat(64)}`,
+      p2wpkh: `sha256:${"d".repeat(64)}`,
+      "p2wsh-single-key": `sha256:${"d".repeat(64)}`,
+      "p2wsh-2-of-3": `sha256:${"d".repeat(64)}`,
+      "p2tr-keypath": `sha256:${"d".repeat(64)}`,
+      "p2tr-scriptpath": `sha256:${"d".repeat(64)}`,
+      "intent-rich-p2wpkh": `sha256:${"d".repeat(64)}`,
+    });
+    const psbtv2Commitments = JSON.stringify({
+      p2wpkh: `sha256:${"d".repeat(64)}`,
+      "intent-rich-p2wpkh": `sha256:${"d".repeat(64)}`,
+      "p2wsh-2-of-3": `sha256:${"d".repeat(64)}`,
+    });
     expect(harness.created).toEqual([
       {
         image: "psbt-interop-lab/rust-bitcoin:0.1.0",
@@ -642,19 +665,21 @@ describe("proof runtime", () => {
       },
       {
         image: "psbt-interop-lab/bdk-wallet-current:3.1.0",
-        options: { env: { PSBT_LAB_FIXTURE_COMMITMENTS: rustCommitments } },
+        options: { env: { PSBT_LAB_FIXTURE_COMMITMENTS: bdkCommitments } },
       },
       {
         image: "psbt-interop-lab/rust-psbt-v2:0.1.0",
-        options: { env: { PSBT_LAB_FIXTURE_COMMITMENTS: commonCommitments } },
+        options: { env: { PSBT_LAB_FIXTURE_COMMITMENTS: psbtv2Commitments } },
       },
       {
         image: "psbt-interop-lab/libwally:1.5.4",
-        options: { env: { PSBT_LAB_FIXTURE_COMMITMENTS: commonCommitments } },
+        options: { env: { PSBT_LAB_FIXTURE_COMMITMENTS: psbtv2Commitments } },
       },
     ]);
     expect(rustCommitments).not.toContain("cHNidP8");
     expect(commonCommitments).not.toContain("cHNidP8");
+    expect(bdkCommitments).not.toContain("cHNidP8");
+    expect(psbtv2Commitments).not.toContain("cHNidP8");
   });
 
   test("closes every adapter exactly once after an infrastructure failure", async () => {
@@ -670,6 +695,24 @@ describe("proof runtime", () => {
         harness.dependencies,
       ),
     ).rejects.toThrow(/Core unavailable/);
+    for (const adapter of harness.adapters) expect(adapter.close).toHaveBeenCalledTimes(1);
+  });
+
+  test("names the built-in adapter whose hello negotiation fails", async () => {
+    const harness = proofHarness(false, "psbt-interop-lab/bitcoinjs-lib:7.0.1");
+
+    await expect(
+      runProofWithDependencies(
+        {
+          rpc: {} as never,
+          artifactRoot: "/tmp/psbt-lab-test",
+          projectDirectory: "/project",
+        },
+        harness.dependencies,
+      ),
+    ).rejects.toThrow(
+      /Failed to negotiate built-in adapter bitcoinjs-lib: adapter exited during hello/,
+    );
     for (const adapter of harness.adapters) expect(adapter.close).toHaveBeenCalledTimes(1);
   });
 

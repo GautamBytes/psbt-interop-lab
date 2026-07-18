@@ -6,7 +6,7 @@ import type {
   AdapterResponse,
   NegotiatedAdapter,
 } from "../../src/protocol/types.js";
-import { parsePsbtDocument } from "../../src/psbt/document.js";
+import { type PsbtMapLocation, parsePsbtDocument } from "../../src/psbt/document.js";
 import { extractWireFacts } from "../../src/psbt/wire-facts.js";
 import { ScenarioExecutionContext } from "../../src/scenarios/context.js";
 import { runScenarioCatalog } from "../../src/scenarios/engine.js";
@@ -71,32 +71,44 @@ function initialPsbt(): string {
       entry(0x15, Buffer.concat([leafScript, Buffer.from([0xc0])]), controlBlock),
       entry(0x17, scalar1),
     ]),
-    map([]),
+    map([entry(0x07, Buffer.from("00deadbeef", "hex"), scalar1)]),
   ]).toString("base64");
 }
 
 function serializePsbt(
   psbt: string,
-  transform: (entry: {
-    keyType: number;
-    keyData: Buffer;
-    value: Buffer;
-  }) => { keyType: number; keyData: Buffer; value: Buffer } | undefined,
+  transform: (
+    entry: {
+      keyType: number;
+      keyData: Buffer;
+      value: Buffer;
+    },
+    location: PsbtMapLocation,
+  ) => { keyType: number; keyData: Buffer; value: Buffer } | undefined,
 ): string {
   const document = parsePsbtDocument(psbt);
   const maps = document.maps.map((item) =>
     map(
       item.entries.flatMap((original) => {
-        const changed = transform({
-          keyType: original.keyType,
-          keyData: Buffer.from(original.keyData),
-          value: Buffer.from(original.value),
-        });
+        const changed = transform(
+          {
+            keyType: original.keyType,
+            keyData: Buffer.from(original.keyData),
+            value: Buffer.from(original.value),
+          },
+          item.location,
+        );
         return changed ? [entry(changed.keyType, changed.value, changed.keyData)] : [];
       }),
     ),
   );
   return Buffer.concat([Buffer.from("70736274ff", "hex"), ...maps]).toString("base64");
+}
+
+function finalizedPsbtWithoutOutputOrigins(psbt: string): string {
+  return serializePsbt(finalizedPsbt(psbt), (field, location) =>
+    location.kind === "output" && field.keyType === 0x07 ? undefined : field,
+  );
 }
 
 function signedPsbt(psbt: string): string {
@@ -289,6 +301,39 @@ describe("Taproot script-path handoff scenarios", () => {
         expect.objectContaining({ name: "rust-bitcoin-preserved-bip371-while-signing" }),
         expect.objectContaining({ name: "bdk-wallet-current-returned-final-witness" }),
         expect.objectContaining({ name: "core-policy-accepted", passed: true }),
+      ]),
+    );
+  });
+
+  test("records BDK output key-origin removal as a bounded compatibility finding", async () => {
+    const input = fixture();
+    const signed = signedPsbt(input.initialPsbt);
+    const finalized = finalizedPsbtWithoutOutputOrigins(signed);
+    const execution = context((name, request) =>
+      success(request, implementations[name], request.operation === "sign" ? signed : finalized),
+    );
+    const definition = createTaprootScriptPathHandoffScenarios(input)[0];
+    if (!definition) throw new Error("Missing rust-to-BDK handoff scenario");
+
+    const [result] = await runScenarioCatalog([definition], execution, negotiated());
+
+    expect(result).toMatchObject({ outcome: "passed" });
+    expect(result?.findings).toEqual([
+      expect.objectContaining({
+        id: "bdk-taproot-finalize-removes-output-origins",
+        implementation: "bdk-wallet-current",
+      }),
+    ]);
+    expect(result?.assertions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "bdk-finalization-output-origin-divergence-recorded",
+          passed: true,
+        }),
+        expect.objectContaining({
+          name: "bdk-wallet-current-returned-exact-script-path-witness",
+          passed: true,
+        }),
       ]),
     );
   });

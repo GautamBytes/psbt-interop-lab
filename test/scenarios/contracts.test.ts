@@ -1,10 +1,10 @@
 import { describe, expect, test } from "vitest";
-import * as adapterContracts from "../../src/scenarios/contracts.js";
 import type {
   AdapterImplementation,
   AdapterResponse,
   JsonValue,
 } from "../../src/protocol/types.js";
+import * as adapterContracts from "../../src/scenarios/contracts.js";
 import {
   assertAdapterHello,
   assertByteIdenticalRoundtrip,
@@ -101,8 +101,7 @@ describe("adapter contracts", () => {
     expect(contract).toMatchObject({
       name: "libwally-core",
       version: "1.5.4",
-      sourceRevision:
-        "libwally-core-release_1.5.4@c5591834b3ae4ee4c7db9e537a9c19104ab4bf0c",
+      sourceRevision: "libwally-core-release_1.5.4@c5591834b3ae4ee4c7db9e537a9c19104ab4bf0c",
       psbtVersions: [0, 2],
       operations: [
         "hello",

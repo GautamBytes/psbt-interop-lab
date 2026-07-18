@@ -79,7 +79,9 @@ async function privateSnapshot(
   bytes: Buffer,
   executable: boolean,
 ): Promise<string> {
-  const extension = basename(sourcePath).includes(".") ? `.${basename(sourcePath).split(".").pop()}` : "";
+  const extension = basename(sourcePath).includes(".")
+    ? `.${basename(sourcePath).split(".").pop()}`
+    : "";
   const path = join(directory, `${adapterId}${extension}`);
   const handle = await open(path, "wx", executable ? 0o500 : 0o400);
   try {

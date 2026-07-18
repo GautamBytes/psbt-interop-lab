@@ -2,7 +2,7 @@
 
 `psbt-lab adapter check` lets a wallet or library maintainer validate a local adapter without
 changing PSBT Interop Lab source. The same manifest can enroll conforming adapters in the full
-matrix while preserving the 24 bundled scenarios.
+matrix while preserving the 31 bundled scenarios.
 
 ## Adapter Manifest
 
@@ -68,7 +68,7 @@ psbt-lab run --suite proof --adapter-manifest ./adapters.json
 
 The manifest `id` is the stable registry and report identity. It may differ from `expected.name`.
 It must not collide with `rust-bitcoin`, `btcsuite-go`, `bitcoinjs-lib`, `bdkpython`,
-`bdk-wallet-current`, `rust-psbt-v2`, or another ID in the same manifest. Every response must
+`bdk-wallet-current`, `rust-psbt-v2`, `libwally`, or another ID in the same manifest. Every response must
 continue reporting the expected name, version, source revision, and optional pinned artifact
 digest. The configured timeout caps every request.
 

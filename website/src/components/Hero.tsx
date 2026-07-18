@@ -8,8 +8,8 @@ import { repositoryUrl } from "../content";
 import { InstallCommand } from "./InstallCommand";
 
 const metrics = [
-  { icon: Flask, label: "24 scenarios" },
-  { icon: FlowArrow, label: "6 implementations" },
+  { icon: Flask, label: "31 scenarios" },
+  { icon: FlowArrow, label: "7 implementations" },
   { icon: ShieldCheck, label: "regtest only" },
   { icon: FileCode, label: "replayable artifacts" },
 ] as const;

@@ -1,6 +1,6 @@
 export const repositoryUrl = "https://github.com/GautamBytes/psbt-interop-lab";
 export const npmUrl = "https://www.npmjs.com/package/psbt-interop-lab";
-export const installCommand = "npm install --global psbt-interop-lab@0.4.0";
+export const installCommand = "npm install --global psbt-interop-lab@0.5.0";
 
 export type ScenarioStatus = "pass" | "finding" | "supported";
 
@@ -20,6 +20,7 @@ export interface ReportScenario {
   statusLabel: string;
   handoff: string;
   summary: string;
+  implementations: readonly string[];
   evidence: EvidenceRow[];
   replay: string;
 }
@@ -30,7 +31,8 @@ export const implementations = [
   { name: "btcsuite PSBT", version: "1.2.0", short: "GO", tone: "blue" },
   { name: "bitcoinjs-lib", version: "7.0.1", short: "JS", tone: "yellow" },
   { name: "BDK Wallet", version: "3.1.0", short: "BDK", tone: "green" },
-  { name: "PSBTv2 parser", version: "0.3.0", short: "V2", tone: "violet" },
+  { name: "rust-psbt PSBTv2", version: "0.3.0", short: "V2", tone: "violet" },
+  { name: "libwally", version: "1.5.4", short: "LW", tone: "blue" },
 ] as const;
 
 export const reportScenarios: ReportScenario[] = [
@@ -43,6 +45,7 @@ export const reportScenarios: ReportScenario[] = [
     handoff: "Core -> rust-bitcoin -> btcsuite -> bitcoinjs-lib",
     summary:
       "Transaction intent, known fields, unknown fields, and proprietary metadata remain semantically intact across the full handoff chain.",
+    implementations: ["Bitcoin Core", "rust-bitcoin", "btcsuite PSBT", "bitcoinjs-lib"],
     evidence: [
       {
         field: "Unsigned transaction commitment",
@@ -77,6 +80,7 @@ export const reportScenarios: ReportScenario[] = [
     handoff: "Malformed PSBT -> btcsuite PSBT 1.2.0 native parser",
     summary:
       "btcsuite accepts a duplicate global unsigned-transaction key. The lab keeps this divergence visible while requiring other native parsers to reject malformed input safely.",
+    implementations: ["btcsuite PSBT"],
     evidence: [
       {
         field: "PSBT_GLOBAL_UNSIGNED_TX (0x00)",
@@ -111,6 +115,7 @@ export const reportScenarios: ReportScenario[] = [
     handoff: "Bitcoin Core -> current library signer -> Bitcoin Core",
     summary:
       "The suite checks Taproot key-path creation, roundtripping, signing, finalization, and policy acceptance on isolated regtest fixtures.",
+    implementations: ["Bitcoin Core", "rust-bitcoin", "BDK Wallet"],
     evidence: [
       {
         field: "Taproot internal key",
@@ -132,6 +137,41 @@ export const reportScenarios: ReportScenario[] = [
         actual: "verified on regtest",
         implementation: "Bitcoin Core 31.1",
         nextStep: "No mainnet broadcast path exists.",
+      },
+    ],
+    replay: "psbt-lab replay artifacts/<run-id>",
+  },
+  {
+    id: "psbtv2-finalization",
+    shortLabel: "PSBTv2 finalization",
+    title: "Explicit empty final-scriptSig divergence",
+    status: "finding",
+    statusLabel: "Compatibility finding",
+    handoff: "libwally 1.5.4 -> rust-psbt PSBTv2 0.3.0 -> Bitcoin Core",
+    summary:
+      "A valid SegWit final witness exposes a strict-parser mismatch: rust-psbt requires an explicit empty final scriptSig, while libwally rejects that explicit empty field. The lab reports the difference and still asks Core to validate the extracted transaction.",
+    implementations: ["Bitcoin Core", "rust-psbt PSBTv2", "libwally"],
+    evidence: [
+      {
+        field: "PSBT_IN_FINAL_SCRIPTSIG (0x07)",
+        expected: "equivalent absent or empty encoding",
+        actual: "implementations require opposite forms",
+        implementation: "rust-psbt / libwally",
+        nextStep: "Normalize only at the named adapter boundary.",
+      },
+      {
+        field: "PSBT_IN_FINAL_SCRIPTWITNESS (0x08)",
+        expected: "valid final witness preserved",
+        actual: "preserved across the handoff",
+        implementation: "both PSBTv2 adapters",
+        nextStep: "Keep the witness as the transaction evidence.",
+      },
+      {
+        field: "Extracted transaction",
+        expected: "Bitcoin Core policy accepted",
+        actual: "accepted on isolated regtest",
+        implementation: "Bitcoin Core 31.1",
+        nextStep: "Track the encoding mismatch as an interop finding.",
       },
     ],
     replay: "psbt-lab replay artifacts/<run-id>",
@@ -160,7 +200,7 @@ export const docLinks = [
   { label: "Quick start", detail: "Install and run the matrix", href: "/docs#quick-start" },
   {
     label: "Scenario coverage",
-    detail: "See all 24 bundled scenarios",
+    detail: "See all 31 bundled scenarios",
     href: "/docs#current-coverage",
   },
   { label: "Adapter kit", detail: "Bring another wallet or library", href: "/adapter-kit" },

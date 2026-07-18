@@ -15,6 +15,7 @@ flowchart LR
   CLI -->|"bounded JSONL"| JS["bitcoinjs-lib 7.0.1 adapter"]
   CLI -->|"bounded JSONL"| BDK["BDK Wallet 3.1.0 adapter"]
   CLI -->|"bounded JSONL"| V2["rust-psbt PSBTv2 0.3.0 adapter"]
+  CLI -->|"bounded JSONL"| Wally["libwally 1.5.4 PSBTv0/v2 adapter"]
   CLI -->|"bounded JSONL"| Frozen["bdkpython 2.3.1 regression specimen"]
   CLI --> Facts["Lossless semantic PSBT parser and transition rules"]
   CLI --> Artifacts["Private checkpoints plus JSON, Markdown, and HTML reports"]
@@ -70,9 +71,9 @@ The `native-parse` operation removes the adapter's PSBT structural preflight fro
 testing. After bounded canonical base64 decoding, the Rust, Go, JavaScript, or Python adapter calls
 the native library parser directly and reports whether that parser accepted or rejected the bytes.
 
-The Rust, Go, JavaScript, and current BDK adapters sign and finalize only known run-committed
-fixture inputs. A separate Rust adapter exercises the official BIP370 PSBTv2 vectors through a
-native parser. The Python adapter freezes the affected `bdkpython` 2.3.1 wheel and exposes
+The Rust, Go, JavaScript, current BDK, rust-psbt-v2, and libwally adapters sign and finalize only
+known run-committed fixture inputs. rust-psbt-v2 and libwally both exercise the official BIP370
+corpus and run bidirectional PSBTv2 signing/finalization workflows. The Python adapter freezes the affected `bdkpython` 2.3.1 wheel and exposes
 round-trip/finalize behavior. No adapter has network access at runtime.
 
 ### Wire facts and artifacts
@@ -87,6 +88,9 @@ Roundtrip checks preserve every field except one BIP370 equivalence: an omitted
 `PSBT_GLOBAL_TX_MODIFIABLE` field and an explicit one-byte zero value both mean that no inputs or
 outputs may be changed. The checker accepts only that missing-to-zero or zero-to-missing
 normalization. Nonzero flags, any other addition/removal, and every value mutation still fail.
+Signing, combining, and finalization additionally allow only BIP370-monotonic flag changes:
+input/output modification permissions may be cleared, the sighash-single bit may only be set, and
+unknown bits must remain unchanged.
 
 Each handoff writes both the canonical base64 PSBT and its facts. The manifest records these files
 alongside the run's self-reported implementation identities. Replay reparses each PSBT and verifies
@@ -110,7 +114,7 @@ kernel, or base image.
 GitHub-hosted CI is separate from that runtime. `.github/workflows/ci.yml` gives jobs read-only
 repository permission, no persisted checkout credential or workflow secrets, pinned action commits,
 ephemeral runners, timeouts, and concurrency cancellation. Pull requests run the TypeScript, Rust,
-Go, JavaScript, and BDK checks; the complete Docker proof runs only on `refs/heads/main` or a trusted
+Go, JavaScript, BDK, and libwally checks; the complete Docker proof runs only on `refs/heads/main` or a trusted
 manual dispatch.
 These controls mitigate credential, compute, and network abuse. Pull-request code can alter its own
 tests and build scripts, so green means revision self-consistency rather than independent check
@@ -121,7 +125,7 @@ The detailed assumptions, abuse paths, and residual risks are recorded in the
 
 ## Proof Scenarios
 
-The executable catalog currently contains 24 scenarios. Twelve independent Core-to-library
+The executable catalog currently contains 31 scenarios. Twelve independent Core-to-library
 handoffs exercise rust-bitcoin, btcsuite, bitcoinjs, and current BDK signing for P2WSH, P2WPKH, and
 P2TR key-path inputs.
 A same-input 2-of-3 scenario has Rust and JavaScript sign independent PSBT copies, combines their
@@ -146,9 +150,13 @@ reproduce BDK issue #488 after Rust, Go, or JavaScript prepares the same mixed f
 state; Core independently finalizes and policy-checks the same PSBT.
 
 Two profile matrices roundtrip nested P2SH-P2WPKH and Taproot script-path PSBTs through the four
-current PSBTv0 libraries. The PSBTv2 scenario sends all 14 valid and 21 invalid official BIP370
-vectors through the pinned native `psbt-v2` parser and requires valid roundtrips plus clean invalid
-rejection.
+current PSBTv0 libraries. Two additional handoffs sign and finalize the exact committed Taproot
+leaf in both Rust/BDK directions, while rejection canaries mutate its leaf and control block. The
+current BDK finalizer's removal of Taproot output key-origin entries is retained as a named finding;
+the suite still requires the exact committed script-path witness and Core policy acceptance.
+PSBTv2 scenarios send all 14 valid and 21 invalid official BIP370 vectors through rust-psbt-v2 and
+libwally, then run bidirectional P2WPKH and cross-library 2-of-3 workflows. Core policy-checks every
+completed transaction. Known strict-parser differences remain named findings.
 
 `psbt-lab self-test` deliberately drops metadata, changes an output amount, changes an input
 sequence, and removes a signature. It passes only when the semantic detectors identify every fault.
@@ -161,7 +169,7 @@ the expected identity and baseline parser capabilities, probes valid and malform
 and requires semantic roundtrip preservation.
 
 `psbt-lab matrix --adapter-manifest <manifest>` then registers each external process by its manifest
-ID while retaining the separately validated implementation identity. The runner preserves all 24
+ID while retaining the separately validated implementation identity. The runner preserves all 31
 bundled scenarios and appends capability-gated P2WPKH, nested P2SH-P2WPKH, P2WSH, Taproot key-path,
 and Taproot script-path parse and roundtrip scenarios, plus signing where declared. Run-scoped
 unsigned-transaction commitments authorize only deterministic regtest fixtures. See

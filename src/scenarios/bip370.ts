@@ -32,13 +32,21 @@ export function createBip370VectorScenario(
       },
     ],
     async run(context) {
-      const validFailures: string[] = [];
+      const expectedValidRejections: string[] = [];
+      const unexpectedValidFailures: string[] = [];
       const invalidFailures: string[] = [];
 
       for (const vector of BIP370_VALID_VECTORS) {
         const parsed = await context.request(adapter, "native-parse", { psbt: vector.base64 });
         if (parsed.status !== "ok" || parsed.output["nativeParser"] !== nativeParser) {
-          validFailures.push(`${vector.id}:native-parse`);
+          const expectedRejection =
+            allowedRejections.has(vector.id) &&
+            parsed.status === "rejected" &&
+            parsed.error.class === "psbt.native_parse_failed" &&
+            parsed.implementation.name === nativeParser;
+          (expectedRejection ? expectedValidRejections : unexpectedValidFailures).push(
+            `${vector.id}:native-parse`,
+          );
           continue;
         }
         const roundtrip = await context.request(adapter, "roundtrip", { psbt: vector.base64 });
@@ -52,7 +60,7 @@ export function createBip370VectorScenario(
             returned,
           ).passed
         ) {
-          validFailures.push(`${vector.id}:roundtrip`);
+          unexpectedValidFailures.push(`${vector.id}:roundtrip`);
         }
       }
 
@@ -63,13 +71,6 @@ export function createBip370VectorScenario(
         }
       }
 
-      const expectedValidRejections = validFailures.filter((failure) => {
-        const [vectorId, stage] = failure.split(":");
-        return stage === "native-parse" && vectorId !== undefined && allowedRejections.has(vectorId);
-      });
-      const unexpectedValidFailures = validFailures.filter(
-        (failure) => !expectedValidRejections.includes(failure),
-      );
       const validPassed = unexpectedValidFailures.length === 0;
       const invalidPassed = invalidFailures.length === 0;
 
@@ -94,7 +95,7 @@ export function createBip370VectorScenario(
               invalidFailures.length === 0
                 ? "All 21 invalid vectors were rejected by the native parser"
                 : `Unexpected acceptances: ${invalidFailures.join(", ")}`,
-            },
+          },
         ],
         ...(expectedValidRejections.length > 0
           ? {

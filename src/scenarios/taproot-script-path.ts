@@ -3,11 +3,16 @@ import type { AdapterOperation } from "../protocol/types.js";
 import { readCompactSize } from "../psbt/compact-size.js";
 import { type PsbtMapLocation, parsePsbtDocument } from "../psbt/document.js";
 import type { ScenarioExecutionContext } from "./context.js";
-import type { ScenarioAssertionEvidence, ScenarioDefinition } from "./definition.js";
+import type {
+  ScenarioAssertionEvidence,
+  ScenarioDefinition,
+  ScenarioFinding,
+} from "./definition.js";
 
 const TAPROOT_SCRIPT_SIGNATURE = 0x14;
 const TAPROOT_LEAF_SCRIPT = 0x15;
 const TAPROOT_BIP32_DERIVATION = 0x16;
+const TAPROOT_OUTPUT_BIP32_DERIVATION = 0x07;
 const TAPROOT_INTERNAL_KEY = 0x17;
 const TAPROOT_MERKLE_ROOT = 0x18;
 const FINAL_SCRIPT_WITNESS = 0x08;
@@ -86,7 +91,8 @@ function decodeWitness(value: Buffer): readonly Buffer[] {
     items.push(Buffer.from(value.subarray(offset, offset + length.value)));
     offset += length.value;
   }
-  if (offset !== value.byteLength) throw new TypeError("Taproot script-path witness has trailing data");
+  if (offset !== value.byteLength)
+    throw new TypeError("Taproot script-path witness has trailing data");
   return items;
 }
 
@@ -171,6 +177,7 @@ function createHandoffScenario(
     ],
     async run(context) {
       const assertions: ScenarioAssertionEvidence[] = [];
+      const findings: ScenarioFinding[] = [];
       await context.checkpoint(direction.id, "core-created", fixture.initialPsbt);
 
       const signResponse = await context.request(direction.signer, "sign", {
@@ -208,14 +215,39 @@ function createHandoffScenario(
         "psbt",
         direction.finalizeOperation,
       );
-      assertions.push(
-        context.requireTransition(
-          "finalize",
-          `${direction.finalizer}-finalization-transition`,
-          signedPsbt,
-          finalizedPsbt,
-        ),
+      const finalizationTransition = context.transitionEvidence(
+        "finalize",
+        `${direction.finalizer}-finalization-transition`,
+        signedPsbt,
+        finalizedPsbt,
       );
+      const bdkRemovedOnlyOutputOrigins =
+        direction.finalizer === "bdk-wallet-current" &&
+        finalizationTransition.failures !== undefined &&
+        finalizationTransition.failures.length > 0 &&
+        finalizationTransition.failures.every(
+          (failure) =>
+            failure.code === "ENTRY_REMOVED" &&
+            failure.location.kind === "output" &&
+            failure.keyType === TAPROOT_OUTPUT_BIP32_DERIVATION,
+        );
+      if (bdkRemovedOnlyOutputOrigins) {
+        assertions.push({
+          name: "bdk-finalization-output-origin-divergence-recorded",
+          passed: true,
+          likelyImplementation: "bdk-wallet-current",
+          summary:
+            "BDK finalized the script path but removed Taproot output key-origin metadata; the lab kept the loss visible as a bounded compatibility finding",
+        });
+        findings.push({
+          id: "bdk-taproot-finalize-removes-output-origins",
+          implementation: "bdk-wallet-current",
+          summary:
+            "Finalization removed PSBT_OUT_TAP_BIP32_DERIVATION entries even though the transaction and exact script-path witness remained valid.",
+        });
+      } else {
+        assertions.push(finalizationTransition);
+      }
       const inputIndexes = Array.from({ length: fixture.inputCount }, (_, index) => index);
       assertions.push(
         context.requireInputFieldPresence(
@@ -269,6 +301,7 @@ function createHandoffScenario(
       return {
         summary: `${direction.signer} signed and ${direction.finalizer} finalized the Taproot script path.`,
         assertions,
+        ...(findings.length > 0 ? { findings } : {}),
         policyAccepted: policy.allowed,
         ...(policy.txid ? { transactionId: policy.txid } : {}),
       };

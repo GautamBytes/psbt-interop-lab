@@ -112,6 +112,16 @@ jobs:
       - run: cargo clippy --locked --all-targets -- -D warnings
       - run: cargo test --locked
 
+  libwally-adapter:
+    name: libwally 1.5.4 adapter
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+      - run: docker build --tag psbt-interop-lab/libwally:1.5.4 adapters/libwally-1.5.4
+
   package-smoke:
     name: Release tarball smoke test
     runs-on: ubuntu-latest
@@ -136,6 +146,7 @@ jobs:
       - run: /tmp/psbt-install/node_modules/.bin/psbt-lab adapter --help
       - run: test -f /tmp/psbt-install/node_modules/psbt-interop-lab/compose.yaml
       - run: test -f /tmp/psbt-install/node_modules/psbt-interop-lab/adapters/rust-bitcoin/Dockerfile
+      - run: test -f /tmp/psbt-install/node_modules/psbt-interop-lab/adapters/libwally-1.5.4/Dockerfile
       - run: test -f /tmp/psbt-install/node_modules/psbt-interop-lab/dist/conformance/adapter-manifest.schema.json
 
   go-adapter:
@@ -195,6 +206,27 @@ jobs:
           architecture: x64
       - run: python -m pip install --disable-pip-version-check --no-deps --require-hashes -r requirements.txt
       - run: python -m unittest -v test_adapter.py
+
+  feature-docker-proof:
+    name: v0.5 feature Docker proof
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@b0f76dfb45f55f8421693e4803ac7bb65143bd34 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22
+          package-manager-cache: false
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: node dist/cli.js run --category taproot-scriptpath
+      - run: node dist/cli.js run --category psbtv2-interop
+      - if: always()
+        run: docker compose stop core
 
   docker-proof:
     name: Complete Docker proof

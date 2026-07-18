@@ -225,7 +225,9 @@ function signFailures(
       if (!isValidTxModifiableChange(before, after)) {
         failures.push(addedFailure(entry, "TX_MODIFIABLE_INVALID_CHANGE"));
       }
-    } else if (isChangedIdentityEntry(before, after, entry.location, entry.keyType, identityChanged)) {
+    } else if (
+      isChangedIdentityEntry(before, after, entry.location, entry.keyType, identityChanged)
+    ) {
       failures.push(addedFailure(entry, "TRANSACTION_IDENTITY_CHANGED"));
     } else if (!isInputType(entry.location, entry.keyType, SIGNATURE_INPUT_TYPES)) {
       failures.push(addedFailure(entry));
@@ -277,7 +279,9 @@ function combineFailures(
       if (!isValidTxModifiableChange(before, after)) {
         failures.push(addedFailure(entry, "TX_MODIFIABLE_INVALID_CHANGE"));
       }
-    } else if (isChangedIdentityEntry(before, after, entry.location, entry.keyType, identityChanged)) {
+    } else if (
+      isChangedIdentityEntry(before, after, entry.location, entry.keyType, identityChanged)
+    ) {
       failures.push(addedFailure(entry, "TRANSACTION_IDENTITY_CHANGED"));
     }
   }
@@ -334,7 +338,9 @@ function finalizeFailures(
       if (!isValidTxModifiableChange(before, after)) {
         failures.push(addedFailure(entry, "TX_MODIFIABLE_INVALID_CHANGE"));
       }
-    } else if (isChangedIdentityEntry(before, after, entry.location, entry.keyType, identityChanged)) {
+    } else if (
+      isChangedIdentityEntry(before, after, entry.location, entry.keyType, identityChanged)
+    ) {
       failures.push(addedFailure(entry, "TRANSACTION_IDENTITY_CHANGED"));
     } else if (!isInputType(entry.location, entry.keyType, FINAL_INPUT_TYPES)) {
       failures.push(addedFailure(entry));
@@ -345,7 +351,9 @@ function finalizeFailures(
       if (!isValidTxModifiableChange(before, after)) {
         failures.push(removedFailure(entry, "TX_MODIFIABLE_INVALID_CHANGE"));
       }
-    } else if (isChangedIdentityEntry(before, after, entry.location, entry.keyType, identityChanged)) {
+    } else if (
+      isChangedIdentityEntry(before, after, entry.location, entry.keyType, identityChanged)
+    ) {
       failures.push(removedFailure(entry, "TRANSACTION_IDENTITY_CHANGED"));
     } else if (!isInputType(entry.location, entry.keyType, FINALIZE_REMOVABLE_INPUT_TYPES)) {
       failures.push(removedFailure(entry));

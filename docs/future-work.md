@@ -7,10 +7,9 @@ be driven by real wallet and library maintainers using those foundations.
 ## Broader Compatibility
 
 - Add adapters for more wallet projects, hardware-signing bridges, and implementation languages.
-- Add PSBTv2 cross-implementation handoffs and signing only after at least two mature native
-  implementations expose compatible APIs; 0.4.0 validates the official vectors with one parser.
-- Add Taproot script-path signing/finalization and carefully selected legacy profiles. Current
-  Taproot script-path coverage proves parse and roundtrip preservation.
+- Expand PSBTv2 coverage beyond the current rust-psbt/libwally P2WPKH and 2-of-3 workflows.
+- Add Taproot script-path threshold leaves and carefully selected legacy profiles beyond the
+  deterministic single-leaf signing and finalization paths.
 - Let bundled signers authorize specific custom public fixture templates through the existing
   `user-fixture-template-v1` capability boundary.
 
@@ -22,7 +21,7 @@ be driven by real wallet and library maintainers using those foundations.
 
 ## Developer Integration
 
-- Provide straightforward CI integration for wallet and library repositories.
+- Validate the adapter kit in an independent wallet repository and publish a reusable CI example.
 - Publish versioned compatibility reports and reusable test vectors.
 - Publish optional prebuilt adapter images after demand justifies the release and attestation work.
 - Produce reproducible upstream bug reports and contribute practical fixes where maintainers want

@@ -35,7 +35,8 @@ describe("published runtime dependency boundary", () => {
         "src/custom/suite-manifest.schema.json",
         "adapters/bdk-wallet-current/Cargo.lock",
         "adapters/rust-psbt-v2/Cargo.lock",
-        "examples",
+        "adapters/libwally-1.5.4/build-requirements.txt",
+        "examples/custom-suite.json",
       ]),
     );
   });

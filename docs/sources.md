@@ -90,12 +90,14 @@ Python requirement.
   and confirms that Core can finalize the same PSBT. The upstream discussion records the fix in
   rust-miniscript 12.3.7 and bdkpython 3.0.0. The suite keeps 2.3.1 only as a regression specimen.
 
-## PSBTv2 Adapter
+## PSBTv2 Adapters
 
-- [`psbt-v2` 0.3.0](https://docs.rs/psbt-v2/0.3.0/psbt_v2/) provides the native PSBTv2 parser used
-  for the official BIP370 valid and invalid vectors. The adapter pins source revision
-  `8ca657c333b6b391f2501e8b31627ccbb6a67f66` and intentionally claims parser/roundtrip support only;
-  it does not imply cross-library PSBTv2 signing support.
+- [`psbt-v2` 0.3.0](https://docs.rs/psbt-v2/0.3.0/psbt_v2/) provides native PSBTv2 parsing,
+  signing, combining, finalization, and extraction. The adapter pins source revision
+  `8ca657c333b6b391f2501e8b31627ccbb6a67f66` and restricts signing to committed regtest fixtures.
+- [libwally-core 1.5.4 PSBT documentation](https://wally.readthedocs.io/en/latest/psbt.html)
+  defines the independent PSBTv0/v2 conversion, signing, combining, finalization, and extraction
+  API. The adapter pins release commit `c5591834b3ae4ee4c7db9e537a9c19104ab4bf0c`.
 
 ## Tooling
 

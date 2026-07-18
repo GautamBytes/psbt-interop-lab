@@ -58,7 +58,7 @@ treating aggregate capability counts as runtime findings.
 
 ### Signing restrictions
 
-The Rust, Go, JavaScript, and current BDK adapters have no generic private-key input. They recognize only
+The Rust, Go, JavaScript, current BDK, rust-psbt-v2, and libwally adapters have no generic private-key input. They recognize only
 `network=regtest`, declared suite fixture identifiers, run-scoped unsigned-transaction commitments,
 expected public keys and scripts, and internally consistent full/witness UTXO data. Each operation
 also enforces the exact fixture profile and supported script type. A request outside that policy is

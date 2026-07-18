@@ -16,6 +16,9 @@ export function CompatibilityReport() {
   const selected =
     reportScenarios.find((scenario) => scenario.id === selectedId) ?? reportScenarios[1];
   const StatusIcon = statusIcon[selected.status];
+  const selectedImplementations = implementations.filter((implementation) =>
+    selected.implementations.includes(implementation.name),
+  );
 
   return (
     <section className="report-section page-shell" id="matrix" aria-labelledby="report-title">
@@ -50,7 +53,7 @@ export function CompatibilityReport() {
                 </button>
               );
             })}
-            <small>24 bundled scenarios</small>
+            <small>31 bundled scenarios</small>
           </aside>
 
           <div className="evidence-panel">
@@ -67,7 +70,7 @@ export function CompatibilityReport() {
             </div>
 
             <ol className="handoff-timeline" aria-label="Implementation handoff">
-              {implementations.map((implementation, index) => (
+              {selectedImplementations.map((implementation, index) => (
                 <li className="handoff-timeline__item" key={implementation.name}>
                   <span
                     className={`implementation-badge implementation-badge--${implementation.tone}`}
@@ -78,7 +81,7 @@ export function CompatibilityReport() {
                     <strong>{implementation.name}</strong>
                     <small>{implementation.version}</small>
                   </span>
-                  {index < implementations.length - 1 ? <i aria-hidden="true" /> : null}
+                  {index < selectedImplementations.length - 1 ? <i aria-hidden="true" /> : null}
                 </li>
               ))}
             </ol>

@@ -26,6 +26,27 @@ enum ProfileKind {
     P2trScriptpath,
 }
 
+fn permits_taproot_scriptpath_origins(
+    input: &bdk_wallet::bitcoin::psbt::Input,
+    internal_key: XOnlyPublicKey,
+    leaf_key: XOnlyPublicKey,
+    leaf_hash: TapLeafHash,
+) -> bool {
+    if input.tap_key_origins.is_empty() {
+        return true;
+    }
+    if input.tap_key_origins.len() != 2 {
+        return false;
+    }
+    let Some((internal_hashes, _)) = input.tap_key_origins.get(&internal_key) else {
+        return false;
+    };
+    let Some((leaf_hashes, _)) = input.tap_key_origins.get(&leaf_key) else {
+        return false;
+    };
+    internal_hashes.is_empty() && leaf_hashes.as_slice() == [leaf_hash]
+}
+
 #[derive(Clone, Debug)]
 struct FixtureProfile {
     kind: ProfileKind,
@@ -336,26 +357,66 @@ impl FixtureProfile {
                         .tap_script_sigs
                         .keys()
                         .all(|key| key == &(leaf_key, leaf_hash));
-                    if input.witness_script.is_some()
-                        || input.redeem_script.is_some()
-                        || !input.partial_sigs.is_empty()
-                        || input.tap_key_sig.is_some()
-                        || (!finalized && input.tap_internal_key != self.tap_internal_key)
-                        || (!finalized && !input.tap_key_origins.is_empty())
-                        || (!finalized && input.tap_merkle_root.is_some())
-                        || (!finalized && !exact_leaf)
-                        || (!finalized && !exact_signatures)
-                        || (finalized
-                            && (input.tap_internal_key.is_some()
-                                || input.tap_merkle_root.is_some()
-                                || !input.tap_scripts.is_empty()
-                                || !input.tap_key_origins.is_empty()))
-                        || input
-                            .sighash_type
-                            .is_some_and(|value| value != TapSighashType::Default.into())
+                    let exact_origins = permits_taproot_scriptpath_origins(
+                        input,
+                        self.tap_internal_key.expect("Taproot script-path profile"),
+                        leaf_key,
+                        leaf_hash,
+                    );
+                    let exact_merkle_root = input.tap_merkle_root.is_none_or(|root| {
+                        root == bdk_wallet::bitcoin::TapNodeHash::from(leaf_hash)
+                    });
+                    if input.witness_script.is_some() || input.redeem_script.is_some() {
+                        return Err(WalletOperationError::Policy(
+                            "Taproot script-path input contains legacy script metadata",
+                        ));
+                    }
+                    if !input.partial_sigs.is_empty() || input.tap_key_sig.is_some() {
+                        return Err(WalletOperationError::Policy(
+                            "Taproot script-path input contains an unexpected signature",
+                        ));
+                    }
+                    if !finalized && input.tap_internal_key != self.tap_internal_key {
+                        return Err(WalletOperationError::Policy(
+                            "Taproot script-path internal key does not match the fixture",
+                        ));
+                    }
+                    if !finalized && !exact_origins {
+                        return Err(WalletOperationError::Policy(
+                            "Taproot script-path key origins do not match the fixture keys",
+                        ));
+                    }
+                    if !finalized && !exact_merkle_root {
+                        return Err(WalletOperationError::Policy(
+                            "Taproot script-path merkle root does not match the fixture leaf",
+                        ));
+                    }
+                    if !finalized && !exact_leaf {
+                        return Err(WalletOperationError::Policy(
+                            "Taproot script-path leaf or control block does not match the fixture",
+                        ));
+                    }
+                    if !finalized && !exact_signatures {
+                        return Err(WalletOperationError::Policy(
+                            "Taproot script-path signature does not match the fixture leaf",
+                        ));
+                    }
+                    if finalized
+                        && (input.tap_internal_key.is_some()
+                            || input.tap_merkle_root.is_some()
+                            || !input.tap_scripts.is_empty()
+                            || !input.tap_key_origins.is_empty())
                     {
                         return Err(WalletOperationError::Policy(
-                            "Taproot script-path input metadata is outside the exact fixture policy",
+                            "Finalized Taproot script-path input retained signing metadata",
+                        ));
+                    }
+                    if input
+                        .sighash_type
+                        .is_some_and(|value| value != TapSighashType::Default.into())
+                    {
+                        return Err(WalletOperationError::Policy(
+                            "Taproot script-path fixture requires SIGHASH_DEFAULT",
                         ));
                     }
                 }

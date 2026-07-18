@@ -6,7 +6,8 @@ handoff semantically, asks Bitcoin Core to finalize and policy-check completed t
 writes replayable compatibility reports.
 
 The current suite integrates Bitcoin Core 31.1, rust-bitcoin 0.32.102, btcsuite PSBT 1.2.0,
-bitcoinjs-lib 7.0.1, BDK Wallet 3.1.0, and rust-psbt's PSBTv2 0.3.0 parser. A frozen bdkpython
+bitcoinjs-lib 7.0.1, BDK Wallet 3.1.0, rust-psbt's PSBTv2 0.3.0 implementation, and libwally
+1.5.4. A frozen bdkpython
 2.3.1 adapter remains as a real regression specimen. Everything runs on regtest; the tool never
 broadcasts and has no mainnet mode.
 
@@ -19,7 +20,7 @@ Requirements:
 - On ARM hosts, Docker must support `linux/amd64` emulation for the frozen BDK 2.3.1 specimen
 
 ```bash
-npm install --global psbt-interop-lab@0.4.0
+npm install --global psbt-interop-lab@0.5.0
 psbt-lab doctor
 psbt-lab self-test
 psbt-lab matrix
@@ -35,6 +36,9 @@ List the executable scenarios or replay a completed run:
 
 ```bash
 psbt-lab list
+psbt-lab run --scenario psbtv2-2-of-3-cross-library
+psbt-lab run --category taproot-scriptpath
+psbt-lab parse-matrix --runtime local
 psbt-lab replay artifacts/<run-id>
 ```
 
@@ -65,7 +69,7 @@ preservation. It executes the configured command directly with `shell: false`; t
 manifest must therefore be treated as trusted local code. See [the adapter guide](docs/adapters.md)
 and the bundled [manifest schema](src/conformance/adapter-manifest.schema.json).
 
-The matrix keeps all 24 bundled scenarios and appends native-parse and semantic-roundtrip cells for
+The matrix keeps all 31 bundled scenarios and appends native-parse and semantic-roundtrip cells for
 each external adapter across P2WPKH, nested P2SH-P2WPKH, P2WSH, Taproot key-path, and Taproot
 script-path fixtures. It also appends signing handoffs when the adapter declares the matching
 signer capabilities and the `fixture-commitment-sha256` safety feature.
@@ -89,12 +93,15 @@ is capability-gated and runs only when an adapter explicitly advertises
 
 ## Current Coverage
 
-The suite currently runs 24 scenarios:
+The suite currently runs 31 scenarios:
 
 - Core-created P2WPKH, P2WSH, and Taproot key-path signing handoffs through rust-bitcoin,
   btcsuite, bitcoinjs-lib, and current BDK Wallet
-- Nested P2SH-P2WPKH and Taproot script-path roundtrip matrices through four current libraries
-- All 14 valid and 21 invalid official BIP370 vectors through a pinned native PSBTv2 parser
+- Nested P2SH-P2WPKH roundtrips plus bidirectional Taproot script-path signing/finalization and
+  wrong-leaf/control-block rejection canaries
+- All 14 valid and 21 invalid official BIP370 vectors through rust-psbt-v2 and libwally
+- Bidirectional PSBTv2 P2WPKH handoffs and cross-library 2-of-3 signing, combining, finalization,
+  extraction, conversion, and Bitcoin Core policy acceptance
 - Same-input 2-of-3 multisig where Rust and JavaScript sign independent copies, JavaScript
   combines them, and Core finalizes the result
 - A four-library BDK to Rust to Go to JavaScript roundtrip and signing chain
@@ -118,6 +125,13 @@ attribute the failing handoff, and provide evidence-based next steps without rew
 The current baseline allows only btcsuite 1.2.0 to either accept or reject the duplicate global key
 probe; another parser accepting malformed input, or any parser crashing or timing out, still fails
 the scenario.
+
+The PSBTv2 baseline also names strict-parser differences around an explicit empty final scriptSig
+and undefined `PSBT_GLOBAL_TX_MODIFIABLE` bits. These findings are bounded to the affected
+implementations; completed transactions still have to pass Bitcoin Core policy on isolated regtest.
+The Taproot script-path baseline likewise records current BDK finalization removing
+`PSBT_OUT_TAP_BIP32_DERIVATION` entries as a bounded metadata-preservation finding. The exact
+committed leaf witness and the extracted transaction must still pass Bitcoin Core policy.
 
 Run `psbt-lab self-test` to prove the detectors catch deliberate proprietary and unknown-field
 loss, output-amount mutation, sequence mutation, and signature removal.

@@ -89,7 +89,7 @@ export function App() {
       <main id="main-content">{page}</main>
       <footer className="site-footer">
         <div className="page-shell">
-          <span>PSBT Interop Lab 0.4.0</span>
+          <span>PSBT Interop Lab 0.5.0</span>
           <span>MIT licensed</span>
           <SiteLink href={routes.security}>Security</SiteLink>
           <a href={repositoryUrl}>GitHub</a>

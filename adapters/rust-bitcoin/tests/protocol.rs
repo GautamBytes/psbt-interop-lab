@@ -234,8 +234,31 @@ fn unsigned_profile_fixture(fixture_id: &str, input_count: usize) -> String {
         if let Some((control_block, script)) = tap_script.clone() {
             input.tap_scripts.insert(control_block, script);
         }
+        if fixture_id == "p2tr-scriptpath" {
+            let (_, _, _, leaf_hash) = taproot_script_path();
+            input.tap_merkle_root = Some(bitcoin::TapNodeHash::from(leaf_hash));
+            input.tap_key_origins.insert(
+                scalar_xonly(1),
+                (
+                    vec![],
+                    (
+                        Fingerprint::from([0x75, 0x1e, 0x76, 0xe8]),
+                        DerivationPath::default(),
+                    ),
+                ),
+            );
+            input.tap_key_origins.insert(
+                scalar_xonly(2),
+                (
+                    vec![leaf_hash],
+                    (
+                        Fingerprint::from([0xab, 0x11, 0xb8, 0xce]),
+                        DerivationPath::default(),
+                    ),
+                ),
+            );
+        }
         assert!(input.bip32_derivation.is_empty());
-        assert!(input.tap_key_origins.is_empty());
     }
     STANDARD.encode(psbt.serialize())
 }
@@ -631,7 +654,14 @@ fn rejects_wrong_or_missing_p2tr_scriptpath_metadata() {
     let mut dropped_metadata = original;
     dropped_metadata.inputs[0].tap_scripts.clear();
 
-    for psbt in [wrong_leaf, wrong_control, dropped_metadata] {
+    let mut wrong_origin = decode_psbt(&fixture);
+    let (leaf_hashes, _) = wrong_origin.inputs[0]
+        .tap_key_origins
+        .get_mut(&scalar_xonly(2))
+        .expect("leaf key origin");
+    leaf_hashes.clear();
+
+    for psbt in [wrong_leaf, wrong_control, dropped_metadata, wrong_origin] {
         let encoded = STANDARD.encode(psbt.serialize());
         let response = sign_profile("p2tr-scriptpath", &encoded, None);
         assert_eq!(response["status"], "rejected", "{response}");

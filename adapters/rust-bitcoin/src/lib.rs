@@ -434,10 +434,31 @@ enum SigningProfile {
         internal_key: XOnlyPublicKey,
         leaf_key: XOnlyPublicKey,
         leaf_script: ScriptBuf,
-        control_block: ControlBlock,
+        control_block: Box<ControlBlock>,
         leaf_hash: TapLeafHash,
         leaf_private_key: PrivateKey,
     },
+}
+
+fn permits_taproot_scriptpath_origins(
+    input: &bitcoin::psbt::Input,
+    internal_key: XOnlyPublicKey,
+    leaf_key: XOnlyPublicKey,
+    leaf_hash: TapLeafHash,
+) -> bool {
+    if input.tap_key_origins.is_empty() {
+        return true;
+    }
+    if input.tap_key_origins.len() != 2 {
+        return false;
+    }
+    let Some((internal_hashes, _)) = input.tap_key_origins.get(&internal_key) else {
+        return false;
+    };
+    let Some((leaf_hashes, _)) = input.tap_key_origins.get(&leaf_key) else {
+        return false;
+    };
+    internal_hashes.is_empty() && leaf_hashes.as_slice() == [leaf_hash]
 }
 
 impl SigningProfile {
@@ -486,7 +507,7 @@ impl SigningProfile {
                     internal_key,
                     leaf_key,
                     leaf_script,
-                    control_block,
+                    control_block: Box::new(control_block),
                     leaf_hash,
                     leaf_private_key: scalar_two_private_key()?,
                 })
@@ -623,26 +644,42 @@ fn validate_profile_signing_scope(
                 ..
             } => {
                 let exact_leaf = input.tap_scripts.len() == 1
-                    && input.tap_scripts.get(control_block)
+                    && input.tap_scripts.get(control_block.as_ref())
                         == Some(&(leaf_script.clone(), LeafVersion::TapScript));
                 let exact_signatures = input
                     .tap_script_sigs
                     .keys()
                     .all(|key| key == &(*leaf_key, *leaf_hash));
-                if &funding_output.script_pubkey != script_pubkey
-                    || input.tap_internal_key != Some(*internal_key)
-                    || input.tap_merkle_root.is_some()
-                    || !input.tap_key_origins.is_empty()
-                    || !exact_leaf
-                    || !exact_signatures
+                let exact_origins =
+                    permits_taproot_scriptpath_origins(input, *internal_key, *leaf_key, *leaf_hash);
+                let exact_merkle_root = input
+                    .tap_merkle_root
+                    .is_none_or(|root| root == bitcoin::TapNodeHash::from(*leaf_hash));
+                if &funding_output.script_pubkey != script_pubkey {
+                    return Err("Taproot script-path funding script does not match the fixture");
+                }
+                if input.tap_internal_key != Some(*internal_key) {
+                    return Err("Taproot script-path internal key does not match the fixture");
+                }
+                if !exact_merkle_root {
+                    return Err("Taproot script-path merkle root does not match the fixture leaf");
+                }
+                if !exact_origins {
+                    return Err("Taproot script-path key origins do not match the fixture keys");
+                }
+                if !exact_leaf {
+                    return Err(
+                        "Taproot script-path leaf or control block does not match the fixture",
+                    );
+                }
+                if !exact_signatures
                     || input.tap_key_sig.is_some()
                     || !input.partial_sigs.is_empty()
-                    || input.witness_script.is_some()
-                    || input.redeem_script.is_some()
                 {
-                    return Err(
-                        "Every Taproot script-path input must match the exact scalar-1/scalar-2 fixture",
-                    );
+                    return Err("Taproot script-path input contains an unexpected signature");
+                }
+                if input.witness_script.is_some() || input.redeem_script.is_some() {
+                    return Err("Taproot script-path input contains legacy script metadata");
                 }
                 if input
                     .sighash_type
