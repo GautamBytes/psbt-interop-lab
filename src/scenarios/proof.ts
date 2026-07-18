@@ -18,7 +18,11 @@ import { compileUserScenarios } from "../custom/scenarios.js";
 import { AdapterProcess, type AdapterProcessOptions } from "../protocol/adapter-process.js";
 import type { NegotiatedAdapter } from "../protocol/types.js";
 import { ArtifactRun, type RunManifest } from "../runner/artifacts.js";
-import { generateHtmlReport, generateMarkdownReport, redactValue } from "../runner/report.js";
+import {
+  generateHtmlReport,
+  generateJsonReport,
+  generateMarkdownReport,
+} from "../runner/report.js";
 import { classifyRegression, createBdkRegressionScenario } from "./bdk-regression.js";
 import { createBip370VectorScenario } from "./bip370.js";
 import { type CorePolicyResult, ScenarioExecutionContext } from "./context.js";
@@ -1048,12 +1052,7 @@ export async function runProofWithDependencies(
       checkpoints: [...context.checkpoints],
     };
     await artifacts.writeManifest(manifest);
-    await artifacts.writeReportJson(
-      redactValue({
-        ...manifest,
-        note: "Raw PSBTs are intentionally stored only in private checkpoint files.",
-      }),
-    );
+    await artifacts.writeReportJson(generateJsonReport(manifest));
     await artifacts.writeReportMarkdown(generateMarkdownReport(manifest));
     await artifacts.writeReportHtml(generateHtmlReport(manifest));
     return { artifactDirectory: artifacts.directory, manifest };

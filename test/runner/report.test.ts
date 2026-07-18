@@ -2,8 +2,8 @@ import { describe, expect, test } from "vitest";
 import type { RunManifest } from "../../src/runner/artifacts.js";
 import {
   generateHtmlReport,
+  generateJsonReport,
   generateMarkdownReport,
-  redactValue,
 } from "../../src/runner/report.js";
 
 const MINIMAL_PSBT =
@@ -142,7 +142,7 @@ describe("HTML report", () => {
 
   test("renders structured diagnostics in JSON and Markdown", () => {
     const value = manifest();
-    const json = JSON.stringify(redactValue(value));
+    const json = JSON.stringify(generateJsonReport(value));
     const markdown = generateMarkdownReport(value);
 
     for (const report of [json, markdown]) {
@@ -153,7 +153,23 @@ describe("HTML report", () => {
       expect(report).toContain("RESTORE_EXTENSION_METADATA");
       expect(report).toContain("Return to the previous checkpoint.");
       expect(report).toContain("metadata-preservation");
+      expect(report).toContain("metadata-loss");
+      expect(report).toContain("Metadata loss");
+      expect(report).toContain("code-or-dependency-change");
     }
     expect(markdown).toContain("Filtered run");
+    expect(markdown).toContain("Likely owner: `rust-bitcoin`");
+    expect(markdown).toContain("Capability mismatch");
+  });
+
+  test("renders classifications in the HTML report", () => {
+    const html = generateHtmlReport(manifest());
+
+    expect(html).toContain("Classification");
+    expect(html).toContain("Metadata loss");
+    expect(html).toContain("Likely owner");
+    expect(html).toContain("rust-bitcoin");
+    expect(html).toContain("Code or dependency change");
+    expect(html).toContain("Capability mismatch");
   });
 });

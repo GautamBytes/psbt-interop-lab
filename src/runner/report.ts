@@ -1,4 +1,9 @@
 import type { RunManifest } from "./artifacts.js";
+import {
+  classifyScenario,
+  type ReportClassification,
+  type ReportRepairability,
+} from "./classification.js";
 
 const SECRET_KEY = /(private|secret|password|mnemonic|seed|wif)/i;
 const PSBT_VALUE = /cHNidP8[A-Za-z0-9+/]*={0,2}/g;
@@ -50,6 +55,40 @@ export function redactValue(value: unknown, key = "", depth = 0): unknown {
   return value;
 }
 
+export function generateJsonReport(manifest: RunManifest): unknown {
+  return redactValue({
+    ...manifest,
+    scenarios: manifest.scenarios.map((scenario) => ({
+      ...scenario,
+      classifications: classifyScenario(scenario),
+    })),
+    note: "Raw PSBTs are intentionally stored only in private checkpoint files.",
+  });
+}
+
+function repairabilityLabel(repairability: ReportRepairability): string {
+  switch (repairability) {
+    case "code-or-dependency-change":
+      return "Code or dependency change";
+    case "investigation-required":
+      return "Investigation required";
+    case "not-a-code-defect":
+      return "Not classified as a code defect";
+  }
+}
+
+function markdownClassification(classification: ReportClassification): string[] {
+  return [
+    `- **${classification.label}** (\`${classification.id}\`)`,
+    `  - Severity: **${classification.severity.toUpperCase()}**`,
+    `  - Likely owner: \`${classification.likelyOwner}\``,
+    `  - Repairability: \`${classification.repairability}\``,
+    `  - Confidence: \`${classification.confidence}\``,
+    `  - ${classification.summary}`,
+    `  - Evidence: ${classification.evidence.map((evidence) => `\`${evidence}\``).join(", ")}`,
+  ];
+}
+
 export function generateMarkdownReport(manifest: RunManifest): string {
   const filtered =
     (manifest.selectors?.requested.scenarios?.length ?? 0) > 0 ||
@@ -71,6 +110,7 @@ export function generateMarkdownReport(manifest: RunManifest): string {
     "",
   ];
   for (const scenario of manifest.scenarios) {
+    const classifications = classifyScenario(scenario);
     lines.push(
       `### ${scenario.title}`,
       "",
@@ -81,6 +121,9 @@ export function generateMarkdownReport(manifest: RunManifest): string {
       scenario.summary,
       "",
     );
+    if (classifications.length > 0) {
+      lines.push("Classifications:", "", ...classifications.flatMap(markdownClassification), "");
+    }
     if (scenario.missingCapabilities) {
       lines.push(
         "Missing capabilities:",
@@ -197,6 +240,24 @@ export function generateHtmlReport(manifest: RunManifest): string {
   };
   const scenarios = manifest.scenarios
     .map((scenario) => {
+      const classifications = classifyScenario(scenario);
+      const classificationHtml = classifications
+        .map(
+          (
+            classification,
+          ) => `<li class="classification classification--${escapeHtml(classification.severity)}">
+            <div><strong>${escapeHtml(classification.label)}</strong><code>${escapeHtml(classification.id)}</code></div>
+            <dl>
+              <div><dt>Severity</dt><dd>${escapeHtml(classification.severity.toUpperCase())}</dd></div>
+              <div><dt>Likely owner</dt><dd><code>${escapeHtml(classification.likelyOwner)}</code></dd></div>
+              <div><dt>Repairability</dt><dd>${escapeHtml(repairabilityLabel(classification.repairability))}</dd></div>
+              <div><dt>Confidence</dt><dd>${escapeHtml(classification.confidence)}</dd></div>
+            </dl>
+            <p>${escapeHtml(classification.summary)}</p>
+            <p class="classification__evidence">Evidence: ${classification.evidence.map((evidence) => `<code>${escapeHtml(evidence)}</code>`).join(" · ")}</p>
+          </li>`,
+        )
+        .join("");
       const assertions = scenario.assertions
         .map((assertion) => {
           const diagnostics = [
@@ -246,6 +307,7 @@ export function generateHtmlReport(manifest: RunManifest): string {
           <p class="scenario-id"><code>${escapeHtml(scenario.id)}</code> · ${escapeHtml(scenario.durationMs.toFixed(3))} ms</p>
         </header>
         <p>${escapeHtml(scenario.summary)}</p>
+        ${classificationHtml ? `<section class="classification-section" aria-label="Scenario classifications"><h3>Classification</h3><ul class="classifications">${classificationHtml}</ul></section>` : ""}
         ${scenario.expectedFailure ? `<p class="expected">Expected failure: <code>${escapeHtml(scenario.expectedFailure.implementation)}</code> · <code>${escapeHtml(scenario.expectedFailure.errorClass)}</code></p>` : ""}
         ${findings ? `<h3>Compatibility findings</h3><ul class="findings">${findings}</ul>` : ""}
         ${missing ? `<h3>Missing capabilities</h3><ul>${missing}</ul>` : ""}
@@ -317,6 +379,18 @@ export function generateHtmlReport(manifest: RunManifest): string {
     .expected { border-left: 3px solid var(--warn); padding-left: 10px; }
     .findings { border-left: 3px solid var(--warn); padding-left: 28px; }
     .findings li { margin: 6px 0; }
+    .classifications { display: grid; gap: 8px; list-style: none; padding: 0; margin: 8px 0 16px; }
+    .classification { border: 1px solid var(--line); border-left-width: 3px; border-radius: 4px; padding: 10px 12px; }
+    .classification--stop { border-left-color: var(--fail); }
+    .classification--review { border-left-color: var(--warn); }
+    .classification--info { border-left-color: var(--info); }
+    .classification > div { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 12px; }
+    .classification dl { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 10px 0; }
+    .classification dl div { min-width: 0; }
+    .classification dt { color: var(--muted); font-size: 11px; font-weight: 700; text-transform: uppercase; }
+    .classification dd { margin: 2px 0 0; overflow-wrap: anywhere; }
+    .classification p { margin: 6px 0 0; }
+    .classification__evidence { color: var(--muted); }
     details { border-top: 1px solid var(--line); margin-top: 16px; padding-top: 12px; }
     summary { cursor: pointer; font-weight: 650; }
     .assertions, .failures { list-style: none; padding: 0; margin: 10px 0 0; }
@@ -332,7 +406,7 @@ export function generateHtmlReport(manifest: RunManifest): string {
     th { color: var(--muted); font-size: 12px; }
     tr:last-child td { border-bottom: 0; }
     @media (prefers-color-scheme: dark) { :root { --bg: #111315; --surface: #1a1d20; --text: #f1f3f5; --muted: #a6adb5; --line: #353a40; --pass: #65d69e; --fail: #ff8d85; --warn: #f3bd62; --info: #66c7d4; } }
-    @media (max-width: 640px) { main { width: min(100% - 20px, 1180px); padding-top: 20px; } .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } h1 { font-size: 23px; } }
+    @media (max-width: 640px) { main { width: min(100% - 20px, 1180px); padding-top: 20px; } .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } .classification dl { grid-template-columns: repeat(2, minmax(0, 1fr)); } h1 { font-size: 23px; } }
   </style>
 </head>
 <body>

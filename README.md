@@ -200,6 +200,10 @@ Each run creates a private directory under `artifacts/<run-id>/` containing:
 - `checkpoints/**/*.psbt`: canonical PSBT states at important handoffs
 - `checkpoints/**/*.facts.json`: bounded field facts and hashes
 
+The reports classify non-passing behavior by category, severity, likely owner, repairability, and
+confidence. Every classification includes the exact assertion or field-level evidence behind it;
+capability gaps and ambiguous implementation divergences are not labeled as confirmed code bugs.
+
 Raw PSBTs are stored only in checkpoint files with local mode `0600`; artifact directories use
 `0700`. Reports redact PSBTs, WIFs, common BIP32/SLIP-132 extended private keys, mnemonics, seed
 phrases, and labeled password or secret values. Replay verifies every checkpoint's canonical base64
