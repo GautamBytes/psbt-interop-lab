@@ -142,12 +142,24 @@ describe("ScenarioExecutionContext", () => {
     expect(JSON.stringify(evidence)).not.toContain("private metadata");
   });
 
-  test("identifies the likely implementation from a transition assertion name", () => {
+  test("does not infer an implementation from a transition assertion name", () => {
     const evidence = context().transitionEvidence(
       "roundtrip",
       "rust-bitcoin-preserved-metadata",
       psbt([unsignedTxEntry, proprietaryEntry]),
       psbt([unsignedTxEntry]),
+    );
+
+    expect(evidence.likelyImplementation).toBeUndefined();
+  });
+
+  test("records an explicitly observed implementation", () => {
+    const evidence = context().transitionEvidence(
+      "roundtrip",
+      "metadata-preserved",
+      psbt([unsignedTxEntry, proprietaryEntry]),
+      psbt([unsignedTxEntry]),
+      "rust-bitcoin",
     );
 
     expect(evidence.likelyImplementation).toBe("rust-bitcoin");

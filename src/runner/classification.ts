@@ -1,4 +1,4 @@
-import type { PsbtTransitionFailure } from "../psbt/invariants.js";
+import type { PsbtSafeGuidanceCode, PsbtTransitionFailure } from "../psbt/invariants.js";
 import type { ScenarioAssertionEvidence, ScenarioResult } from "../scenarios/definition.js";
 
 export type ReportClassificationId =
@@ -6,7 +6,7 @@ export type ReportClassificationId =
   | "psbtv2-modifiability-violation"
   | "signature-loss"
   | "metadata-loss"
-  | "required-field-loss"
+  | "unexpected-field-loss"
   | "field-mutation"
   | "unexpected-field"
   | "core-policy-rejection"
@@ -26,7 +26,7 @@ export interface ReportClassification {
   readonly id: ReportClassificationId;
   readonly label: string;
   readonly severity: ReportClassificationSeverity;
-  readonly likelyOwner: string;
+  readonly observedAt: string;
   readonly repairability: ReportRepairability;
   readonly confidence: ReportClassificationConfidence;
   readonly summary: string;
@@ -35,107 +35,93 @@ export interface ReportClassification {
 
 type ClassificationWithoutEvidence = Omit<ReportClassification, "evidence">;
 
-const SIGNATURE_FIELDS = new Set([
-  "PSBT_IN_PARTIAL_SIG",
-  "PSBT_IN_TAP_KEY_SIG",
-  "PSBT_IN_TAP_SCRIPT_SIG",
-]);
-
-function failureEvidence(failure: PsbtTransitionFailure): string {
-  return `${failure.code}:${failure.field?.symbol ?? `0x${failure.keyType.toString(16).padStart(2, "0")}`}`;
+interface GuidanceClassification {
+  readonly id: ReportClassificationId;
+  readonly label: string;
+  readonly repairability: ReportRepairability;
 }
 
-function isMetadataField(failure: PsbtTransitionFailure): boolean {
-  if (failure.field?.kind === "unknown" || failure.field?.kind === "proprietary") return true;
-  const symbol = failure.field?.symbol ?? "";
-  return (
-    symbol.includes("BIP32_DERIVATION") || symbol.includes("PROPRIETARY") || symbol.includes("XPUB")
-  );
+const GUIDANCE_CLASSIFICATIONS: Readonly<Record<PsbtSafeGuidanceCode, GuidanceClassification>> = {
+  TRANSACTION_INTENT_CHANGED: {
+    id: "transaction-intent-mutation",
+    label: "Transaction intent mutation",
+    repairability: "code-or-dependency-change",
+  },
+  RESTORE_TX_MODIFIABLE_FLAGS: {
+    id: "psbtv2-modifiability-violation",
+    label: "PSBTv2 modifiability violation",
+    repairability: "code-or-dependency-change",
+  },
+  RESTORE_EXTENSION_METADATA: {
+    id: "metadata-loss",
+    label: "Metadata loss",
+    repairability: "code-or-dependency-change",
+  },
+  RESTORE_AND_RESIGN: {
+    id: "signature-loss",
+    label: "Signature loss",
+    repairability: "code-or-dependency-change",
+  },
+  RESTORE_REMOVED_FIELD: {
+    id: "unexpected-field-loss",
+    label: "Unexpected field loss",
+    repairability: "code-or-dependency-change",
+  },
+  REJECT_CHANGED_FIELD: {
+    id: "field-mutation",
+    label: "Unexpected field mutation",
+    repairability: "code-or-dependency-change",
+  },
+  REVIEW_UNEXPECTED_FIELD: {
+    id: "unexpected-field",
+    label: "Unexpected field addition",
+    repairability: "investigation-required",
+  },
+};
+
+function locationLabel(failure: PsbtTransitionFailure): string {
+  return failure.location.kind === "global"
+    ? "global"
+    : `${failure.location.kind}[${failure.location.index}]`;
+}
+
+function failureEvidence(failure: PsbtTransitionFailure, assertionName: string): string {
+  const field = failure.field?.symbol ?? "unknown";
+  const keyType = failure.field?.keyTypeHex ?? `0x${failure.keyType.toString(16).padStart(2, "0")}`;
+  return [
+    `assertion=${assertionName}`,
+    `location=${locationLabel(failure)}`,
+    `failure=${failure.code}`,
+    `field=${field}`,
+    `keyType=${keyType}`,
+    `keySha256=${failure.completeKeySha256}`,
+  ].join("; ");
 }
 
 function classifyFailure(
   failure: PsbtTransitionFailure,
   assertion: ScenarioAssertionEvidence,
 ): ClassificationWithoutEvidence {
-  const likelyOwner = assertion.likelyImplementation ?? "undetermined";
-  const confidence: ReportClassificationConfidence = assertion.likelyImplementation
-    ? "high"
-    : "medium";
-
-  if (failure.code === "TRANSACTION_IDENTITY_CHANGED") {
+  const observedAt = assertion.likelyImplementation ?? "undetermined";
+  const guidance = failure.guidance;
+  if (!guidance) {
     return {
-      id: "transaction-intent-mutation",
-      label: "Transaction intent mutation",
-      severity: "stop",
-      likelyOwner,
-      repairability: "code-or-dependency-change",
-      confidence,
-      summary: "The transaction being authorized changed during a PSBT handoff.",
+      id: "workflow-failure",
+      label: "Unclassified transition failure",
+      severity: "review",
+      observedAt,
+      repairability: "investigation-required",
+      confidence: "low",
+      summary: "The transition failed without structured safety guidance.",
     };
   }
-  if (failure.code === "TX_MODIFIABLE_INVALID_CHANGE") {
-    return {
-      id: "psbtv2-modifiability-violation",
-      label: "PSBTv2 modifiability violation",
-      severity: "stop",
-      likelyOwner,
-      repairability: "code-or-dependency-change",
-      confidence,
-      summary: "PSBTv2 transaction-modifiable flags changed in a direction BIP370 does not permit.",
-    };
-  }
-  if (failure.code === "ENTRY_REMOVED" && SIGNATURE_FIELDS.has(failure.field?.symbol ?? "")) {
-    return {
-      id: "signature-loss",
-      label: "Signature loss",
-      severity: "stop",
-      likelyOwner,
-      repairability: "code-or-dependency-change",
-      confidence,
-      summary: "One or more existing signatures were removed during a handoff.",
-    };
-  }
-  if (failure.code === "ENTRY_REMOVED" && isMetadataField(failure)) {
-    return {
-      id: "metadata-loss",
-      label: "Metadata loss",
-      severity: "stop",
-      likelyOwner,
-      repairability: "code-or-dependency-change",
-      confidence,
-      summary: "One or more PSBT metadata fields were removed during a handoff.",
-    };
-  }
-  if (failure.code === "ENTRY_REMOVED") {
-    return {
-      id: "required-field-loss",
-      label: "Required field loss",
-      severity: "stop",
-      likelyOwner,
-      repairability: "code-or-dependency-change",
-      confidence,
-      summary: "An existing PSBT field was removed during a handoff.",
-    };
-  }
-  if (failure.code === "ENTRY_CHANGED") {
-    return {
-      id: "field-mutation",
-      label: "Unexpected field mutation",
-      severity: "stop",
-      likelyOwner,
-      repairability: "code-or-dependency-change",
-      confidence,
-      summary: "An existing PSBT field changed unexpectedly during a handoff.",
-    };
-  }
+  const classification = GUIDANCE_CLASSIFICATIONS[guidance.code];
   return {
-    id: "unexpected-field",
-    label: "Unexpected field addition",
-    severity: "review",
-    likelyOwner,
-    repairability: "investigation-required",
-    confidence,
-    summary: "A PSBT field was added where the selected transition policy did not expect it.",
+    ...classification,
+    severity: guidance.severity,
+    observedAt,
+    confidence: "high",
+    summary: guidance.summary,
   };
 }
 
@@ -144,7 +130,7 @@ function addClassification(
   classification: ClassificationWithoutEvidence,
   evidence: string,
 ): void {
-  const key = `${classification.id}\0${classification.likelyOwner}`;
+  const key = `${classification.id}\0${classification.observedAt}`;
   const existing = classifications.get(key);
   if (existing) {
     if (!existing.evidence.includes(evidence)) {
@@ -163,7 +149,7 @@ export function classifyScenario(scenario: ScenarioResult): readonly ReportClass
       addClassification(
         classifications,
         classifyFailure(failure, assertion),
-        failureEvidence(failure),
+        failureEvidence(failure, assertion.name),
       );
     }
     if (!assertion.passed && (assertion.failures?.length ?? 0) === 0) {
@@ -173,7 +159,7 @@ export function classifyScenario(scenario: ScenarioResult): readonly ReportClass
           id: "workflow-failure",
           label: "Workflow failure",
           severity: "review",
-          likelyOwner: assertion.likelyImplementation ?? "undetermined",
+          observedAt: assertion.likelyImplementation ?? "undetermined",
           repairability: "investigation-required",
           confidence: assertion.likelyImplementation ? "medium" : "low",
           summary: "A workflow assertion failed without a field-level transition violation.",
@@ -190,7 +176,7 @@ export function classifyScenario(scenario: ScenarioResult): readonly ReportClass
         id: "core-policy-rejection",
         label: "Bitcoin Core policy rejection",
         severity: "stop",
-        likelyOwner: "undetermined",
+        observedAt: "bitcoin-core",
         repairability: "investigation-required",
         confidence: "high",
         summary: "Bitcoin Core rejected the extracted transaction under regtest mempool policy.",
@@ -206,7 +192,7 @@ export function classifyScenario(scenario: ScenarioResult): readonly ReportClass
         id: "capability-mismatch",
         label: "Capability mismatch",
         severity: "info",
-        likelyOwner: missing.adapter,
+        observedAt: missing.adapter,
         repairability: "not-a-code-defect",
         confidence: "high",
         summary: "The implementation did not declare a capability required by this scenario.",
@@ -222,7 +208,7 @@ export function classifyScenario(scenario: ScenarioResult): readonly ReportClass
         id: "implementation-divergence",
         label: "Implementation divergence",
         severity: "review",
-        likelyOwner: finding.implementation,
+        observedAt: finding.implementation,
         repairability: "investigation-required",
         confidence: "medium",
         summary:
@@ -239,7 +225,7 @@ export function classifyScenario(scenario: ScenarioResult): readonly ReportClass
         id: "known-regression",
         label: "Known regression specimen",
         severity: "info",
-        likelyOwner: scenario.expectedFailure.implementation,
+        observedAt: scenario.expectedFailure.implementation,
         repairability: "not-a-code-defect",
         confidence: "high",
         summary:

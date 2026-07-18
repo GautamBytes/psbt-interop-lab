@@ -155,6 +155,7 @@ async function executeAdapterStep(
       `${step.id}-${step.adapter}-${step.operation}`,
       before,
       after,
+      step.adapter,
     ),
   );
   if (step.operation === "sign") {
@@ -208,7 +209,13 @@ async function executeScenario(
       const combined = context.outputString(response, "psbt", "combine");
       for (const [index, source] of sources.entries()) {
         assertions.push(
-          context.requireTransition("combine", `${step.id}-source-${index + 1}`, source, combined),
+          context.requireTransition(
+            "combine",
+            `${step.id}-source-${index + 1}`,
+            source,
+            combined,
+            step.adapter,
+          ),
         );
       }
       assertions.push(exactFieldUnionEvidence(sources, combined));

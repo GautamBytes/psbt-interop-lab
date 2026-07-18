@@ -93,7 +93,7 @@ export function CompatibilityReport() {
                     <th>Field</th>
                     <th>Expected</th>
                     <th>Actual</th>
-                    <th>Likely implementation</th>
+                    <th>Observed implementation</th>
                     <th>Safe next step</th>
                   </tr>
                 </thead>

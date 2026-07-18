@@ -19,7 +19,7 @@ Requirements:
 - Node.js 22 or 24
 
 ```bash
-npx --yes psbt-interop-lab@0.5.2 quickstart
+npx --yes psbt-interop-lab@0.5.3 quickstart
 ```
 
 `quickstart` is the bounded first-run proof. It checks Node.js, Docker, and Compose, runs five
@@ -30,7 +30,7 @@ the local regtest node automatically.
 For exhaustive compatibility testing, install the CLI once and run the complete 31-scenario matrix:
 
 ```bash
-npm install --global psbt-interop-lab@0.5.2
+npm install --global psbt-interop-lab@0.5.3
 psbt-lab matrix
 ```
 
@@ -200,9 +200,10 @@ Each run creates a private directory under `artifacts/<run-id>/` containing:
 - `checkpoints/**/*.psbt`: canonical PSBT states at important handoffs
 - `checkpoints/**/*.facts.json`: bounded field facts and hashes
 
-The reports classify non-passing behavior by category, severity, likely owner, repairability, and
-confidence. Every classification includes the exact assertion or field-level evidence behind it;
-capability gaps and ambiguous implementation divergences are not labeled as confirmed code bugs.
+The reports classify non-passing behavior by category, severity, observed implementation boundary,
+repairability, and confidence. Every classification includes the exact assertion, map location, key
+type, and key fingerprint behind it; capability gaps and ambiguous implementation divergences are
+not labeled as confirmed code bugs.
 
 Raw PSBTs are stored only in checkpoint files with local mode `0600`; artifact directories use
 `0700`. Reports redact PSBTs, WIFs, common BIP32/SLIP-132 extended private keys, mnemonics, seed

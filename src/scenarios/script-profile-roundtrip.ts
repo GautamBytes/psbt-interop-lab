@@ -41,6 +41,7 @@ export function createScriptProfileRoundtripScenario(
             `${adapter}-preserved-${fixture.id}`,
             before,
             current,
+            adapter,
           ),
         );
         await context.checkpoint(options.id, `${adapter}-roundtrip`, current);

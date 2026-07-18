@@ -17,7 +17,7 @@ describe("release documentation", () => {
       "website/src/components/Sections.tsx",
     ];
 
-    expect(packageVersion).toBe("0.5.2");
+    expect(packageVersion).toBe("0.5.3");
     for (const path of publicFiles) {
       expect(read(path), path).toContain(packageVersion);
     }

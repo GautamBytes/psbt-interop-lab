@@ -57,11 +57,13 @@ describe("report classification", () => {
         id: "metadata-loss",
         label: "Metadata loss",
         severity: "stop",
-        likelyOwner: "rust-bitcoin",
+        observedAt: "rust-bitcoin",
         repairability: "code-or-dependency-change",
         confidence: "high",
-        summary: "One or more PSBT metadata fields were removed during a handoff.",
-        evidence: ["ENTRY_REMOVED:PSBT_IN_PROPRIETARY"],
+        summary: "An extension field was removed.",
+        evidence: [
+          `assertion=metadata-preserved; location=input[0]; failure=ENTRY_REMOVED; field=PSBT_IN_PROPRIETARY; keyType=0xfc; keySha256=${"a".repeat(64)}`,
+        ],
       },
     ]);
   });
@@ -81,6 +83,12 @@ describe("report classification", () => {
                 keyType: 0,
                 completeKeySha256: "b".repeat(64),
                 keyBytes: 1,
+                guidance: {
+                  code: "TRANSACTION_INTENT_CHANGED",
+                  severity: "stop",
+                  summary: "The transaction changed.",
+                  nextSteps: ["Stop."],
+                },
               },
               {
                 code: "ENTRY_REMOVED",
@@ -95,6 +103,12 @@ describe("report classification", () => {
                   symbol: "PSBT_IN_PARTIAL_SIG",
                   displayName: "Partial signature",
                   kind: "standard",
+                },
+                guidance: {
+                  code: "RESTORE_AND_RESIGN",
+                  severity: "stop",
+                  summary: "A signature was removed.",
+                  nextSteps: ["Restore and sign again."],
                 },
               },
             ],
@@ -124,7 +138,7 @@ describe("report classification", () => {
       expect.objectContaining({
         id: "capability-mismatch",
         severity: "info",
-        likelyOwner: "example-wallet",
+        observedAt: "example-wallet",
         repairability: "not-a-code-defect",
         confidence: "high",
         evidence: ["scriptType:p2tr-scriptpath"],
@@ -150,10 +164,79 @@ describe("report classification", () => {
       expect.objectContaining({
         id: "implementation-divergence",
         severity: "review",
-        likelyOwner: "btcsuite-go",
+        observedAt: "btcsuite-go",
         repairability: "investigation-required",
         confidence: "medium",
         evidence: ["finding:duplicate-global-key"],
+      }),
+    ]);
+  });
+
+  test("does not infer a specific category when structured guidance is absent", () => {
+    const classifications = classifyScenario(
+      scenario({
+        assertions: [
+          {
+            name: "unstructured-transition",
+            passed: false,
+            likelyImplementation: "example-wallet",
+            failures: [
+              {
+                code: "ENTRY_REMOVED",
+                location: { kind: "output", index: 1 },
+                keyType: 0x06,
+                completeKeySha256: "d".repeat(64),
+                keyBytes: 1,
+              },
+            ],
+          },
+        ],
+      }),
+    );
+
+    expect(classifications).toEqual([
+      expect.objectContaining({
+        id: "workflow-failure",
+        severity: "review",
+        observedAt: "example-wallet",
+        repairability: "investigation-required",
+        confidence: "low",
+      }),
+    ]);
+  });
+
+  test("describes a policy-forbidden removal without calling the field BIP-required", () => {
+    const classifications = classifyScenario(
+      scenario({
+        assertions: [
+          {
+            name: "wallet-roundtrip",
+            passed: false,
+            likelyImplementation: "example-wallet",
+            failures: [
+              {
+                code: "ENTRY_REMOVED",
+                location: { kind: "global" },
+                keyType: 0x01,
+                completeKeySha256: "e".repeat(64),
+                keyBytes: 1,
+                guidance: {
+                  code: "RESTORE_REMOVED_FIELD",
+                  severity: "stop",
+                  summary: "A global xpub was removed.",
+                  nextSteps: ["Restore the field."],
+                },
+              },
+            ],
+          },
+        ],
+      }),
+    );
+
+    expect(classifications).toEqual([
+      expect.objectContaining({
+        id: "unexpected-field-loss",
+        label: "Unexpected field loss",
       }),
     ]);
   });

@@ -192,6 +192,7 @@ function createHandoffScenario(
           `${direction.signer}-preserved-bip371-while-signing`,
           fixture.initialPsbt,
           signedPsbt,
+          direction.signer,
         ),
       );
       assertions.push(
@@ -220,6 +221,7 @@ function createHandoffScenario(
         `${direction.finalizer}-finalization-transition`,
         signedPsbt,
         finalizedPsbt,
+        direction.finalizer,
       );
       const bdkRemovedOnlyOutputOrigins =
         direction.finalizer === "bdk-wallet-current" &&

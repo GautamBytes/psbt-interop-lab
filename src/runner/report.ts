@@ -81,7 +81,7 @@ function markdownClassification(classification: ReportClassification): string[] 
   return [
     `- **${classification.label}** (\`${classification.id}\`)`,
     `  - Severity: **${classification.severity.toUpperCase()}**`,
-    `  - Likely owner: \`${classification.likelyOwner}\``,
+    `  - Observed at: \`${classification.observedAt}\``,
     `  - Repairability: \`${classification.repairability}\``,
     `  - Confidence: \`${classification.confidence}\``,
     `  - ${classification.summary}`,
@@ -143,7 +143,7 @@ export function generateMarkdownReport(manifest: RunManifest): string {
             ? `exact-bytes=${assertion.exactBytesEqual ? "yes" : "no"}`
             : undefined,
           assertion.likelyImplementation
-            ? `likely-implementation=${assertion.likelyImplementation}`
+            ? `observed-implementation=${assertion.likelyImplementation}`
             : undefined,
         ].filter((value): value is string => value !== undefined);
         lines.push(
@@ -249,7 +249,7 @@ export function generateHtmlReport(manifest: RunManifest): string {
             <div><strong>${escapeHtml(classification.label)}</strong><code>${escapeHtml(classification.id)}</code></div>
             <dl>
               <div><dt>Severity</dt><dd>${escapeHtml(classification.severity.toUpperCase())}</dd></div>
-              <div><dt>Likely owner</dt><dd><code>${escapeHtml(classification.likelyOwner)}</code></dd></div>
+              <div><dt>Observed at</dt><dd><code>${escapeHtml(classification.observedAt)}</code></dd></div>
               <div><dt>Repairability</dt><dd>${escapeHtml(repairabilityLabel(classification.repairability))}</dd></div>
               <div><dt>Confidence</dt><dd>${escapeHtml(classification.confidence)}</dd></div>
             </dl>
@@ -266,7 +266,7 @@ export function generateHtmlReport(manifest: RunManifest): string {
               ? `exact bytes ${assertion.exactBytesEqual ? "yes" : "no"}`
               : undefined,
             assertion.likelyImplementation
-              ? `Likely implementation ${assertion.likelyImplementation}`
+              ? `Observed implementation ${assertion.likelyImplementation}`
               : undefined,
           ].filter((value): value is string => value !== undefined);
           const failures = (assertion.failures ?? [])

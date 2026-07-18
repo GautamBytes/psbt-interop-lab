@@ -314,6 +314,7 @@ function p2wpkhScenario(
           `${direction.signer}-psbtv2-signing-transition`,
           v2,
           signed,
+          direction.signer,
         ),
         context.requireAddedInputField(`${direction.signer}-added-psbtv2-signature`, v2, signed, [
           PARTIAL_SIGNATURE,
@@ -334,6 +335,7 @@ function p2wpkhScenario(
           `${direction.finalizer}-psbtv2-finalization-transition`,
           signed,
           finalized,
+          direction.finalizer,
         ),
         context.requireInputFieldPresence(
           `${direction.finalizer}-returned-final-witness`,
@@ -421,8 +423,8 @@ export function createMultisigPsbtv2InteropScenario(
         "sign",
       );
       assertions.push(
-        context.requireTransition("sign", "rust-psbt-v2-multisig-signature", v2, rustSigned),
-        context.requireTransition("sign", "libwally-multisig-signature", v2, wallySigned),
+        context.requireTransition("sign", "rust-psbt-v2-multisig-signature", v2, rustSigned, RUST),
+        context.requireTransition("sign", "libwally-multisig-signature", v2, wallySigned, WALLY),
       );
 
       const combined = context.outputString(
@@ -436,6 +438,7 @@ export function createMultisigPsbtv2InteropScenario(
           "rust-psbt-combined-libwally-signature",
           rustSigned,
           combined,
+          RUST,
         ),
         distinctMultisigContributionEvidence(v2, rustSigned, wallySigned, combined),
       );
@@ -456,6 +459,7 @@ export function createMultisigPsbtv2InteropScenario(
           "libwally-finalized-combined-psbtv2",
           combined,
           finalized,
+          WALLY,
         ),
       );
       const extraction = await extractWithBoth(context, finalized, assertions);

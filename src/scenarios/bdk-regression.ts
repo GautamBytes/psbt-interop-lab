@@ -91,7 +91,13 @@ export function createBdkRegressionScenario(
       });
       const roundtripPsbt = context.outputString(roundtripResponse, "psbt", "roundtrip");
       assertions.push(
-        context.requireTransition("roundtrip", "bdk-roundtrip", fixture.initialPsbt, roundtripPsbt),
+        context.requireTransition(
+          "roundtrip",
+          "bdk-roundtrip",
+          fixture.initialPsbt,
+          roundtripPsbt,
+          "bdkpython",
+        ),
       );
 
       const signResponse = await context.request(options.adapter, "sign", {
@@ -106,6 +112,7 @@ export function createBdkRegressionScenario(
           `${assertionPrefix}-signing-transition`,
           roundtripPsbt,
           signedPsbt,
+          options.adapter,
         ),
       );
       assertions.push(
@@ -131,6 +138,7 @@ export function createBdkRegressionScenario(
           `${assertionPrefix}-finalization-transition`,
           signedPsbt,
           mixedPsbt,
+          options.adapter,
         ),
       );
       assertions.push(

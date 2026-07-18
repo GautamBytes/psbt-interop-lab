@@ -253,6 +253,7 @@ export function createMetadataPreservationScenario(
             `${adapter}-preserved-extension-fields`,
             before,
             current,
+            adapter,
           ),
         );
       }
@@ -270,6 +271,7 @@ export function createMetadataPreservationScenario(
             `${adapter}-preserved-metadata-while-signing`,
             current,
             signedPsbt,
+            adapter,
           ),
         );
         assertions.push(
@@ -296,6 +298,7 @@ export function createMetadataPreservationScenario(
             `metadata-combined-copy-${index + 1}`,
             source,
             combined,
+            "bitcoinjs-lib",
           ),
         );
       }
@@ -322,6 +325,7 @@ export function createMetadataPreservationScenario(
           "core-preserved-metadata-during-finalization",
           combined,
           coreFinalizedPsbt.psbt,
+          "bitcoin-core",
         ),
         {
           ...verifyInjectedExtensionFields(coreFinalizedPsbt.psbt, fixture),

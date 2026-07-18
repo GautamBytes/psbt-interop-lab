@@ -58,6 +58,7 @@ export function createBip370VectorScenario(
             `${vector.id}-roundtrip`,
             vector.base64,
             returned,
+            adapter,
           ).passed
         ) {
           unexpectedValidFailures.push(`${vector.id}:roundtrip`);

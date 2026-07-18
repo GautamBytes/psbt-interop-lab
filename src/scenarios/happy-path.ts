@@ -72,6 +72,7 @@ export function createHappyPathScenario(
           `${assertionPrefix}-roundtrip`,
           fixture.initialPsbt,
           roundtripPsbt,
+          options.adapter,
         ),
       );
 
@@ -87,6 +88,7 @@ export function createHappyPathScenario(
           `${assertionPrefix}-signing-transition`,
           roundtripPsbt,
           signedPsbt,
+          options.adapter,
         ),
       );
       assertions.push(

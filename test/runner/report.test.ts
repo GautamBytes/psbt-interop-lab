@@ -121,7 +121,7 @@ describe("HTML report", () => {
     expect(html).toContain("PSBT_IN_PROPRIETARY");
     expect(html).toContain("Proprietary input field");
     expect(html).toContain("BIP174");
-    expect(html).toContain("Likely implementation");
+    expect(html).toContain("Observed implementation");
     expect(html).toContain("rust-bitcoin");
     expect(html).toContain("RESTORE_EXTENSION_METADATA");
     expect(html).toContain("Return to the previous checkpoint.");
@@ -158,7 +158,7 @@ describe("HTML report", () => {
       expect(report).toContain("code-or-dependency-change");
     }
     expect(markdown).toContain("Filtered run");
-    expect(markdown).toContain("Likely owner: `rust-bitcoin`");
+    expect(markdown).toContain("Observed at: `rust-bitcoin`");
     expect(markdown).toContain("Capability mismatch");
   });
 
@@ -167,7 +167,7 @@ describe("HTML report", () => {
 
     expect(html).toContain("Classification");
     expect(html).toContain("Metadata loss");
-    expect(html).toContain("Likely owner");
+    expect(html).toContain("Observed at");
     expect(html).toContain("rust-bitcoin");
     expect(html).toContain("Code or dependency change");
     expect(html).toContain("Capability mismatch");

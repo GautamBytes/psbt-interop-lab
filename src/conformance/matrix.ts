@@ -72,6 +72,7 @@ function createParseRoundtripScenario(
         `${adapterId}-${profile.scriptType}-roundtrip`,
         profile.fixture.initialPsbt,
         roundtripPsbt,
+        adapterId,
       );
       await context.checkpoint(id, "roundtrip", roundtripPsbt);
       return {

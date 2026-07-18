@@ -140,7 +140,7 @@ export function createRoundtripChainScenario(
         const response = await context.request(adapter, "roundtrip", { psbt: before });
         current = context.outputString(response, "psbt", "roundtrip");
         assertions.push(
-          context.requireTransition("roundtrip", `${adapter}-roundtrip`, before, current),
+          context.requireTransition("roundtrip", `${adapter}-roundtrip`, before, current, adapter),
         );
       }
 
@@ -151,7 +151,13 @@ export function createRoundtripChainScenario(
       });
       const signed = context.outputString(signResponse, "psbt", "sign");
       assertions.push(
-        context.requireTransition("sign", "bitcoinjs-lib-signing-transition", current, signed),
+        context.requireTransition(
+          "sign",
+          "bitcoinjs-lib-signing-transition",
+          current,
+          signed,
+          "bitcoinjs-lib",
+        ),
       );
       assertions.push(
         context.requireAddedInputField(
@@ -237,6 +243,7 @@ export function createParallelCombineScenario(
             `${adapter}-signing-transition`,
             fixture.initialPsbt,
             signed,
+            adapter,
           ),
         );
         assertions.push(
@@ -265,7 +272,13 @@ export function createParallelCombineScenario(
       const combined = context.outputString(combineResponse, "psbt", "combine");
       for (const [index, signed] of signedCopies.entries()) {
         assertions.push(
-          context.requireTransition("combine", `combined-copy-${index + 1}`, signed, combined),
+          context.requireTransition(
+            "combine",
+            `combined-copy-${index + 1}`,
+            signed,
+            combined,
+            "bitcoinjs-lib",
+          ),
         );
       }
       assertions.push(
@@ -344,6 +357,7 @@ export function createSameInputMultisigScenario(
           "rust-bitcoin-signing-transition",
           fixture.initialPsbt,
           rustSigned,
+          "rust-bitcoin",
         ),
       );
       assertions.push(
@@ -364,6 +378,7 @@ export function createSameInputMultisigScenario(
           "bitcoinjs-lib-signing-transition",
           fixture.initialPsbt,
           bitcoinjsSigned,
+          "bitcoinjs-lib",
         ),
       );
       assertions.push(
@@ -377,10 +392,22 @@ export function createSameInputMultisigScenario(
       });
       const combined = context.outputString(combineResponse, "psbt", "combine");
       assertions.push(
-        context.requireTransition("combine", "combined-rust-copy", rustSigned, combined),
+        context.requireTransition(
+          "combine",
+          "combined-rust-copy",
+          rustSigned,
+          combined,
+          "bitcoinjs-lib",
+        ),
       );
       assertions.push(
-        context.requireTransition("combine", "combined-bitcoinjs-copy", bitcoinjsSigned, combined),
+        context.requireTransition(
+          "combine",
+          "combined-bitcoinjs-copy",
+          bitcoinjsSigned,
+          combined,
+          "bitcoinjs-lib",
+        ),
       );
       assertions.push(
         partialSignatureEvidence("combined-two-distinct-signatures", combined, [
@@ -595,7 +622,13 @@ export function createTransactionIntentScenario(
         const response = await context.request(adapter, "roundtrip", { psbt: before });
         current = context.outputString(response, "psbt", "roundtrip");
         assertions.push(
-          context.requireTransition("roundtrip", `${adapter}-preserved-intent`, before, current),
+          context.requireTransition(
+            "roundtrip",
+            `${adapter}-preserved-intent`,
+            before,
+            current,
+            adapter,
+          ),
         );
       }
       assertions.push(transactionIntentEvidence(current), intentMetadataEvidence(current));
@@ -607,7 +640,13 @@ export function createTransactionIntentScenario(
       });
       const signed = context.outputString(signResponse, "psbt", "sign");
       assertions.push(
-        context.requireTransition("sign", "rust-bitcoin-signing-transition", current, signed),
+        context.requireTransition(
+          "sign",
+          "rust-bitcoin-signing-transition",
+          current,
+          signed,
+          "rust-bitcoin",
+        ),
       );
       assertions.push(
         partialSignatureEvidence("rust-bitcoin-added-intent-signature", signed, [
