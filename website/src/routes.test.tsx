@@ -208,8 +208,12 @@ describe("website documentation routes", () => {
     window.history.replaceState({}, "", "/docs");
     render(<App />);
 
-    const cliProof = screen.getByRole("img", { name: /cli finding and replay output/i });
-    const reportProof = screen.getByRole("img", { name: /generated compatibility report/i });
+    const cliProof = screen.getByRole("img", {
+      name: /v0\.5\.2 quickstart terminal output/i,
+    });
+    const reportProof = screen.getByRole("img", {
+      name: /v0\.5\.2 generated quickstart report/i,
+    });
 
     expect(cliProof).toHaveAttribute("src", expect.stringMatching(/cli-finding-and-replay/));
     expect(reportProof).toHaveAttribute("src", expect.stringMatching(/compatibility-report/));

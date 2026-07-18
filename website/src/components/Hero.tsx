@@ -6,6 +6,7 @@ import { ShieldCheck } from "@phosphor-icons/react/ShieldCheck";
 import { TerminalWindow } from "@phosphor-icons/react/TerminalWindow";
 import { repositoryUrl } from "../content";
 import { InstallCommand } from "./InstallCommand";
+import { SiteLink } from "./SiteLink";
 
 const metrics = [
   { icon: Flask, label: "31 scenarios" },
@@ -32,16 +33,20 @@ export function Hero() {
           Preserve intent, signatures, and metadata. Replay every failure.
         </p>
         <div className="hero__actions">
-          <a className="button button--primary" href="#matrix">
+          <SiteLink className="button button--primary" href="/docs#quick-start">
             <TerminalWindow aria-hidden="true" />
-            Run the matrix
-          </a>
+            Run quickstart
+          </SiteLink>
           <a className="button button--text" href={repositoryUrl}>
             View on GitHub
             <ArrowSquareOut aria-hidden="true" />
           </a>
         </div>
         <InstallCommand />
+        <p className="hero__mode-note">
+          <span>Quickstart proves one real handoff.</span>
+          <span>Matrix runs all 31 bundled scenarios.</span>
+        </p>
         <ul className="hero__metrics" aria-label="Project coverage">
           {metrics.map(({ icon: Icon, label }) => (
             <li key={label}>

@@ -578,6 +578,18 @@ svg {
   height: 17px;
 }
 
+.hero .hero__mode-note {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px 20px;
+  margin-top: 12px;
+  color: var(--text-dim);
+  font-family: var(--sans);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .hero__metrics {
   display: grid;
   grid-template-columns: repeat(4, auto);

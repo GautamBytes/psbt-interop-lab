@@ -197,7 +197,11 @@ export const workflowSteps = [
 ] as const;
 
 export const docLinks = [
-  { label: "Quick start", detail: "Install and run the matrix", href: "/docs#quick-start" },
+  {
+    label: "Quick start",
+    detail: "Prove one real handoff",
+    href: "/docs#quick-start",
+  },
   {
     label: "Scenario coverage",
     detail: "See all 31 bundled scenarios",

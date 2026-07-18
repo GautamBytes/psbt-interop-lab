@@ -22,11 +22,12 @@ Requirements:
 npx --yes psbt-interop-lab@0.5.2 quickstart
 ```
 
-`quickstart` checks Node.js, Docker, and Compose, proves the semantic detectors, then runs one real
-Bitcoin Core -> rust-bitcoin -> Bitcoin Core signing and finalization handoff. It writes the same
-replayable reports as the full suite and stops the local regtest node automatically.
+`quickstart` is the bounded first-run proof. It checks Node.js, Docker, and Compose, runs five
+semantic detector canaries, then completes one real Bitcoin Core -> rust-bitcoin -> Bitcoin Core
+signing and finalization handoff. It writes the same replayable reports as the full suite and stops
+the local regtest node automatically.
 
-For repeated use or the complete 31-scenario matrix, install the CLI once:
+For exhaustive compatibility testing, install the CLI once and run the complete 31-scenario matrix:
 
 ```bash
 npm install --global psbt-interop-lab@0.5.2
@@ -68,38 +69,39 @@ To work from a source checkout instead, install pnpm 10.30.2, run
 `pnpm install --frozen-lockfile`, and replace `psbt-lab` above with `node dist/cli.js` after
 `pnpm build`.
 
-## Walkthrough: Catch and Replay a Real Finding
+## Walkthrough: Verify Your First Real Handoff
 
-This focused v0.5.1 run sends five malformed PSBT cases through four native parsers. The lab keeps
-expected rejections separate from implementation-specific compatibility findings, so a known
-divergence remains visible without turning a safe, bounded run into a false failure.
+This real v0.5.2 quickstart uses the public npm package. It verifies the local requirements, proves
+that all five semantic detector canaries catch their deliberate faults, and runs a Core-created
+PSBT through rust-bitcoin signing and back to Core for finalization and regtest policy acceptance.
 
 ```bash
-psbt-lab run \
-  --scenario invalid-and-unsupported-inputs \
-  --no-build
+npx --yes psbt-interop-lab@0.5.2 quickstart
 ```
 
-![CLI finding and replay output](docs/assets/walkthrough/cli-finding-and-replay.png)
+![v0.5.2 quickstart terminal output](docs/assets/walkthrough/cli-finding-and-replay.png)
 
-The run completed 20 parser assertions without a crash or timeout. It also found that btcsuite PSBT
-1.2.0 accepted a duplicate `PSBT_GLOBAL_UNSIGNED_TX` key that BIP174 requires to be unique. The
-output names the affected implementation, classifies the behavior as a compatibility finding, and
-writes the evidence to a private local artifact directory.
+The captured repeated run uses `--no-build` because its two pinned images were already present.
+Omit that flag on the first run and quickstart builds them before executing the same proof.
 
-Open `artifacts/<run-id>/report.html` for the complete result, or verify that the recorded evidence
-still matches its manifest:
+The command is intentionally smaller than `matrix`: it proves that the installation, detector
+invariants, real-library handoff, Bitcoin Core oracle, artifact writer, and cleanup path work before
+a developer spends time on the complete suite. A passing quickstart is not a claim that all 31
+scenarios or all seven implementations are compatible.
+
+Open `artifacts/<run-id>/report.html` for the complete result, or verify later that the recorded
+evidence still matches its manifest:
 
 ```bash
 psbt-lab replay artifacts/<run-id>
 ```
 
-![Generated compatibility report](docs/assets/walkthrough/compatibility-report.png)
+![v0.5.2 generated quickstart report](docs/assets/walkthrough/compatibility-report.png)
 
 The report screenshot above comes directly from the generated, self-contained HTML artifact. The
-CLI screenshot is a typeset transcript of the same real run with only the absolute local artifact
-path shortened. This workflow diagnoses and reproduces the boundary problem; it does not silently
-rewrite the PSBT or claim to patch the upstream library.
+CLI screenshot is a typeset transcript of the same real run with the two long image digests and
+absolute local artifact path shortened. Run `psbt-lab matrix` when the bounded first proof passes
+and complete cross-library coverage is required.
 
 ## External Adapters
 

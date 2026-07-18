@@ -27,21 +27,30 @@ describe("PSBT Interop Lab website", () => {
       screen.getByText("Target one scenario or category for faster iteration"),
     ).toBeInTheDocument();
     expect(screen.getByText("Native parser duplicate-key probe")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Run quickstart" })).toHaveAttribute(
+      "href",
+      "/docs#quick-start",
+    );
+    expect(screen.getByText(/quickstart proves one real handoff/i)).toBeInTheDocument();
+    expect(screen.getByText(/matrix runs all 31 bundled scenarios/i)).toBeInTheDocument();
   });
 
   it("shows a real command-to-report proof walkthrough", () => {
     render(<App />);
 
     expect(
-      screen.getByRole("heading", { name: /from one command to a replayable finding/i }),
+      screen.getByRole("heading", { name: /from one command to a policy-accepted transaction/i }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: /cli finding and replay output/i })).toBeInTheDocument();
+    expect(screen.getByText(/evidence from a real v0\.5\.2 quickstart/i)).toBeInTheDocument();
     expect(
-      screen.getByRole("img", { name: /generated compatibility report/i }),
+      screen.getByRole("img", { name: /v0\.5\.2 quickstart terminal output/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("img", { name: /v0\.5\.2 generated quickstart report/i }),
     ).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /open the complete walkthrough/i })).toHaveAttribute(
       "href",
-      "/docs#walkthrough-catch-and-replay-a-real-finding",
+      "/docs#walkthrough-verify-your-first-real-handoff",
     );
   });
 
