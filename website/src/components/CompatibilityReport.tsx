@@ -69,6 +69,45 @@ export function CompatibilityReport() {
               <p>{selected.summary}</p>
             </div>
 
+            {selected.classification ? (
+              <section className="report-classification" aria-labelledby="classification-title">
+                <div className="report-classification__heading">
+                  <span>v0.5.3 report output</span>
+                  <h4 id="classification-title">Classification</h4>
+                </div>
+                <dl>
+                  <div className="report-classification__field">
+                    <dt>Category</dt>
+                    <dd>{selected.classification.category}</dd>
+                  </div>
+                  <div className="report-classification__field">
+                    <dt>Severity</dt>
+                    <dd className="classification-severity">{selected.classification.severity}</dd>
+                  </div>
+                  <div className="report-classification__field">
+                    <dt>Observed at</dt>
+                    <dd>
+                      <code>{selected.classification.observedAt}</code>
+                    </dd>
+                  </div>
+                  <div className="report-classification__field">
+                    <dt>Repairability</dt>
+                    <dd>{selected.classification.repairability}</dd>
+                  </div>
+                  <div className="report-classification__field">
+                    <dt>Confidence</dt>
+                    <dd>{selected.classification.confidence}</dd>
+                  </div>
+                  <div className="report-classification__field report-classification__evidence">
+                    <dt>Exact evidence</dt>
+                    <dd>
+                      <code>{selected.classification.evidence}</code>
+                    </dd>
+                  </div>
+                </dl>
+              </section>
+            ) : null}
+
             <ol className="handoff-timeline" aria-label="Implementation handoff">
               {selectedImplementations.map((implementation, index) => (
                 <li className="handoff-timeline__item" key={implementation.name}>

@@ -819,6 +819,77 @@ svg {
   color: var(--blue);
 }
 
+.report-classification {
+  display: grid;
+  grid-template-columns: 164px minmax(0, 1fr);
+  border-bottom: 1px solid var(--border);
+  background: rgba(247, 147, 26, 0.035);
+}
+
+.report-classification__heading {
+  padding: 15px 18px;
+  border-right: 1px solid var(--border);
+}
+
+.report-classification__heading span,
+.report-classification dt {
+  color: var(--text-dim);
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.report-classification__heading h4 {
+  margin: 7px 0 0;
+  font-size: 14px;
+}
+
+.report-classification dl {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(112px, 1fr));
+  min-width: 720px;
+  margin: 0;
+  overflow-x: auto;
+}
+
+.report-classification__field {
+  min-width: 0;
+  padding: 14px 12px;
+  border-right: 1px solid var(--border);
+}
+
+.report-classification__field:nth-child(5) {
+  border-right: 0;
+}
+
+.report-classification dd {
+  margin: 7px 0 0;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.report-classification dd code {
+  color: var(--text);
+  font-size: 9px;
+}
+
+.report-classification .classification-severity {
+  color: var(--amber);
+}
+
+.report-classification__evidence {
+  grid-column: 1 / -1;
+  border-top: 1px solid var(--border);
+  border-right: 0;
+}
+
+.report-classification__evidence dd code {
+  color: var(--orange);
+}
+
 .handoff-timeline {
   display: grid;
   grid-template-columns: repeat(6, minmax(112px, 1fr));
@@ -2177,6 +2248,36 @@ svg {
     grid-template-columns: 1fr;
   }
 
+  .report-classification {
+    grid-template-columns: 1fr;
+  }
+
+  .report-classification__heading {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .report-classification dl {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    min-width: 0;
+    overflow: visible;
+  }
+
+  .report-classification__field,
+  .report-classification__field:nth-child(5) {
+    border-right: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .report-classification__field:nth-child(even),
+  .report-classification__evidence {
+    border-right: 0;
+  }
+
+  .report-classification__evidence {
+    border-bottom: 0;
+  }
+
   .workflow-steps {
     grid-template-columns: 1fr;
   }
@@ -2387,6 +2488,10 @@ svg {
   .evidence-panel__summary {
     min-height: 0;
     padding: 16px;
+  }
+
+  .report-classification__heading {
+    padding: 14px 16px;
   }
 
   .handoff-timeline {

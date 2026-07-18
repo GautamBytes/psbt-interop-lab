@@ -100,8 +100,10 @@ psbt-lab replay artifacts/<run-id>
 
 The report screenshot above comes directly from the generated, self-contained HTML artifact. The
 CLI screenshot is a typeset transcript of the same real run with the two long image digests and
-absolute local artifact path shortened. Run `psbt-lab matrix` when the bounded first proof passes
-and complete cross-library coverage is required.
+absolute local artifact path shortened. These images remain an honest v0.5.2 capture; current
+v0.5.3 reports add structured classification by category, severity, observed implementation,
+repairability, confidence, and exact evidence. Run `psbt-lab matrix` when the bounded first proof
+passes and complete cross-library coverage is required.
 
 ## External Adapters
 

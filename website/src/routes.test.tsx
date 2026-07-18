@@ -219,6 +219,9 @@ describe("website documentation routes", () => {
     expect(reportProof).toHaveAttribute("src", expect.stringMatching(/compatibility-report/));
     expect(cliProof.getAttribute("src")).not.toMatch(/^https?:/);
     expect(reportProof.getAttribute("src")).not.toMatch(/^https?:/);
+    expect(
+      screen.getByText(/current v0\.5\.3 reports add structured classification/i),
+    ).toBeInTheDocument();
   });
 
   it("renders a useful page for an unknown path", () => {

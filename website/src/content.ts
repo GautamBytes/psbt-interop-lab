@@ -12,6 +12,15 @@ export interface EvidenceRow {
   nextStep: string;
 }
 
+export interface ReportClassification {
+  category: string;
+  severity: string;
+  observedAt: string;
+  repairability: string;
+  confidence: string;
+  evidence: string;
+}
+
 export interface ReportScenario {
   id: string;
   shortLabel: string;
@@ -22,6 +31,7 @@ export interface ReportScenario {
   summary: string;
   implementations: readonly string[];
   evidence: EvidenceRow[];
+  classification?: ReportClassification;
   replay: string;
 }
 
@@ -81,6 +91,14 @@ export const reportScenarios: ReportScenario[] = [
     summary:
       "btcsuite accepts a duplicate global unsigned-transaction key. The lab keeps this divergence visible while requiring other native parsers to reject malformed input safely.",
     implementations: ["btcsuite PSBT"],
+    classification: {
+      category: "Implementation divergence",
+      severity: "Review",
+      observedAt: "btcsuite-go",
+      repairability: "Investigation required",
+      confidence: "Medium",
+      evidence: "finding:duplicate-global-key",
+    },
     evidence: [
       {
         field: "PSBT_GLOBAL_UNSIGNED_TX (0x00)",
@@ -151,6 +169,14 @@ export const reportScenarios: ReportScenario[] = [
     summary:
       "A valid SegWit final witness exposes a strict-parser mismatch: rust-psbt requires an explicit empty final scriptSig, while libwally rejects that explicit empty field. The lab reports the difference and still asks Core to validate the extracted transaction.",
     implementations: ["Bitcoin Core", "rust-psbt PSBTv2", "libwally"],
+    classification: {
+      category: "Implementation divergence",
+      severity: "Review",
+      observedAt: "rust-psbt-v2 / libwally",
+      repairability: "Investigation required",
+      confidence: "Medium",
+      evidence: "finding:explicit-empty-final-scriptsig",
+    },
     evidence: [
       {
         field: "PSBT_IN_FINAL_SCRIPTSIG (0x07)",

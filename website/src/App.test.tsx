@@ -76,6 +76,16 @@ describe("PSBT Interop Lab website", () => {
     ).toBeInTheDocument();
   });
 
+  it("shows the same structured classification developers receive in v0.5.3 reports", () => {
+    render(<App />);
+
+    expect(screen.getByRole("heading", { name: "Classification" })).toBeInTheDocument();
+    expect(screen.getByText("Implementation divergence")).toBeInTheDocument();
+    expect(screen.getByText("btcsuite-go")).toBeInTheDocument();
+    expect(screen.getByText("Investigation required")).toBeInTheDocument();
+    expect(screen.getByText("finding:duplicate-global-key")).toBeInTheDocument();
+  });
+
   it("opens and filters project search", async () => {
     const user = userEvent.setup();
     render(<App />);
