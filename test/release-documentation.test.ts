@@ -30,9 +30,7 @@ describe("release documentation", () => {
     expect(psbtv2).toContain('"sign", "combine", "finalize", "extract"');
     expect(psbtv2).toContain('"scriptTypes": ["p2wpkh", "p2wsh"]');
     expect(psbtv2).not.toContain("parser-only PSBTv2 adapter");
-    expect(read("adapters/rust-psbt-v2/src/lib.rs")).not.toContain(
-      "parser-only adapter scope",
-    );
+    expect(read("adapters/rust-psbt-v2/src/lib.rs")).not.toContain("parser-only adapter scope");
     expect(bdk).toContain("p2tr-scriptpath");
     expect(bdk).toContain("tap_leaves_options=All for p2tr-scriptpath signing");
   });
