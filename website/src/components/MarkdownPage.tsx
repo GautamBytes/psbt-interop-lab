@@ -2,6 +2,8 @@ import { ArrowSquareOut } from "@phosphor-icons/react/ArrowSquareOut";
 import { isValidElement, type ReactNode } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import cliProof from "../../../docs/assets/walkthrough/cli-finding-and-replay.png";
+import reportProof from "../../../docs/assets/walkthrough/compatibility-report.png";
 import { repositoryUrl } from "../content";
 import { findDocumentBySourcePath, type WebsiteDocument } from "../pages/documents";
 import { findRepositoryResourceBySourcePath } from "../pages/repository-resources";
@@ -80,11 +82,24 @@ function normalizeRepoPath(baseDir: string, href: string): string {
   return normalized.join("/");
 }
 
+const bundledImages: Readonly<Record<string, string>> = {
+  "docs/assets/walkthrough/cli-finding-and-replay.png": cliProof,
+  "docs/assets/walkthrough/compatibility-report.png": reportProof,
+};
+
+export function resolveDocumentImageSrc(src: string | undefined, baseDir: string): string {
+  if (!src || /^(?:https?:|data:|blob:)/.test(src)) return src ?? "";
+  const path = normalizeRepoPath(baseDir, src);
+  return bundledImages[path] ?? `${repositoryUrl}/raw/main/${path}`;
+}
+
 export function resolveDocumentHref(href: string | undefined, baseDir: string): string {
   if (!href || href.startsWith("#") || /^(https?:|mailto:)/.test(href)) return href ?? "#";
 
   const hash = href.includes("#") ? `#${href.split("#").slice(1).join("#")}` : "";
   const path = normalizeRepoPath(baseDir, href);
+
+  if (bundledImages[path]) return bundledImages[path];
 
   const internalDocument = findDocumentBySourcePath(path);
   if (internalDocument) return `${internalDocument.route}${hash}`;
@@ -119,6 +134,16 @@ export function MarkdownPage({ document }: MarkdownPageProps) {
       ) : (
         <a {...props} href={resolved}>
           {children}
+        </a>
+      );
+    },
+    img: ({ src, alt, node, ...props }) => {
+      void node;
+      const resolved = resolveDocumentImageSrc(src, document.baseDir);
+      const label = alt || "Documentation image";
+      return (
+        <a className="markdown-proof-image" href={resolved} aria-label={`Open full-size ${label}`}>
+          <img {...props} src={resolved} alt={alt ?? ""} loading="lazy" decoding="async" />
         </a>
       );
     },

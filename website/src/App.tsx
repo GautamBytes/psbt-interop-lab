@@ -3,6 +3,7 @@ import { CompatibilityReport } from "./components/CompatibilityReport";
 import { Header } from "./components/Header";
 import { Hero } from "./components/Hero";
 import { MarkdownPage } from "./components/MarkdownPage";
+import { ProofWalkthrough } from "./components/ProofWalkthrough";
 import { RepositoryResourcePage } from "./components/RepositoryResourcePage";
 import { SearchDialog } from "./components/SearchDialog";
 import { Sections } from "./components/Sections";
@@ -63,6 +64,7 @@ export function App() {
       <>
         <Hero />
         <CompatibilityReport />
+        <ProofWalkthrough />
         <Sections />
       </>
     ) : activeDocument ? (

@@ -204,6 +204,19 @@ describe("website documentation routes", () => {
     expect(screen.getByText("Code block copied")).toBeInTheDocument();
   });
 
+  it("renders the README walkthrough screenshots from local bundled assets", () => {
+    window.history.replaceState({}, "", "/docs");
+    render(<App />);
+
+    const cliProof = screen.getByRole("img", { name: /cli finding and replay output/i });
+    const reportProof = screen.getByRole("img", { name: /generated compatibility report/i });
+
+    expect(cliProof).toHaveAttribute("src", expect.stringMatching(/cli-finding-and-replay/));
+    expect(reportProof).toHaveAttribute("src", expect.stringMatching(/compatibility-report/));
+    expect(cliProof.getAttribute("src")).not.toMatch(/^https?:/);
+    expect(reportProof.getAttribute("src")).not.toMatch(/^https?:/);
+  });
+
   it("renders a useful page for an unknown path", () => {
     window.history.replaceState({}, "", "/not-a-real-page");
     render(<App />);

@@ -29,6 +29,22 @@ describe("PSBT Interop Lab website", () => {
     expect(screen.getByText("Native parser duplicate-key probe")).toBeInTheDocument();
   });
 
+  it("shows a real command-to-report proof walkthrough", () => {
+    render(<App />);
+
+    expect(
+      screen.getByRole("heading", { name: /from one command to a replayable finding/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: /cli finding and replay output/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("img", { name: /generated compatibility report/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /open the complete walkthrough/i })).toHaveAttribute(
+      "href",
+      "/docs#walkthrough-catch-and-replay-a-real-finding",
+    );
+  });
+
   it("copies the pinned install command", async () => {
     const user = userEvent.setup();
     render(<App />);

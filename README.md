@@ -58,6 +58,39 @@ To work from a source checkout instead, install pnpm 10.30.2, run
 `pnpm install --frozen-lockfile`, and replace `psbt-lab` above with `node dist/cli.js` after
 `pnpm build`.
 
+## Walkthrough: Catch and Replay a Real Finding
+
+This focused v0.5.1 run sends five malformed PSBT cases through four native parsers. The lab keeps
+expected rejections separate from implementation-specific compatibility findings, so a known
+divergence remains visible without turning a safe, bounded run into a false failure.
+
+```bash
+psbt-lab run \
+  --scenario invalid-and-unsupported-inputs \
+  --no-build
+```
+
+![CLI finding and replay output](docs/assets/walkthrough/cli-finding-and-replay.png)
+
+The run completed 20 parser assertions without a crash or timeout. It also found that btcsuite PSBT
+1.2.0 accepted a duplicate `PSBT_GLOBAL_UNSIGNED_TX` key that BIP174 requires to be unique. The
+output names the affected implementation, classifies the behavior as a compatibility finding, and
+writes the evidence to a private local artifact directory.
+
+Open `artifacts/<run-id>/report.html` for the complete result, or verify that the recorded evidence
+still matches its manifest:
+
+```bash
+psbt-lab replay artifacts/<run-id>
+```
+
+![Generated compatibility report](docs/assets/walkthrough/compatibility-report.png)
+
+The report screenshot above comes directly from the generated, self-contained HTML artifact. The
+CLI screenshot is a typeset transcript of the same real run with only the absolute local artifact
+path shortened. This workflow diagnoses and reproduces the boundary problem; it does not silently
+rewrite the PSBT or claim to patch the upstream library.
+
 ## External Adapters
 
 Wallet and library maintainers can point the CLI at their own local JSONL adapter without editing
