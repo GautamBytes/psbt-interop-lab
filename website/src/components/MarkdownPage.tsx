@@ -82,13 +82,21 @@ function normalizeRepoPath(baseDir: string, href: string): string {
   return normalized.join("/");
 }
 
+const publicWalkthroughAssetBase =
+  "https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/274d5ec3e88cee27e7bd9e3ad8fdbec4e3f90fc2/docs/assets/walkthrough/";
+
 const bundledImages: Readonly<Record<string, string>> = {
   "docs/assets/walkthrough/cli-finding-and-replay.png": cliProof,
   "docs/assets/walkthrough/compatibility-report.png": reportProof,
+  [`${publicWalkthroughAssetBase}cli-finding-and-replay.png`]: cliProof,
+  [`${publicWalkthroughAssetBase}compatibility-report.png`]: reportProof,
 };
 
 export function resolveDocumentImageSrc(src: string | undefined, baseDir: string): string {
-  if (!src || /^(?:https?:|data:|blob:)/.test(src)) return src ?? "";
+  if (!src) return "";
+  const bundled = bundledImages[src];
+  if (bundled) return bundled;
+  if (/^(?:https?:|data:|blob:)/.test(src)) return src;
   const path = normalizeRepoPath(baseDir, src);
   return bundledImages[path] ?? `${repositoryUrl}/raw/main/${path}`;
 }

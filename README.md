@@ -19,7 +19,7 @@ Requirements:
 - Node.js 22 or 24
 
 ```bash
-npx --yes psbt-interop-lab@0.5.3 quickstart
+npx --yes psbt-interop-lab@0.5.4 quickstart
 ```
 
 `quickstart` is the bounded first-run proof. It checks Node.js, Docker, and Compose, runs five
@@ -30,7 +30,7 @@ the local regtest node automatically.
 For exhaustive compatibility testing, install the CLI once and run the complete 31-scenario matrix:
 
 ```bash
-npm install --global psbt-interop-lab@0.5.3
+npm install --global psbt-interop-lab@0.5.4
 psbt-lab matrix
 ```
 
@@ -79,7 +79,7 @@ PSBT through rust-bitcoin signing and back to Core for finalization and regtest 
 npx --yes psbt-interop-lab@0.5.2 quickstart
 ```
 
-![v0.5.2 quickstart terminal output](docs/assets/walkthrough/cli-finding-and-replay.png)
+![v0.5.2 quickstart terminal output](https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/274d5ec3e88cee27e7bd9e3ad8fdbec4e3f90fc2/docs/assets/walkthrough/cli-finding-and-replay.png)
 
 The captured repeated run uses `--no-build` because its two pinned images were already present.
 Omit that flag on the first run and quickstart builds them before executing the same proof.
@@ -96,12 +96,12 @@ evidence still matches its manifest:
 psbt-lab replay artifacts/<run-id>
 ```
 
-![v0.5.2 generated quickstart report](docs/assets/walkthrough/compatibility-report.png)
+![v0.5.2 generated quickstart report](https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/274d5ec3e88cee27e7bd9e3ad8fdbec4e3f90fc2/docs/assets/walkthrough/compatibility-report.png)
 
 The report screenshot above comes directly from the generated, self-contained HTML artifact. The
 CLI screenshot is a typeset transcript of the same real run with the two long image digests and
 absolute local artifact path shortened. These images remain an honest v0.5.2 capture; current
-v0.5.3 reports add structured classification by category, severity, observed implementation,
+v0.5.4 reports add structured classification by category, severity, observed implementation,
 repairability, confidence, and exact evidence. Run `psbt-lab matrix` when the bounded first proof
 passes and complete cross-library coverage is required.
 

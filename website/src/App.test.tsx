@@ -76,7 +76,7 @@ describe("PSBT Interop Lab website", () => {
     ).toBeInTheDocument();
   });
 
-  it("shows the same structured classification developers receive in v0.5.3 reports", () => {
+  it("shows the same structured classification developers receive in v0.5.4 reports", () => {
     render(<App />);
 
     expect(screen.getByRole("heading", { name: "Classification" })).toBeInTheDocument();

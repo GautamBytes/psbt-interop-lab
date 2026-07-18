@@ -17,7 +17,7 @@ describe("release documentation", () => {
       "website/src/components/Sections.tsx",
     ];
 
-    expect(packageVersion).toBe("0.5.3");
+    expect(packageVersion).toBe("0.5.4");
     for (const path of publicFiles) {
       expect(read(path), path).toContain(packageVersion);
     }
@@ -53,5 +53,17 @@ describe("release documentation", () => {
     expect(normalizedReadme).toContain("five semantic detector canaries");
     expect(normalizedReadme).toContain("stops the local regtest node automatically");
     expect(readme).not.toContain("focused v0.5.1 run");
+  });
+
+  it("uses public HTTPS URLs for npm README walkthrough images", () => {
+    const readme = read("README.md");
+    const imageSources = [...readme.matchAll(/!\[[^\]]*\]\(([^)]+)\)/g)].map((match) => match[1]);
+
+    expect(imageSources).toHaveLength(2);
+    for (const source of imageSources) {
+      expect(source).toMatch(
+        /^https:\/\/raw\.githubusercontent\.com\/GautamBytes\/psbt-interop-lab\/[0-9a-f]{40}\//,
+      );
+    }
   });
 });

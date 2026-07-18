@@ -2,7 +2,7 @@ import { act, cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
-import { resolveDocumentHref } from "./components/MarkdownPage";
+import { resolveDocumentHref, resolveDocumentImageSrc } from "./components/MarkdownPage";
 import { documents } from "./pages/documents";
 
 const mermaidMocks = vi.hoisted(() => ({
@@ -220,8 +220,18 @@ describe("website documentation routes", () => {
     expect(cliProof.getAttribute("src")).not.toMatch(/^https?:/);
     expect(reportProof.getAttribute("src")).not.toMatch(/^https?:/);
     expect(
-      screen.getByText(/current v0\.5\.3 reports add structured classification/i),
+      screen.getByText(/current v0\.5\.4 reports add structured classification/i),
     ).toBeInTheDocument();
+  });
+
+  it("maps the public npm walkthrough image URL to the bundled website asset", () => {
+    const publicSource =
+      "https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/274d5ec3e88cee27e7bd9e3ad8fdbec4e3f90fc2/docs/assets/walkthrough/cli-finding-and-replay.png";
+
+    const resolved = resolveDocumentImageSrc(publicSource, "");
+
+    expect(resolved).toMatch(/cli-finding-and-replay/);
+    expect(resolved).not.toMatch(/^https?:/);
   });
 
   it("renders a useful page for an unknown path", () => {

@@ -72,7 +72,7 @@ export function CompatibilityReport() {
             {selected.classification ? (
               <section className="report-classification" aria-labelledby="classification-title">
                 <div className="report-classification__heading">
-                  <span>v0.5.3 report output</span>
+                  <span>v0.5.4 report output</span>
                   <h4 id="classification-title">Classification</h4>
                 </div>
                 <dl>
