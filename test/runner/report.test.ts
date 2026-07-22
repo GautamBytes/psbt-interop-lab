@@ -146,8 +146,9 @@ describe("HTML report", () => {
     const value = manifest();
     const json = JSON.stringify(generateJsonReport(value));
     const markdown = generateMarkdownReport(value);
+    const html = generateHtmlReport(value);
 
-    for (const report of [json, markdown]) {
+    for (const report of [json, markdown, html]) {
       expect(report).toContain("PSBT_IN_PROPRIETARY");
       expect(report).toContain("Proprietary input field");
       expect(report).toContain("BIP174");
@@ -157,11 +158,22 @@ describe("HTML report", () => {
       expect(report).toContain("metadata-preservation");
       expect(report).toContain("metadata-loss");
       expect(report).toContain("Metadata loss");
-      expect(report).toContain("code-or-dependency-change");
+      expect(report).toContain("bip174.unknown-keypairs.preserved");
+      expect(report).toContain("must");
+      expect(report).toContain(
+        "Unknown and proprietary keypairs are preserved when a PSBT is reserialized.",
+      );
+      expect(report).toContain("An extension field was removed during the roundtrip transition.");
+      expect(report).toContain("https://github.com/bitcoin/bips/blob/master/bip-0174.mediawiki");
     }
     expect(markdown).toContain("Filtered run");
+    expect(json).toContain("code-or-dependency-change");
+    expect(markdown).toContain("code-or-dependency-change");
+    expect(html).toContain("Code or dependency change");
     expect(markdown).toContain("Observed at: `rust-bitcoin`");
     expect(markdown).toContain("Capability mismatch");
+    expect(markdown).toContain("Normative level: `must`");
+    expect(html).toContain('href="https://github.com/bitcoin/bips/blob/master/bip-0174.mediawiki"');
   });
 
   test("renders classifications in the HTML report", () => {

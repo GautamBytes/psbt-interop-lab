@@ -392,10 +392,7 @@ function allInputsFinalized(document: PsbtDocument): boolean {
   );
 }
 
-function isPermittedFinalizationCleanup(
-  entry: PsbtEntrySummary,
-  after: PsbtDocument,
-): boolean {
+function isPermittedFinalizationCleanup(entry: PsbtEntrySummary, after: PsbtDocument): boolean {
   return (
     entry.location.kind === "output" &&
     entry.keyType === TAPROOT_OUTPUT_BIP32_DERIVATION &&

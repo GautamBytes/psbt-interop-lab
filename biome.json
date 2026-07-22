@@ -10,6 +10,7 @@
       "!!adapters/bdk-wallet-current/target",
       "!!adapters/rust-psbt-v2/target",
       "!!src/generated/validators.ts",
+      "!!website/src/generated/conformance-rules.ts",
       "!!website/*.tsbuildinfo",
       "!!website/vite.config.js",
       "!!website/vite.config.d.ts"

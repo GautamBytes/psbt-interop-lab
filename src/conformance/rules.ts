@@ -69,8 +69,7 @@ export const CONFORMANCE_RULES = Object.freeze({
     category: "implementation-divergence",
     normativeLevel: "must",
     source: { name: "BIP174", url: BIP174_URL, section: "Finalizer" },
-    expected:
-      "An empty final scriptSig is represented by omitting PSBT_IN_FINAL_SCRIPTSIG.",
+    expected: "An empty final scriptSig is represented by omitting PSBT_IN_FINAL_SCRIPTSIG.",
     severity: "review",
     repairability: "code-or-dependency-change",
     confidence: "high",
@@ -81,8 +80,7 @@ export const CONFORMANCE_RULES = Object.freeze({
     category: "implementation-divergence",
     normativeLevel: "must",
     source: { name: "BIP370", url: BIP370_URL, section: "Test vectors" },
-    expected:
-      "PSBTv2 documents identified as valid by the official BIP370 vectors are accepted.",
+    expected: "PSBTv2 documents identified as valid by the official BIP370 vectors are accepted.",
     severity: "review",
     repairability: "code-or-dependency-change",
     confidence: "high",

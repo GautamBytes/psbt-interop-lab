@@ -1,10 +1,10 @@
 import {
-  getConformanceRule,
   type ConformanceNormativeLevel,
   type ConformanceRuleConfidence,
   type ConformanceRuleId,
   type ConformanceRuleRepairability,
   type ConformanceRuleSeverity,
+  getConformanceRule,
 } from "../conformance/rules.js";
 import type { PsbtSafeGuidanceCode, PsbtTransitionFailure } from "../psbt/invariants.js";
 import type { ScenarioAssertionEvidence, ScenarioResult } from "../scenarios/definition.js";
@@ -284,7 +284,8 @@ export function classifyScenario(scenario: ScenarioResult): readonly ReportClass
         id: "known-regression",
         label: "Known regression specimen",
         observedAt: scenario.expectedFailure.implementation,
-        summary: "The scenario intentionally preserves a historical failure as a regression specimen.",
+        summary:
+          "The scenario intentionally preserves a historical failure as a regression specimen.",
         actual: `The specimen returned ${scenario.expectedFailure.errorClass}.`,
       }),
       `expected-failure:${scenario.expectedFailure.errorClass}`,

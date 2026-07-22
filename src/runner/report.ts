@@ -79,11 +79,15 @@ function repairabilityLabel(repairability: ReportRepairability): string {
 
 function markdownClassification(classification: ReportClassification): string[] {
   return [
-    `- **${classification.label}** (\`${classification.id}\`)`,
+    `- **${classification.label}** (\`${classification.id}\`, rule \`${classification.ruleId}\`)`,
     `  - Severity: **${classification.severity.toUpperCase()}**`,
+    `  - Normative level: \`${classification.normativeLevel}\``,
     `  - Observed at: \`${classification.observedAt}\``,
     `  - Repairability: \`${classification.repairability}\``,
     `  - Confidence: \`${classification.confidence}\``,
+    `  - Source: [${classification.sourceName} — ${classification.sourceSection}](${classification.sourceUrl})`,
+    `  - Expected: ${classification.expected}`,
+    `  - Observed: ${classification.actual.join("; ")}`,
     `  - ${classification.summary}`,
     `  - Evidence: ${classification.evidence.map((evidence) => `\`${evidence}\``).join(", ")}`,
   ];
@@ -246,14 +250,19 @@ export function generateHtmlReport(manifest: RunManifest): string {
           (
             classification,
           ) => `<li class="classification classification--${escapeHtml(classification.severity)}">
-            <div><strong>${escapeHtml(classification.label)}</strong><code>${escapeHtml(classification.id)}</code></div>
+            <div><strong>${escapeHtml(classification.label)}</strong><code>${escapeHtml(classification.ruleId)}</code></div>
             <dl>
+              <div><dt>Category</dt><dd><code>${escapeHtml(classification.id)}</code></dd></div>
               <div><dt>Severity</dt><dd>${escapeHtml(classification.severity.toUpperCase())}</dd></div>
+              <div><dt>Normative level</dt><dd><code>${escapeHtml(classification.normativeLevel)}</code></dd></div>
               <div><dt>Observed at</dt><dd><code>${escapeHtml(classification.observedAt)}</code></dd></div>
               <div><dt>Repairability</dt><dd>${escapeHtml(repairabilityLabel(classification.repairability))}</dd></div>
               <div><dt>Confidence</dt><dd>${escapeHtml(classification.confidence)}</dd></div>
+              <div><dt>Source</dt><dd><a href="${escapeHtml(classification.sourceUrl)}" rel="noreferrer">${escapeHtml(classification.sourceName)} — ${escapeHtml(classification.sourceSection)}</a></dd></div>
             </dl>
             <p>${escapeHtml(classification.summary)}</p>
+            <p><strong>Expected:</strong> ${escapeHtml(classification.expected)}</p>
+            <p><strong>Observed:</strong> ${escapeHtml(classification.actual.join("; "))}</p>
             <p class="classification__evidence">Evidence: ${classification.evidence.map((evidence) => `<code>${escapeHtml(evidence)}</code>`).join(" · ")}</p>
           </li>`,
         )

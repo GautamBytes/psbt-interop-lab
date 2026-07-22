@@ -4,6 +4,7 @@ import { Info } from "@phosphor-icons/react/Info";
 import { Warning } from "@phosphor-icons/react/Warning";
 import { useState } from "react";
 import { implementations, reportScenarios, type ScenarioStatus } from "../content";
+import { publicConformanceRules } from "../generated/conformance-rules";
 
 const statusIcon = {
   pass: CheckCircle,
@@ -16,6 +17,9 @@ export function CompatibilityReport() {
   const selected =
     reportScenarios.find((scenario) => scenario.id === selectedId) ?? reportScenarios[1];
   const StatusIcon = statusIcon[selected.status];
+  const classificationRule = selected.classification
+    ? publicConformanceRules[selected.classification.ruleId]
+    : undefined;
   const selectedImplementations = implementations.filter((implementation) =>
     selected.implementations.includes(implementation.name),
   );
@@ -69,7 +73,7 @@ export function CompatibilityReport() {
               <p>{selected.summary}</p>
             </div>
 
-            {selected.classification ? (
+            {selected.classification && classificationRule ? (
               <section className="report-classification" aria-labelledby="classification-title">
                 <div className="report-classification__heading">
                   <span>v0.5.4 report output</span>
@@ -79,6 +83,12 @@ export function CompatibilityReport() {
                   <div className="report-classification__field">
                     <dt>Category</dt>
                     <dd>{selected.classification.category}</dd>
+                  </div>
+                  <div className="report-classification__field">
+                    <dt>Rule</dt>
+                    <dd>
+                      <code>{classificationRule.id}</code>
+                    </dd>
                   </div>
                   <div className="report-classification__field">
                     <dt>Severity</dt>
@@ -97,6 +107,28 @@ export function CompatibilityReport() {
                   <div className="report-classification__field">
                     <dt>Confidence</dt>
                     <dd>{selected.classification.confidence}</dd>
+                  </div>
+                  <div className="report-classification__field">
+                    <dt>Normative level</dt>
+                    <dd>
+                      <code>{classificationRule.normativeLevel}</code>
+                    </dd>
+                  </div>
+                  <div className="report-classification__field">
+                    <dt>Source</dt>
+                    <dd>
+                      <a href={classificationRule.source.url} rel="noreferrer">
+                        {classificationRule.source.name} — {classificationRule.source.section}
+                      </a>
+                    </dd>
+                  </div>
+                  <div className="report-classification__field">
+                    <dt>Expected</dt>
+                    <dd>{classificationRule.expected}</dd>
+                  </div>
+                  <div className="report-classification__field">
+                    <dt>Observed</dt>
+                    <dd>{selected.classification.actual}</dd>
                   </div>
                   <div className="report-classification__field report-classification__evidence">
                     <dt>Exact evidence</dt>

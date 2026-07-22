@@ -105,8 +105,7 @@ export function createInvalidInputScenario(
               implementation: "btcsuite-go",
               summary:
                 "btcsuite PSBT 1.2.0 accepted a duplicate global unsigned-transaction key that BIP174 requires to be unique.",
-              actual:
-                "btcsuite PSBT 1.2.0 accepted a duplicate global unsigned-transaction key.",
+              actual: "btcsuite PSBT 1.2.0 accepted a duplicate global unsigned-transaction key.",
             });
           }
           assertions.push({

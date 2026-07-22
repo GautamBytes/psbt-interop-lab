@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { App } from "./App";
@@ -82,8 +82,37 @@ describe("PSBT Interop Lab website", () => {
     expect(screen.getByRole("heading", { name: "Classification" })).toBeInTheDocument();
     expect(screen.getByText("Implementation divergence")).toBeInTheDocument();
     expect(screen.getByText("btcsuite-go")).toBeInTheDocument();
-    expect(screen.getByText("Investigation required")).toBeInTheDocument();
+    expect(screen.getByText("Code or dependency change")).toBeInTheDocument();
     expect(screen.getByText("finding:duplicate-global-key")).toBeInTheDocument();
+    expect(screen.getByText("bip174.map-keys.unique")).toBeInTheDocument();
+    expect(screen.getByText("must")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /BIP174.*Specification/i })).toHaveAttribute(
+      "href",
+      "https://github.com/bitcoin/bips/blob/master/bip-0174.mediawiki",
+    );
+  });
+
+  it("attributes the empty final scriptSig finding only to rust-psbt", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: /PSBTv2 finalization/i }));
+
+    expect(screen.getByText("bip174.final-scriptsig.empty-omitted")).toBeInTheDocument();
+    const classification = screen
+      .getByRole("heading", { name: "Classification" })
+      .closest("section");
+    if (!classification) throw new Error("Missing classification section");
+    expect(within(classification).getByText("rust-psbt-v2")).toBeInTheDocument();
+    expect(
+      screen.getAllByText(/empty final scriptSig is represented by omitting/i).length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getByText(
+        /libwally strictly reject(?:ed|s) the explicit empty field as noncanonical/i,
+      ),
+    ).toBeInTheDocument();
+    expect(within(classification).queryByText("rust-psbt-v2 / libwally")).not.toBeInTheDocument();
   });
 
   it("opens and filters project search", async () => {

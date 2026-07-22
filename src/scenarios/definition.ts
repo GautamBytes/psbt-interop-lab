@@ -1,3 +1,4 @@
+import type { ConformanceRuleId } from "../conformance/rules.js";
 import type {
   AdapterOperation,
   AdapterRole,
@@ -5,7 +6,6 @@ import type {
   PsbtVersion,
 } from "../protocol/types.js";
 import type { PsbtTransitionFailure, PsbtTransitionPolicy } from "../psbt/invariants.js";
-import type { ConformanceRuleId } from "../conformance/rules.js";
 
 export type ScenarioOutcome = "passed" | "failed" | "unsupported" | "skipped";
 

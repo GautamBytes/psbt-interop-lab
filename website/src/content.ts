@@ -1,3 +1,5 @@
+import { publicConformanceRules } from "./generated/conformance-rules";
+
 export const repositoryUrl = "https://github.com/GautamBytes/psbt-interop-lab";
 export const npmUrl = "https://www.npmjs.com/package/psbt-interop-lab";
 export const installCommand = "npx --yes psbt-interop-lab@0.5.4 quickstart";
@@ -13,12 +15,14 @@ export interface EvidenceRow {
 }
 
 export interface ReportClassification {
+  ruleId: keyof typeof publicConformanceRules;
   category: string;
   severity: string;
   observedAt: string;
   repairability: string;
   confidence: string;
   evidence: string;
+  actual: string;
 }
 
 export interface ReportScenario {
@@ -92,12 +96,14 @@ export const reportScenarios: ReportScenario[] = [
       "btcsuite accepts a duplicate global unsigned-transaction key. The lab keeps this divergence visible while requiring other native parsers to reject malformed input safely.",
     implementations: ["btcsuite PSBT"],
     classification: {
+      ruleId: "bip174.map-keys.unique",
       category: "Implementation divergence",
       severity: "Review",
       observedAt: "btcsuite-go",
-      repairability: "Investigation required",
-      confidence: "Medium",
+      repairability: "Code or dependency change",
+      confidence: "High",
       evidence: "finding:duplicate-global-key",
+      actual: "btcsuite PSBT 1.2.0 accepted a duplicate global unsigned-transaction key.",
     },
     evidence: [
       {
@@ -167,29 +173,32 @@ export const reportScenarios: ReportScenario[] = [
     statusLabel: "Compatibility finding",
     handoff: "libwally 1.5.4 -> rust-psbt PSBTv2 0.3.0 -> Bitcoin Core",
     summary:
-      "A valid SegWit final witness exposes a strict-parser mismatch: rust-psbt requires an explicit empty final scriptSig, while libwally rejects that explicit empty field. The lab reports the difference and still asks Core to validate the extracted transaction.",
+      "A valid SegWit final witness exposes one standards divergence: rust-psbt requires an explicit empty final scriptSig where BIP174 requires that field to be omitted. libwally strictly rejects the explicit empty field as noncanonical, and Core still validates the extracted transaction.",
     implementations: ["Bitcoin Core", "rust-psbt PSBTv2", "libwally"],
     classification: {
+      ruleId: "bip174.final-scriptsig.empty-omitted",
       category: "Implementation divergence",
       severity: "Review",
-      observedAt: "rust-psbt-v2 / libwally",
-      repairability: "Investigation required",
-      confidence: "Medium",
-      evidence: "finding:explicit-empty-final-scriptsig",
+      observedAt: "rust-psbt-v2",
+      repairability: "Code or dependency change",
+      confidence: "High",
+      evidence: "finding:rust-psbt-v2-final-scriptsig-required",
+      actual:
+        "rust-psbt-v2 required PSBT_IN_FINAL_SCRIPTSIG to be present with a zero-length value.",
     },
     evidence: [
       {
         field: "PSBT_IN_FINAL_SCRIPTSIG (0x07)",
-        expected: "equivalent absent or empty encoding",
-        actual: "implementations require opposite forms",
-        implementation: "rust-psbt / libwally",
-        nextStep: "Normalize only at the named adapter boundary.",
+        expected: publicConformanceRules["bip174.final-scriptsig.empty-omitted"].expected,
+        actual: "rust-psbt-v2 requires the explicit empty field",
+        implementation: "rust-psbt-v2",
+        nextStep: "Accept the canonical omitted form during extraction.",
       },
       {
         field: "PSBT_IN_FINAL_SCRIPTWITNESS (0x08)",
         expected: "valid final witness preserved",
-        actual: "preserved across the handoff",
-        implementation: "both PSBTv2 adapters",
+        actual: "preserved; libwally rejects the explicit empty scriptSig as noncanonical",
+        implementation: "rust-psbt-v2 / libwally",
         nextStep: "Keep the witness as the transaction evidence.",
       },
       {
