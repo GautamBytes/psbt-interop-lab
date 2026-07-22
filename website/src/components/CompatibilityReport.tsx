@@ -12,6 +12,11 @@ const statusIcon = {
   supported: Info,
 } satisfies Record<ScenarioStatus, typeof Circle>;
 
+function classificationLabel(value: string): string {
+  const words = value.replaceAll("-", " ");
+  return `${words.charAt(0).toUpperCase()}${words.slice(1)}`;
+}
+
 export function CompatibilityReport() {
   const [selectedId, setSelectedId] = useState(reportScenarios[1].id);
   const selected =
@@ -76,14 +81,14 @@ export function CompatibilityReport() {
             {selected.classification && classificationRule ? (
               <section className="report-classification" aria-labelledby="classification-title">
                 <div className="report-classification__heading">
-                  <span>v0.5.4 report output</span>
+                  <span>Conformance report fields</span>
                   <h4 id="classification-title">Classification</h4>
                   <p>{classificationRule.title}</p>
                 </div>
                 <dl>
                   <div className="report-classification__field">
                     <dt>Category</dt>
-                    <dd>{selected.classification.category}</dd>
+                    <dd>{classificationLabel(classificationRule.category)}</dd>
                   </div>
                   <div className="report-classification__field">
                     <dt>Rule</dt>
@@ -93,7 +98,9 @@ export function CompatibilityReport() {
                   </div>
                   <div className="report-classification__field">
                     <dt>Severity</dt>
-                    <dd className="classification-severity">{selected.classification.severity}</dd>
+                    <dd className="classification-severity">
+                      {classificationLabel(classificationRule.severity)}
+                    </dd>
                   </div>
                   <div className="report-classification__field">
                     <dt>Observed at</dt>
@@ -103,11 +110,11 @@ export function CompatibilityReport() {
                   </div>
                   <div className="report-classification__field">
                     <dt>Repairability</dt>
-                    <dd>{selected.classification.repairability}</dd>
+                    <dd>{classificationLabel(classificationRule.repairability)}</dd>
                   </div>
                   <div className="report-classification__field">
                     <dt>Confidence</dt>
-                    <dd>{selected.classification.confidence}</dd>
+                    <dd>{classificationLabel(classificationRule.confidence)}</dd>
                   </div>
                   <div className="report-classification__field">
                     <dt>Normative level</dt>

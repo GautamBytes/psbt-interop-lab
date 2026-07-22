@@ -16,11 +16,7 @@ export interface EvidenceRow {
 
 export interface ReportClassification {
   ruleId: keyof typeof publicConformanceRules;
-  category: string;
-  severity: string;
   observedAt: string;
-  repairability: string;
-  confidence: string;
   evidence: string;
   actual: string;
 }
@@ -97,12 +93,8 @@ export const reportScenarios: ReportScenario[] = [
     implementations: ["btcsuite PSBT"],
     classification: {
       ruleId: "bip174.map-keys.unique",
-      category: "Implementation divergence",
-      severity: "Review",
       observedAt: "btcsuite-go",
-      repairability: "Code or dependency change",
-      confidence: "High",
-      evidence: "finding:duplicate-global-key",
+      evidence: "finding:btcsuite-go-duplicate-global-key-accepted",
       actual: "btcsuite PSBT 1.2.0 accepted a duplicate global unsigned-transaction key.",
     },
     evidence: [
@@ -177,11 +169,7 @@ export const reportScenarios: ReportScenario[] = [
     implementations: ["Bitcoin Core", "rust-psbt PSBTv2", "libwally"],
     classification: {
       ruleId: "bip174.final-scriptsig.empty-omitted",
-      category: "Implementation divergence",
-      severity: "Review",
       observedAt: "rust-psbt-v2",
-      repairability: "Code or dependency change",
-      confidence: "High",
       evidence: "finding:rust-psbt-v2-final-scriptsig-required",
       actual:
         "rust-psbt-v2 required PSBT_IN_FINAL_SCRIPTSIG to be present with a zero-length value.",

@@ -12,9 +12,13 @@ const publicRules = Object.fromEntries(
     {
       id: rule.id,
       title: rule.title,
+      category: rule.category,
       normativeLevel: rule.normativeLevel,
       source: rule.source,
       expected: rule.expected,
+      severity: rule.severity,
+      repairability: rule.repairability,
+      confidence: rule.confidence,
     },
   ]),
 );

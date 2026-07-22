@@ -10,9 +10,13 @@ describe("generated website conformance data", () => {
     expect(publicConformanceRules[ruleId]).toEqual({
       id: rule.id,
       title: rule.title,
+      category: rule.category,
       normativeLevel: rule.normativeLevel,
       source: rule.source,
       expected: rule.expected,
+      severity: rule.severity,
+      repairability: rule.repairability,
+      confidence: rule.confidence,
     });
   });
 });

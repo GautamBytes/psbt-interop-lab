@@ -76,15 +76,19 @@ describe("PSBT Interop Lab website", () => {
     ).toBeInTheDocument();
   });
 
-  it("shows the same structured classification developers receive in v0.5.4 reports", () => {
+  it("shows a catalog-backed preview of structured conformance diagnostics", () => {
     render(<App />);
 
+    expect(screen.getByText("Conformance report fields")).toBeInTheDocument();
+    expect(screen.queryByText("v0.5.4 report output")).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Classification" })).toBeInTheDocument();
     expect(screen.getByText("Implementation divergence")).toBeInTheDocument();
     expect(screen.getByText("Unique PSBT map keys")).toBeInTheDocument();
     expect(screen.getByText("btcsuite-go")).toBeInTheDocument();
     expect(screen.getByText("Code or dependency change")).toBeInTheDocument();
-    expect(screen.getByText("finding:duplicate-global-key")).toBeInTheDocument();
+    expect(
+      screen.getByText("finding:btcsuite-go-duplicate-global-key-accepted"),
+    ).toBeInTheDocument();
     expect(screen.getByText("bip174.map-keys.unique")).toBeInTheDocument();
     expect(screen.getByText("must")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /BIP174.*Specification/i })).toHaveAttribute(
