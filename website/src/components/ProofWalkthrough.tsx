@@ -31,8 +31,8 @@ export function ProofWalkthrough() {
             <p>
               The bounded first-run proof checks the environment and semantic detectors, completes a
               real signing handoff, writes a self-contained report, and stops Core automatically.
-              These captures preserve the original v0.5.2 run; current v0.5.4 reports add structured
-              classification without rewriting historical evidence.
+              These captures preserve the original v0.5.2 run; current v0.6.0 reports add sourced
+              conformance diagnostics without rewriting historical evidence.
             </p>
             <SiteLink
               className="inline-link"

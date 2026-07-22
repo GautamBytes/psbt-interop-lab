@@ -1,6 +1,6 @@
 {
   "name": "psbt-interop-lab",
-  "version": "0.5.4",
+  "version": "0.6.0",
   "description": "Deterministic PSBT interoperability testing for Bitcoin software",
   "type": "module",
   "private": false,

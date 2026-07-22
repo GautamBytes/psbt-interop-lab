@@ -225,7 +225,7 @@ describe("website documentation routes", () => {
     expect(cliProof.getAttribute("src")).not.toMatch(/^https?:/);
     expect(reportProof.getAttribute("src")).not.toMatch(/^https?:/);
     expect(
-      screen.getByText(/current v0\.5\.4 reports add structured classification/i),
+      screen.getByText(/v0\.6\.0 reports add stable conformance rule IDs/i),
     ).toBeInTheDocument();
   });
 

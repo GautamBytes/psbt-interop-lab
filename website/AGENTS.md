@@ -12,4 +12,4 @@ When implementing from a selected generated mock, treat that image as the source
 - Keep the centered option-three layout and semantic-diff report treatment.
 - Hero headline: `Catch PSBT handoff failures before users do.`
 - Hero supporting copy: `Run the same transaction through real Bitcoin libraries. Preserve intent, signatures, and metadata. Replay every failure.`
-- Use only compatibility claims supported by version 0.5.4 of the repository.
+- Use only compatibility claims supported by version 0.6.0 of the repository.

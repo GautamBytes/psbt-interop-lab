@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -14,13 +14,20 @@ describe("release documentation", () => {
       "src/cli.ts",
       "website/src/App.tsx",
       "website/src/content.ts",
+      "website/AGENTS.md",
+      "website/src/components/ProofWalkthrough.tsx",
       "website/src/components/Sections.tsx",
     ];
 
-    expect(packageVersion).toBe("0.5.4");
+    expect(packageVersion).toBe("0.6.0");
     for (const path of publicFiles) {
       expect(read(path), path).toContain(packageVersion);
     }
+  });
+
+  it("does not ship internal implementation plans or design discussions", () => {
+    expect(existsSync(join(process.cwd(), "docs/superpowers/plans"))).toBe(false);
+    expect(existsSync(join(process.cwd(), "docs/superpowers/specs"))).toBe(false);
   });
 
   it("documents the active PSBTv2 and Taproot script-path capabilities", () => {
