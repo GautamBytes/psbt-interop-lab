@@ -1,5 +1,6 @@
 import adapters from "../../../docs/adapters.md?raw";
 import architecture from "../../../docs/architecture.md?raw";
+import conformancePolicy from "../../../docs/conformance-policy.md?raw";
 import futureWork from "../../../docs/future-work.md?raw";
 import sources from "../../../docs/sources.md?raw";
 import threatModel from "../../../psbt-interop-lab-threat-model.md?raw";
@@ -46,6 +47,16 @@ export const documents: WebsiteDocument[] = [
     markdown: architecture,
     sourcePath: "docs/architecture.md",
     sourceUrl: `${repositoryUrl}/blob/main/docs/architecture.md`,
+    baseDir: "docs",
+  },
+  {
+    route: routes.conformancePolicy,
+    label: "Conformance policy",
+    description:
+      "Understand stable rule IDs, normative levels, sources, and expected-versus-observed evidence.",
+    markdown: conformancePolicy,
+    sourcePath: "docs/conformance-policy.md",
+    sourceUrl: `${repositoryUrl}/blob/main/docs/conformance-policy.md`,
     baseDir: "docs",
   },
   {

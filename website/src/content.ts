@@ -249,6 +249,11 @@ export const docLinks = [
     href: "/docs/architecture",
   },
   {
+    label: "Conformance policy",
+    detail: "Interpret sourced diagnostic rules",
+    href: "/docs/conformance-policy",
+  },
+  {
     label: "Future work",
     detail: "Review planned compatibility and integration work",
     href: "/docs/future-work",

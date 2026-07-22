@@ -27,6 +27,11 @@ describe("website documentation routes", () => {
     ["/adapter-kit", "External Adapter Guide", /enroll conforming adapters in the full matrix/i],
     ["/security", "Security Model", /boundary is kept intentionally smaller/i],
     ["/docs/architecture", "Architecture", /proof suite answers one concrete question/i],
+    [
+      "/docs/conformance-policy",
+      "Conformance Classification Policy",
+      /stable rule IDs make every standards claim auditable/i,
+    ],
     ["/docs/future-work", "Future Work", /driven by real wallet and library maintainers/i],
     [
       "/docs/sources",

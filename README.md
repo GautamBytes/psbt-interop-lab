@@ -182,9 +182,10 @@ the scenario.
 The PSBTv2 baseline also names strict-parser differences around an explicit empty final scriptSig
 and undefined `PSBT_GLOBAL_TX_MODIFIABLE` bits. These findings are bounded to the affected
 implementations; completed transactions still have to pass Bitcoin Core policy on isolated regtest.
-The Taproot script-path baseline likewise records current BDK finalization removing
-`PSBT_OUT_TAP_BIP32_DERIVATION` entries as a bounded metadata-preservation finding. The exact
-committed leaf witness and the extracted transaction must still pass Bitcoin Core policy.
+The Taproot script-path baseline permits `PSBT_OUT_TAP_BIP32_DERIVATION` cleanup only at the
+BIP371 finalization boundary, after every input is final. Earlier removal remains a metadata
+preservation failure. The exact committed leaf witness and the extracted transaction must still
+pass Bitcoin Core policy.
 
 Run `psbt-lab self-test` to prove the detectors catch deliberate proprietary and unknown-field
 loss, output-amount mutation, sequence mutation, and signature removal.
@@ -202,10 +203,12 @@ Each run creates a private directory under `artifacts/<run-id>/` containing:
 - `checkpoints/**/*.psbt`: canonical PSBT states at important handoffs
 - `checkpoints/**/*.facts.json`: bounded field facts and hashes
 
-The reports classify non-passing behavior by category, severity, observed implementation boundary,
-repairability, and confidence. Every classification includes the exact assertion, map location, key
-type, and key fingerprint behind it; capability gaps and ambiguous implementation divergences are
-not labeled as confirmed code bugs.
+The reports classify non-passing behavior by stable rule ID, normative level, category, severity,
+observed implementation boundary, repairability, and confidence. Every classification includes an
+authoritative source and section, expected behavior, actual observations, and bounded evidence;
+capability gaps and ambiguous implementation divergences are not labeled as confirmed code bugs.
+The [conformance classification policy](docs/conformance-policy.md) defines this public diagnostic
+contract and how to challenge a classification.
 
 Raw PSBTs are stored only in checkpoint files with local mode `0600`; artifact directories use
 `0700`. Reports redact PSBTs, WIFs, common BIP32/SLIP-132 extended private keys, mnemonics, seed

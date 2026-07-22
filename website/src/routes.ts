@@ -2,6 +2,7 @@ export const routes = {
   home: "/",
   docs: "/docs",
   architecture: "/docs/architecture",
+  conformancePolicy: "/docs/conformance-policy",
   futureWork: "/docs/future-work",
   sources: "/docs/sources",
   adapterKit: "/adapter-kit",
