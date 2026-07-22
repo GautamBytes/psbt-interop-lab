@@ -60,6 +60,7 @@ export interface PsbtTransitionResult {
 
 const SIGNATURE_INPUT_TYPES = new Set([0x02, 0x13, 0x14]);
 const FINAL_INPUT_TYPES = new Set([0x07, 0x08]);
+const TAPROOT_OUTPUT_BIP32_DERIVATION = 0x07;
 const FINALIZE_REMOVABLE_INPUT_TYPES = new Set([
   0x02, 0x03, 0x04, 0x05, 0x06, 0x0a, 0x0b, 0x0c, 0x0d, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18,
 ]);
@@ -355,7 +356,10 @@ function finalizeFailures(
       isChangedIdentityEntry(before, after, entry.location, entry.keyType, identityChanged)
     ) {
       failures.push(removedFailure(entry, "TRANSACTION_IDENTITY_CHANGED"));
-    } else if (!isInputType(entry.location, entry.keyType, FINALIZE_REMOVABLE_INPUT_TYPES)) {
+    } else if (
+      !isInputType(entry.location, entry.keyType, FINALIZE_REMOVABLE_INPUT_TYPES) &&
+      !isPermittedFinalizationCleanup(entry, after)
+    ) {
       failures.push(removedFailure(entry));
     }
   }
@@ -378,6 +382,25 @@ function finalizeFailures(
     }
   }
   return failures;
+}
+
+function allInputsFinalized(document: PsbtDocument): boolean {
+  const inputs = document.maps.filter(({ location }) => location.kind === "input");
+  return (
+    inputs.length > 0 &&
+    inputs.every(({ entries }) => entries.some(({ keyType }) => FINAL_INPUT_TYPES.has(keyType)))
+  );
+}
+
+function isPermittedFinalizationCleanup(
+  entry: PsbtEntrySummary,
+  after: PsbtDocument,
+): boolean {
+  return (
+    entry.location.kind === "output" &&
+    entry.keyType === TAPROOT_OUTPUT_BIP32_DERIVATION &&
+    allInputsFinalized(after)
+  );
 }
 
 function safeGuidance(

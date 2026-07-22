@@ -305,7 +305,7 @@ describe("Taproot script-path handoff scenarios", () => {
     );
   });
 
-  test("records BDK output key-origin removal as a bounded compatibility finding", async () => {
+  test("accepts Taproot output-origin cleanup after valid finalization", async () => {
     const input = fixture();
     const signed = signedPsbt(input.initialPsbt);
     const finalized = finalizedPsbtWithoutOutputOrigins(signed);
@@ -318,16 +318,11 @@ describe("Taproot script-path handoff scenarios", () => {
     const [result] = await runScenarioCatalog([definition], execution, negotiated());
 
     expect(result).toMatchObject({ outcome: "passed" });
-    expect(result?.findings).toEqual([
-      expect.objectContaining({
-        id: "bdk-taproot-finalize-removes-output-origins",
-        implementation: "bdk-wallet-current",
-      }),
-    ]);
+    expect(result?.findings).toBeUndefined();
     expect(result?.assertions).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          name: "bdk-finalization-output-origin-divergence-recorded",
+          name: "bdk-wallet-current-finalization-transition",
           passed: true,
         }),
         expect.objectContaining({
