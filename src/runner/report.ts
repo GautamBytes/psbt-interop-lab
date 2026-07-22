@@ -77,48 +77,80 @@ function repairabilityLabel(repairability: ReportRepairability): string {
   }
 }
 
+function normalizedMarkdownValue(value: string | number): string {
+  return redactSensitiveText(String(value)).replace(/[\r\n]+/g, " ");
+}
+
+function markdownText(value: string | number): string {
+  return normalizedMarkdownValue(value)
+    .replaceAll("[redacted:secret]", "\u0000secret\u0000")
+    .replaceAll("[redacted:psbt]", "\u0000psbt\u0000")
+    .replaceAll("[redacted:depth-limit]", "\u0000depth\u0000")
+    .replaceAll("\\", "\\\\")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replace(/([`*_[\]{}()#+\-!|])/g, "\\$1")
+    .replaceAll("\u0000secret\u0000", "[redacted:secret]")
+    .replaceAll("\u0000psbt\u0000", "[redacted:psbt]")
+    .replaceAll("\u0000depth\u0000", "[redacted:depth-limit]");
+}
+
+function markdownCode(value: string | number): string {
+  const normalized = normalizedMarkdownValue(value);
+  const backtickRuns = normalized.match(/`+/g) ?? [];
+  if (backtickRuns.length === 0) return `\`${normalized}\``;
+  const fence = "`".repeat(Math.max(...backtickRuns.map((run) => run.length)) + 1);
+  return `${fence} ${normalized} ${fence}`;
+}
+
 function markdownClassification(classification: ReportClassification): string[] {
   return [
-    `- **${classification.label}** (\`${classification.id}\`)`,
+    `- **${markdownText(classification.label)}** (${markdownCode(classification.id)}, rule ${markdownCode(classification.ruleId)})`,
     `  - Severity: **${classification.severity.toUpperCase()}**`,
-    `  - Observed at: \`${classification.observedAt}\``,
-    `  - Repairability: \`${classification.repairability}\``,
-    `  - Confidence: \`${classification.confidence}\``,
-    `  - ${classification.summary}`,
-    `  - Evidence: ${classification.evidence.map((evidence) => `\`${evidence}\``).join(", ")}`,
+    `  - Normative level: ${markdownCode(classification.normativeLevel)}`,
+    `  - Observed at: ${markdownCode(classification.observedAt)}`,
+    `  - Repairability: ${markdownCode(classification.repairability)}`,
+    `  - Confidence: ${markdownCode(classification.confidence)}`,
+    `  - Source: [${markdownText(classification.sourceName)} — ${markdownText(classification.sourceSection)}](${classification.sourceUrl})`,
+    `  - Expected: ${markdownText(classification.expected)}`,
+    `  - Observed: ${classification.actual.map(markdownText).join("; ")}`,
+    `  - ${markdownText(classification.summary)}`,
+    `  - Evidence: ${classification.evidence.map(markdownCode).join(", ")}`,
   ];
 }
 
 export function generateMarkdownReport(manifest: RunManifest): string {
+  const redactedManifest = redactValue(manifest) as RunManifest;
   const filtered =
-    (manifest.selectors?.requested.scenarios?.length ?? 0) > 0 ||
-    manifest.selectors?.requested.category !== undefined;
+    (redactedManifest.selectors?.requested.scenarios?.length ?? 0) > 0 ||
+    redactedManifest.selectors?.requested.category !== undefined;
   const selection = filtered
-    ? `Filtered run: requested ${manifest.selectors?.requested.scenarios?.map((id) => `\`${id}\``).join(", ") || "all scenarios"}${manifest.selectors?.requested.category ? ` in category \`${manifest.selectors.requested.category}\`` : ""}; executed ${manifest.selectors?.executed.scenarios.length ?? 0} scenario(s).`
+    ? `Filtered run: requested ${redactedManifest.selectors?.requested.scenarios?.map(markdownCode).join(", ") || "all scenarios"}${redactedManifest.selectors?.requested.category ? ` in category ${markdownCode(redactedManifest.selectors.requested.category)}` : ""}; executed ${redactedManifest.selectors?.executed.scenarios.length ?? 0} scenario(s).`
     : undefined;
   const lines = [
     "# PSBT Interop Lab Proof",
     "",
-    `Run: \`${manifest.runId}\``,
-    `Outcome: **${manifest.outcome.toUpperCase()}**`,
-    manifest.core
-      ? `Bitcoin Core: \`${manifest.core.subversion}\` on regtest at height ${manifest.core.blocks}`
+    `Run: ${markdownCode(redactedManifest.runId)}`,
+    `Outcome: **${redactedManifest.outcome.toUpperCase()}**`,
+    redactedManifest.core
+      ? `Bitcoin Core: ${markdownCode(redactedManifest.core.subversion)} on regtest at height ${redactedManifest.core.blocks}`
       : "Bitcoin Core: not required by selected scenarios",
     ...(selection ? [selection] : []),
     "",
     "## Scenarios",
     "",
   ];
-  for (const scenario of manifest.scenarios) {
+  for (const scenario of redactedManifest.scenarios) {
     const classifications = classifyScenario(scenario);
     lines.push(
-      `### ${scenario.title}`,
+      `### ${markdownText(scenario.title)}`,
       "",
-      `Scenario: \`${scenario.id}\``,
+      `Scenario: ${markdownCode(scenario.id)}`,
       `Outcome: **${scenario.outcome.toUpperCase()}**`,
       `Duration: ${scenario.durationMs.toFixed(3)} ms`,
       "",
-      scenario.summary,
+      markdownText(scenario.summary),
       "",
     );
     if (classifications.length > 0) {
@@ -129,7 +161,8 @@ export function generateMarkdownReport(manifest: RunManifest): string {
         "Missing capabilities:",
         "",
         ...scenario.missingCapabilities.map(
-          (missing) => `- \`${missing.adapter}\`: ${missing.kind} \`${missing.value}\``,
+          (missing) =>
+            `- ${markdownCode(missing.adapter)}: ${markdownText(missing.kind)} ${markdownCode(missing.value)}`,
         ),
         "",
       );
@@ -138,16 +171,16 @@ export function generateMarkdownReport(manifest: RunManifest): string {
       lines.push("Assertions:", "");
       for (const assertion of scenario.assertions) {
         const diagnostics = [
-          assertion.policy ? `policy=${assertion.policy}` : undefined,
+          assertion.policy ? `policy=${markdownText(assertion.policy)}` : undefined,
           assertion.exactBytesEqual !== undefined
             ? `exact-bytes=${assertion.exactBytesEqual ? "yes" : "no"}`
             : undefined,
           assertion.likelyImplementation
-            ? `observed-implementation=${assertion.likelyImplementation}`
+            ? `observed-implementation=${markdownText(assertion.likelyImplementation)}`
             : undefined,
         ].filter((value): value is string => value !== undefined);
         lines.push(
-          `- **${assertion.passed ? "PASS" : "FAIL"}** \`${assertion.name}\`${diagnostics.length > 0 ? ` (${diagnostics.join(", ")})` : ""}`,
+          `- **${assertion.passed ? "PASS" : "FAIL"}** ${markdownCode(assertion.name)}${diagnostics.length > 0 ? ` (${diagnostics.join(", ")})` : ""}`,
         );
         for (const failure of assertion.failures ?? []) {
           const location =
@@ -157,13 +190,13 @@ export function generateMarkdownReport(manifest: RunManifest): string {
           const field = failure.field;
           lines.push(
             field
-              ? `  - \`${failure.code}\` at ${location}: \`${field.symbol}\` (${field.displayName}, \`${field.keyTypeHex}\`${field.bip ? `, ${field.bip}` : ""})`
-              : `  - \`${failure.code}\` at ${location}, key type \`0x${failure.keyType.toString(16).padStart(2, "0")}\``,
+              ? `  - ${markdownCode(failure.code)} at ${markdownText(location)}: ${markdownCode(field.symbol)} (${markdownText(field.displayName)}, ${markdownCode(field.keyTypeHex)}${field.bip ? `, ${markdownText(field.bip)}` : ""})`
+              : `  - ${markdownCode(failure.code)} at ${markdownText(location)}, key type ${markdownCode(`0x${failure.keyType.toString(16).padStart(2, "0")}`)}`,
           );
           if (failure.guidance) {
             lines.push(
-              `    - Guidance **${failure.guidance.severity.toUpperCase()}** \`${failure.guidance.code}\`: ${failure.guidance.summary}`,
-              ...failure.guidance.nextSteps.map((step) => `      - ${step}`),
+              `    - Guidance **${failure.guidance.severity.toUpperCase()}** ${markdownCode(failure.guidance.code)}: ${markdownText(failure.guidance.summary)}`,
+              ...failure.guidance.nextSteps.map((step) => `      - ${markdownText(step)}`),
             );
           }
         }
@@ -172,7 +205,7 @@ export function generateMarkdownReport(manifest: RunManifest): string {
     }
     if (scenario.expectedFailure) {
       lines.push(
-        `Expected historical failure: \`${scenario.expectedFailure.implementation}\` returned \`${scenario.expectedFailure.errorClass}\`.`,
+        `Expected historical failure: ${markdownCode(scenario.expectedFailure.implementation)} returned ${markdownCode(scenario.expectedFailure.errorClass)}.`,
         "",
       );
     }
@@ -181,24 +214,25 @@ export function generateMarkdownReport(manifest: RunManifest): string {
         "Compatibility findings:",
         "",
         ...scenario.findings.map(
-          (finding) => `- \`${finding.id}\` in \`${finding.implementation}\`: ${finding.summary}`,
+          (finding) =>
+            `- ${markdownCode(finding.id)} in ${markdownCode(finding.implementation)}: ${markdownText(finding.summary)}`,
         ),
         "",
       );
     }
     if (scenario.transactionId) {
-      lines.push(`Policy-accepted txid: \`${scenario.transactionId}\``, "");
+      lines.push(`Policy-accepted txid: ${markdownCode(scenario.transactionId)}`, "");
     }
     if (scenario.skipReason) {
-      lines.push(`Skip reason: ${scenario.skipReason}`, "");
+      lines.push(`Skip reason: ${markdownText(scenario.skipReason)}`, "");
     }
   }
   lines.push(
     "## Checkpoints",
     "",
-    ...manifest.checkpoints.map(
+    ...redactedManifest.checkpoints.map(
       (checkpoint) =>
-        `- \`${checkpoint.scenario}/${checkpoint.stage}\`: ${checkpoint.facts.byteLength} bytes, SHA256 \`${checkpoint.facts.sha256}\``,
+        `- ${markdownCode(`${checkpoint.scenario}/${checkpoint.stage}`)}: ${checkpoint.facts.byteLength} bytes, SHA256 ${markdownCode(checkpoint.facts.sha256)}`,
     ),
     "",
     "Raw PSBTs are stored only in the private checkpoint files beside this report.",
@@ -246,14 +280,19 @@ export function generateHtmlReport(manifest: RunManifest): string {
           (
             classification,
           ) => `<li class="classification classification--${escapeHtml(classification.severity)}">
-            <div><strong>${escapeHtml(classification.label)}</strong><code>${escapeHtml(classification.id)}</code></div>
+            <div><strong>${escapeHtml(classification.label)}</strong><code>${escapeHtml(classification.ruleId)}</code></div>
             <dl>
+              <div><dt>Category</dt><dd><code>${escapeHtml(classification.id)}</code></dd></div>
               <div><dt>Severity</dt><dd>${escapeHtml(classification.severity.toUpperCase())}</dd></div>
+              <div><dt>Normative level</dt><dd><code>${escapeHtml(classification.normativeLevel)}</code></dd></div>
               <div><dt>Observed at</dt><dd><code>${escapeHtml(classification.observedAt)}</code></dd></div>
               <div><dt>Repairability</dt><dd>${escapeHtml(repairabilityLabel(classification.repairability))}</dd></div>
               <div><dt>Confidence</dt><dd>${escapeHtml(classification.confidence)}</dd></div>
+              <div><dt>Source</dt><dd><a href="${escapeHtml(classification.sourceUrl)}" rel="noreferrer">${escapeHtml(classification.sourceName)} — ${escapeHtml(classification.sourceSection)}</a></dd></div>
             </dl>
             <p>${escapeHtml(classification.summary)}</p>
+            <p><strong>Expected:</strong> ${escapeHtml(classification.expected)}</p>
+            <p><strong>Observed:</strong> ${escapeHtml(classification.actual.join("; "))}</p>
             <p class="classification__evidence">Evidence: ${classification.evidence.map((evidence) => `<code>${escapeHtml(evidence)}</code>`).join(" · ")}</p>
           </li>`,
         )

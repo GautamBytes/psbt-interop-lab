@@ -382,6 +382,54 @@ describe("finalize policy", () => {
     });
   });
 
+  test("allows Taproot output derivation cleanup after every input has final script data", () => {
+    const outputDerivation = entry(0x07, Buffer.from("0000000000", "hex"), taprootInternalKey);
+    const result = assertPsbtTransition(
+      "finalize",
+      document(psbtV0({ output: [outputDerivation] })),
+      document(psbtV0({ input: [entry(0x08, Buffer.from("0100", "hex"))] })),
+    );
+
+    expect(result).toMatchObject({ ok: true, failures: [] });
+  });
+
+  test("rejects Taproot output derivation cleanup before final script data exists", () => {
+    const outputDerivation = entry(0x07, Buffer.from("0000000000", "hex"), taprootInternalKey);
+    const result = assertPsbtTransition(
+      "finalize",
+      document(psbtV0({ output: [outputDerivation] })),
+      document(psbtV0()),
+    );
+
+    expect(result.failures).toContainEqual(
+      expect.objectContaining({
+        code: "ENTRY_REMOVED",
+        location: { kind: "output", index: 0 },
+        keyType: 0x07,
+      }),
+    );
+  });
+
+  test.each(["roundtrip", "sign"] as const)(
+    "rejects Taproot output derivation cleanup during %s",
+    (policy) => {
+      const outputDerivation = entry(0x07, Buffer.from("0000000000", "hex"), taprootInternalKey);
+      const result = assertPsbtTransition(
+        policy,
+        document(psbtV0({ output: [outputDerivation] })),
+        document(psbtV0({ input: [entry(0x08, Buffer.from("0100", "hex"))] })),
+      );
+
+      expect(result.failures).toContainEqual(
+        expect.objectContaining({
+          code: "ENTRY_REMOVED",
+          location: { kind: "output", index: 0 },
+          keyType: 0x07,
+        }),
+      );
+    },
+  );
+
   test("rejects removal of unknown input fields and changes to global or output metadata", () => {
     const unknown = entry(0x50, Buffer.from("retain"), Buffer.from("key"));
     const removed = assertPsbtTransition(

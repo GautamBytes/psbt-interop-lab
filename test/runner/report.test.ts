@@ -89,8 +89,10 @@ function manifest(): RunManifest {
         findings: [
           {
             id: "known-parser-divergence",
+            ruleId: "bip174.map-keys.unique",
             implementation: "btcsuite-go",
             summary: "Accepted a duplicate global key",
+            actual: "btcsuite accepted a duplicate global key.",
           },
         ],
       },
@@ -144,8 +146,9 @@ describe("HTML report", () => {
     const value = manifest();
     const json = JSON.stringify(generateJsonReport(value));
     const markdown = generateMarkdownReport(value);
+    const html = generateHtmlReport(value);
 
-    for (const report of [json, markdown]) {
+    for (const report of [json, markdown, html]) {
       expect(report).toContain("PSBT_IN_PROPRIETARY");
       expect(report).toContain("Proprietary input field");
       expect(report).toContain("BIP174");
@@ -155,11 +158,91 @@ describe("HTML report", () => {
       expect(report).toContain("metadata-preservation");
       expect(report).toContain("metadata-loss");
       expect(report).toContain("Metadata loss");
-      expect(report).toContain("code-or-dependency-change");
+      expect(report).toContain("bip174.unknown-keypairs.preserved");
+      expect(report).toContain("must");
+      expect(report).toContain(
+        "Unknown and proprietary keypairs are preserved when a PSBT is reserialized.",
+      );
+      expect(report).toContain("An extension field was removed during the roundtrip transition.");
+      expect(report).toContain("https://github.com/bitcoin/bips/blob/master/bip-0174.mediawiki");
     }
     expect(markdown).toContain("Filtered run");
+    expect(json).toContain("code-or-dependency-change");
+    expect(markdown).toContain("code-or-dependency-change");
+    expect(html).toContain("Code or dependency change");
     expect(markdown).toContain("Observed at: `rust-bitcoin`");
     expect(markdown).toContain("Capability mismatch");
+    expect(markdown).toContain("Normative level: `must`");
+    expect(html).toContain('href="https://github.com/bitcoin/bips/blob/master/bip-0174.mediawiki"');
+  });
+
+  test("redacts dynamic strings in Markdown reports even when the manifest is not pre-redacted", () => {
+    const value = manifest();
+    const firstScenario = value.scenarios[0];
+    if (!firstScenario?.findings?.[0]) throw new Error("Missing report fixture finding");
+    const valueWithSecretFinding: RunManifest = {
+      ...value,
+      scenarios: [
+        {
+          ...firstScenario,
+          findings: [
+            {
+              ...firstScenario.findings[0],
+              summary: `Accepted a duplicate global key with mnemonic: ${TEST_MNEMONIC}`,
+              actual: `btcsuite accepted a duplicate global key with wif=${TESTNET_WIF}.`,
+              evidence: [`seed=${TEST_MNEMONIC}`],
+            },
+          ],
+        },
+        ...value.scenarios.slice(1),
+      ],
+    };
+
+    const markdown = generateMarkdownReport(valueWithSecretFinding);
+
+    expect(markdown).not.toContain(TESTNET_WIF);
+    expect(markdown).not.toContain(TEST_SLIP132_PRIVATE_KEY);
+    expect(markdown).not.toContain(TEST_MNEMONIC);
+    expect(markdown).not.toContain(MINIMAL_PSBT);
+    expect(markdown).toContain("[redacted:secret]");
+    expect(markdown).toContain("[redacted:psbt]");
+  });
+
+  test("escapes raw HTML and Markdown delimiters in dynamic Markdown report strings", () => {
+    const value = manifest();
+    const firstScenario = value.scenarios[0];
+    if (!firstScenario?.findings?.[0]) throw new Error("Missing report fixture finding");
+    const unsafeManifest: RunManifest = {
+      ...value,
+      runId: "run`\n# injected heading",
+      scenarios: [
+        {
+          ...firstScenario,
+          title: "<script>alert(1)</script> **spoofed title**",
+          summary: "Summary\n- injected list",
+          findings: [
+            {
+              ...firstScenario.findings[0],
+              summary: '<img src=x onerror="alert(1)"> [spoofed](https://example.invalid)',
+              actual: "Observed **critical** behavior.",
+              evidence: ["evidence`\n# injected evidence"],
+            },
+          ],
+        },
+        ...value.scenarios.slice(1),
+      ],
+    };
+
+    const markdown = generateMarkdownReport(unsafeManifest);
+
+    expect(markdown).not.toContain("<script>");
+    expect(markdown).not.toContain("<img");
+    expect(markdown).not.toContain("\n# injected heading");
+    expect(markdown).not.toContain("\n- injected list");
+    expect(markdown).not.toContain("**spoofed title**");
+    expect(markdown).not.toContain("[spoofed](https://example.invalid)");
+    expect(markdown).toContain("&lt;script&gt;alert\\(1\\)&lt;/script&gt;");
+    expect(markdown).toContain("\\*\\*spoofed title\\*\\*");
   });
 
   test("renders classifications in the HTML report", () => {

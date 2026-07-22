@@ -164,11 +164,21 @@ state; Core independently finalizes and policy-checks the same PSBT.
 Two profile matrices roundtrip nested P2SH-P2WPKH and Taproot script-path PSBTs through the four
 current PSBTv0 libraries. Two additional handoffs sign and finalize the exact committed Taproot
 leaf in both Rust/BDK directions, while rejection canaries mutate its leaf and control block. The
-current BDK finalizer's removal of Taproot output key-origin entries is retained as a named finding;
-the suite still requires the exact committed script-path witness and Core policy acceptance.
+general BIP371 finalization rule permits removal of Taproot output key-origin entries after every
+input is final; removal during earlier transitions remains a preservation failure. The suite still
+requires the exact committed script-path witness and Core policy acceptance.
 PSBTv2 scenarios send all 14 valid and 21 invalid official BIP370 vectors through rust-psbt-v2 and
 libwally, then run bidirectional P2WPKH and cross-library 2-of-3 workflows. Core policy-checks every
-completed transaction. Known strict-parser differences remain named findings.
+completed transaction. The empty final-scriptSig diagnostic attributes rust-psbt's requirement for
+an explicit empty field as the standards divergence; libwally's strict rejection of that field is
+the expected BIP174 behavior.
+
+Scenario findings carry a stable rule ID and the actual observation into the central conformance
+catalog. Classification adds normative level, authoritative source, expected behavior, severity,
+repairability, and confidence before redaction and rendering to JSON, Markdown, and HTML. The
+website imports generated catalog data, and CI fails if that checked-in view drifts from the source
+catalog. See the [conformance classification policy](conformance-policy.md) for the diagnostic
+contract.
 
 `psbt-lab self-test` deliberately drops metadata, changes an output amount, changes an input
 sequence, and removes a signature. It passes only when the semantic detectors identify every fault.

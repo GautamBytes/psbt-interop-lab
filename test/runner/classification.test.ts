@@ -55,11 +55,18 @@ describe("report classification", () => {
     expect(classifications).toEqual([
       {
         id: "metadata-loss",
+        ruleId: "bip174.unknown-keypairs.preserved",
         label: "Metadata loss",
         severity: "stop",
         observedAt: "rust-bitcoin",
         repairability: "code-or-dependency-change",
         confidence: "high",
+        normativeLevel: "must",
+        sourceName: "BIP174",
+        sourceUrl: "https://github.com/bitcoin/bips/blob/master/bip-0174.mediawiki",
+        sourceSection: "Key-value map",
+        expected: "Unknown and proprietary keypairs are preserved when a PSBT is reserialized.",
+        actual: ["An extension field was removed."],
         summary: "An extension field was removed.",
         evidence: [
           `assertion=metadata-preserved; location=input[0]; failure=ENTRY_REMOVED; field=PSBT_IN_PROPRIETARY; keyType=0xfc; keySha256=${"a".repeat(64)}`,
@@ -153,8 +160,10 @@ describe("report classification", () => {
         findings: [
           {
             id: "duplicate-global-key",
+            ruleId: "bip174.map-keys.unique",
             implementation: "btcsuite-go",
             summary: "Accepted a duplicate global key.",
+            actual: "btcsuite PSBT 1.2.0 accepted a duplicate global key.",
           },
         ],
       }),
@@ -165,11 +174,52 @@ describe("report classification", () => {
         id: "implementation-divergence",
         severity: "review",
         observedAt: "btcsuite-go",
-        repairability: "investigation-required",
-        confidence: "medium",
+        repairability: "code-or-dependency-change",
+        confidence: "high",
+        ruleId: "bip174.map-keys.unique",
+        normativeLevel: "must",
+        sourceName: "BIP174",
+        expected: "Every key in each PSBT map is unique.",
+        actual: ["btcsuite PSBT 1.2.0 accepted a duplicate global key."],
         evidence: ["finding:duplicate-global-key"],
       }),
     ]);
+  });
+
+  test("fails closed when a finding references an unknown runtime rule", () => {
+    expect(() =>
+      classifyScenario(
+        scenario({
+          findings: [
+            {
+              id: "unknown-rule",
+              ruleId: "bip999.unknown" as never,
+              implementation: "example-wallet",
+              summary: "Referenced an unknown rule.",
+              actual: "Unknown behavior.",
+            },
+          ],
+        }),
+      ),
+    ).toThrow("Unknown conformance rule: bip999.unknown");
+  });
+
+  test("fails closed when a runtime finding omits actual behavior", () => {
+    expect(() =>
+      classifyScenario(
+        scenario({
+          findings: [
+            {
+              id: "blank-actual",
+              ruleId: "bip174.map-keys.unique",
+              implementation: "example-wallet",
+              summary: "Referenced a rule without observed behavior.",
+              actual: "   ",
+            },
+          ],
+        }),
+      ),
+    ).toThrow("Scenario finding blank-actual must include actual behavior");
   });
 
   test("does not infer a specific category when structured guidance is absent", () => {

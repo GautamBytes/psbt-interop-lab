@@ -27,6 +27,11 @@ describe("website documentation routes", () => {
     ["/adapter-kit", "External Adapter Guide", /enroll conforming adapters in the full matrix/i],
     ["/security", "Security Model", /boundary is kept intentionally smaller/i],
     ["/docs/architecture", "Architecture", /proof suite answers one concrete question/i],
+    [
+      "/docs/conformance-policy",
+      "Conformance Classification Policy",
+      /stable rule IDs make every standards claim auditable/i,
+    ],
     ["/docs/future-work", "Future Work", /driven by real wallet and library maintainers/i],
     [
       "/docs/sources",
@@ -220,7 +225,7 @@ describe("website documentation routes", () => {
     expect(cliProof.getAttribute("src")).not.toMatch(/^https?:/);
     expect(reportProof.getAttribute("src")).not.toMatch(/^https?:/);
     expect(
-      screen.getByText(/current v0\.5\.4 reports add structured classification/i),
+      screen.getByText(/v0\.6\.0 reports add stable conformance rule IDs/i),
     ).toBeInTheDocument();
   });
 

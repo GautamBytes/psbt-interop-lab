@@ -1,5 +1,8 @@
 import { describe, expect, test } from "vitest";
-import { distinctMultisigContributionEvidence } from "../../src/scenarios/psbtv2-interop.js";
+import {
+  classifyFinalScriptSigInterop,
+  distinctMultisigContributionEvidence,
+} from "../../src/scenarios/psbtv2-interop.js";
 
 const magic = Buffer.from("70736274ff", "hex");
 const publicKeyOne = Buffer.from(
@@ -68,5 +71,49 @@ describe("PSBTv2 multisig contribution evidence", () => {
     expect(
       distinctMultisigContributionEvidence(psbt([]), psbt([publicKeyOne]), wallySigned, combined),
     ).toMatchObject({ passed: false });
+  });
+});
+
+describe("PSBTv2 final scriptSig interoperability classification", () => {
+  test("attributes rejection of the canonical omitted form to rust-psbt", () => {
+    expect(
+      classifyFinalScriptSigInterop({
+        rustStatus: "rejected",
+        rustErrorClass: "extract.not_finalized",
+        wallyStatus: "ok",
+        wallyErrorClass: undefined,
+        hasWitnessWithoutScriptSig: true,
+        hasWitnessWithEmptyScriptSig: false,
+      }),
+    ).toEqual({
+      kind: "rust-requires-empty-final-scriptsig",
+      ruleId: "bip174.final-scriptsig.empty-omitted",
+    });
+  });
+
+  test("treats libwally rejection of the explicit empty field as strict parsing", () => {
+    expect(
+      classifyFinalScriptSigInterop({
+        rustStatus: "ok",
+        rustErrorClass: undefined,
+        wallyStatus: "rejected",
+        wallyErrorClass: "psbt.parse_failed",
+        hasWitnessWithoutScriptSig: false,
+        hasWitnessWithEmptyScriptSig: true,
+      }),
+    ).toEqual({ kind: "wally-rejected-noncanonical-empty-final-scriptsig" });
+  });
+
+  test("leaves unrelated extraction failures unclassified", () => {
+    expect(
+      classifyFinalScriptSigInterop({
+        rustStatus: "rejected",
+        rustErrorClass: "extract.failed",
+        wallyStatus: "ok",
+        wallyErrorClass: undefined,
+        hasWitnessWithoutScriptSig: true,
+        hasWitnessWithEmptyScriptSig: false,
+      }),
+    ).toEqual({ kind: "unclassified" });
   });
 });

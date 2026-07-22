@@ -6,11 +6,17 @@ This file records the primary sources used to choose protocol behavior, APIs, ve
 artifacts. Runtime dependencies are also locked in `pnpm-lock.yaml`, `Cargo.lock`, and the hashed
 Python requirement.
 
+The lab's [conformance classification policy](conformance-policy.md) explains how these
+authoritative sources are represented by stable rule IDs, normative levels, expected behavior, and
+observed evidence. The policy is the lab's reporting contract; it does not replace or override a
+protocol specification.
+
 ## PSBT Specifications
 
 - [BIP174: Partially Signed Bitcoin Transaction Format](https://bips.dev/174/) defines PSBT magic,
   key-value maps, minimally encoded CompactSize values, unique complete keys, creator/updater/signer
-  roles, and PSBTv0 fields.
+  roles, and PSBTv0 fields. Its finalizer rules require an empty `PSBT_IN_FINAL_SCRIPTSIG` to remain
+  absent.
 - [BIP370: PSBT Version 2](https://bips.dev/370/) defines PSBTv2's global input/output counts and
   per-input/per-output transaction fields. The wire parser validates PSBTv2 and the rejection matrix
   uses the complete official valid and invalid vector corpus. Dedicated workflows convert
@@ -24,6 +30,7 @@ Python requirement.
   active scenarios create, key-path sign, finalize, and policy-check Core-generated P2TR PSBTs;
   script-path fixtures exercise leaf-script, control-block, and internal-key preservation plus
   bidirectional rust-bitcoin/BDK signing and finalization against an exact committed leaf witness.
+  Its finalizer rules permit removal of `PSBT_OUT_TAP_BIP32_DERIVATION` after finalization.
 - [BIP382](https://bips.dev/382/) defines `wpkh()` output descriptors, including their use inside
   `sh()`, and [BIP386](https://bips.dev/386/) defines `tr()` descriptors. The fixture factory uses
   these forms for nested SegWit and Taproot script-path regtest outputs.

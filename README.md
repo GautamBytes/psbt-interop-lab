@@ -19,7 +19,7 @@ Requirements:
 - Node.js 22 or 24
 
 ```bash
-npx --yes psbt-interop-lab@0.5.4 quickstart
+npx --yes psbt-interop-lab@0.6.0 quickstart
 ```
 
 `quickstart` is the bounded first-run proof. It checks Node.js, Docker, and Compose, runs five
@@ -30,7 +30,7 @@ the local regtest node automatically.
 For exhaustive compatibility testing, install the CLI once and run the complete 31-scenario matrix:
 
 ```bash
-npm install --global psbt-interop-lab@0.5.4
+npm install --global psbt-interop-lab@0.6.0
 psbt-lab matrix
 ```
 
@@ -101,9 +101,10 @@ psbt-lab replay artifacts/<run-id>
 The report screenshot above comes directly from the generated, self-contained HTML artifact. The
 CLI screenshot is a typeset transcript of the same real run with the two long image digests and
 absolute local artifact path shortened. These images remain an honest v0.5.2 capture; current
-v0.5.4 reports add structured classification by category, severity, observed implementation,
-repairability, confidence, and exact evidence. Run `psbt-lab matrix` when the bounded first proof
-passes and complete cross-library coverage is required.
+v0.6.0 reports add stable conformance rule IDs, normative levels, authoritative sources,
+expected-versus-observed behavior, severity, repairability, confidence, and exact evidence. Run
+`psbt-lab matrix` when the bounded first proof passes and complete cross-library coverage is
+required.
 
 ## External Adapters
 
@@ -182,9 +183,10 @@ the scenario.
 The PSBTv2 baseline also names strict-parser differences around an explicit empty final scriptSig
 and undefined `PSBT_GLOBAL_TX_MODIFIABLE` bits. These findings are bounded to the affected
 implementations; completed transactions still have to pass Bitcoin Core policy on isolated regtest.
-The Taproot script-path baseline likewise records current BDK finalization removing
-`PSBT_OUT_TAP_BIP32_DERIVATION` entries as a bounded metadata-preservation finding. The exact
-committed leaf witness and the extracted transaction must still pass Bitcoin Core policy.
+The Taproot script-path baseline permits `PSBT_OUT_TAP_BIP32_DERIVATION` cleanup only at the
+BIP371 finalization boundary, after every input is final. Earlier removal remains a metadata
+preservation failure. The exact committed leaf witness and the extracted transaction must still
+pass Bitcoin Core policy.
 
 Run `psbt-lab self-test` to prove the detectors catch deliberate proprietary and unknown-field
 loss, output-amount mutation, sequence mutation, and signature removal.
@@ -202,10 +204,12 @@ Each run creates a private directory under `artifacts/<run-id>/` containing:
 - `checkpoints/**/*.psbt`: canonical PSBT states at important handoffs
 - `checkpoints/**/*.facts.json`: bounded field facts and hashes
 
-The reports classify non-passing behavior by category, severity, observed implementation boundary,
-repairability, and confidence. Every classification includes the exact assertion, map location, key
-type, and key fingerprint behind it; capability gaps and ambiguous implementation divergences are
-not labeled as confirmed code bugs.
+The reports classify non-passing behavior by stable rule ID, normative level, category, severity,
+observed implementation boundary, repairability, and confidence. Every classification includes an
+authoritative source and section, expected behavior, actual observations, and bounded evidence;
+capability gaps and ambiguous implementation divergences are not labeled as confirmed code bugs.
+The [conformance classification policy](docs/conformance-policy.md) defines this public diagnostic
+contract and how to challenge a classification.
 
 Raw PSBTs are stored only in checkpoint files with local mode `0600`; artifact directories use
 `0700`. Reports redact PSBTs, WIFs, common BIP32/SLIP-132 extended private keys, mnemonics, seed

@@ -1,6 +1,8 @@
+import { publicConformanceRules } from "./generated/conformance-rules";
+
 export const repositoryUrl = "https://github.com/GautamBytes/psbt-interop-lab";
 export const npmUrl = "https://www.npmjs.com/package/psbt-interop-lab";
-export const installCommand = "npx --yes psbt-interop-lab@0.5.4 quickstart";
+export const installCommand = "npx --yes psbt-interop-lab@0.6.0 quickstart";
 
 export type ScenarioStatus = "pass" | "finding" | "supported";
 
@@ -13,12 +15,10 @@ export interface EvidenceRow {
 }
 
 export interface ReportClassification {
-  category: string;
-  severity: string;
+  ruleId: keyof typeof publicConformanceRules;
   observedAt: string;
-  repairability: string;
-  confidence: string;
   evidence: string;
+  actual: string;
 }
 
 export interface ReportScenario {
@@ -92,12 +92,10 @@ export const reportScenarios: ReportScenario[] = [
       "btcsuite accepts a duplicate global unsigned-transaction key. The lab keeps this divergence visible while requiring other native parsers to reject malformed input safely.",
     implementations: ["btcsuite PSBT"],
     classification: {
-      category: "Implementation divergence",
-      severity: "Review",
+      ruleId: "bip174.map-keys.unique",
       observedAt: "btcsuite-go",
-      repairability: "Investigation required",
-      confidence: "Medium",
-      evidence: "finding:duplicate-global-key",
+      evidence: "finding:btcsuite-go-duplicate-global-key-accepted",
+      actual: "btcsuite PSBT 1.2.0 accepted a duplicate global unsigned-transaction key.",
     },
     evidence: [
       {
@@ -167,29 +165,28 @@ export const reportScenarios: ReportScenario[] = [
     statusLabel: "Compatibility finding",
     handoff: "libwally 1.5.4 -> rust-psbt PSBTv2 0.3.0 -> Bitcoin Core",
     summary:
-      "A valid SegWit final witness exposes a strict-parser mismatch: rust-psbt requires an explicit empty final scriptSig, while libwally rejects that explicit empty field. The lab reports the difference and still asks Core to validate the extracted transaction.",
+      "A valid SegWit final witness exposes one standards divergence: rust-psbt requires an explicit empty final scriptSig where BIP174 requires that field to be omitted. libwally strictly rejects the explicit empty field as noncanonical, and Core still validates the extracted transaction.",
     implementations: ["Bitcoin Core", "rust-psbt PSBTv2", "libwally"],
     classification: {
-      category: "Implementation divergence",
-      severity: "Review",
-      observedAt: "rust-psbt-v2 / libwally",
-      repairability: "Investigation required",
-      confidence: "Medium",
-      evidence: "finding:explicit-empty-final-scriptsig",
+      ruleId: "bip174.final-scriptsig.empty-omitted",
+      observedAt: "rust-psbt-v2",
+      evidence: "finding:rust-psbt-v2-final-scriptsig-required",
+      actual:
+        "rust-psbt-v2 required PSBT_IN_FINAL_SCRIPTSIG to be present with a zero-length value.",
     },
     evidence: [
       {
         field: "PSBT_IN_FINAL_SCRIPTSIG (0x07)",
-        expected: "equivalent absent or empty encoding",
-        actual: "implementations require opposite forms",
-        implementation: "rust-psbt / libwally",
-        nextStep: "Normalize only at the named adapter boundary.",
+        expected: publicConformanceRules["bip174.final-scriptsig.empty-omitted"].expected,
+        actual: "rust-psbt-v2 requires the explicit empty field",
+        implementation: "rust-psbt-v2",
+        nextStep: "Accept the canonical omitted form during extraction.",
       },
       {
         field: "PSBT_IN_FINAL_SCRIPTWITNESS (0x08)",
         expected: "valid final witness preserved",
-        actual: "preserved across the handoff",
-        implementation: "both PSBTv2 adapters",
+        actual: "preserved; libwally rejects the explicit empty scriptSig as noncanonical",
+        implementation: "rust-psbt-v2 / libwally",
         nextStep: "Keep the witness as the transaction evidence.",
       },
       {
@@ -238,6 +235,11 @@ export const docLinks = [
     label: "Architecture",
     detail: "Understand the system and trust boundaries",
     href: "/docs/architecture",
+  },
+  {
+    label: "Conformance policy",
+    detail: "Interpret sourced diagnostic rules",
+    href: "/docs/conformance-policy",
   },
   {
     label: "Future work",

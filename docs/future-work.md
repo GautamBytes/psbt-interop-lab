@@ -16,7 +16,6 @@ be driven by real wallet and library maintainers using those foundations.
 ## Better Diagnostics
 
 - Compare compatibility results across implementation versions to expose new regressions.
-- Add stable machine-readable diagnostic codes for downstream CI annotations and dashboards.
 - Improve minimization of failing custom scenarios into smaller reproducible test cases.
 
 ## Developer Integration

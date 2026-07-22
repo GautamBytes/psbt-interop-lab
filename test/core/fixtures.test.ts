@@ -718,6 +718,22 @@ describe("prepareFixtures", () => {
     expect(fixtures.regression).toBeUndefined();
   });
 
+  test("matures a filtered fixture without requiring the legacy descriptor", async () => {
+    const { rpc, calls } = createFixtureRpc({ emptyUtxos: true });
+
+    const fixtures = await prepareFixtures(rpc, [], ["p2tr-scriptpath"]);
+
+    expect(Object.keys(fixtures.profiles)).toEqual(["p2tr-scriptpath"]);
+    expect(
+      calls
+        .filter((call) => call.method === "generatetoaddress")
+        .map((call) => paramObject(call.params)["address"]),
+    ).toEqual([
+      FIXTURE_ADDRESSES[FIXTURE_DESCRIPTORS["p2tr-scriptpath"]],
+      FIXTURE_ADDRESSES[FIXTURE_DESCRIPTORS["p2tr-scriptpath"]],
+    ]);
+  });
+
   test("refuses to operate on a non-regtest chain", async () => {
     const rpc: RpcCaller = {
       async call<T>(method: string): Promise<T> {

@@ -1,6 +1,6 @@
 {
   "name": "psbt-interop-lab",
-  "version": "0.5.4",
+  "version": "0.6.0",
   "description": "Deterministic PSBT interoperability testing for Bitcoin software",
   "type": "module",
   "private": false,
@@ -64,9 +64,11 @@
     "LICENSE"
   ],
   "scripts": {
+    "generate:conformance-data": "tsx scripts/generate-conformance-data.ts",
+    "check:conformance-data": "tsx scripts/generate-conformance-data.ts --check",
     "generate:validators": "tsx scripts/generate-validators.ts",
     "check:validators": "tsx scripts/generate-validators.ts --check",
-    "build": "pnpm generate:validators && tsc -p tsconfig.build.json && tsx scripts/copy-static-assets.ts",
+    "build": "pnpm generate:conformance-data && pnpm generate:validators && tsc -p tsconfig.build.json && tsx scripts/copy-static-assets.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",

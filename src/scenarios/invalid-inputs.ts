@@ -101,9 +101,11 @@ export function createInvalidInputScenario(
           if (knownBtcsuiteDuplicateAcceptance && response.status === "ok") {
             findings.push({
               id: "btcsuite-go-duplicate-global-key-accepted",
+              ruleId: "bip174.map-keys.unique" as const,
               implementation: "btcsuite-go",
               summary:
                 "btcsuite PSBT 1.2.0 accepted a duplicate global unsigned-transaction key that BIP174 requires to be unique.",
+              actual: "btcsuite PSBT 1.2.0 accepted a duplicate global unsigned-transaction key.",
             });
           }
           assertions.push({

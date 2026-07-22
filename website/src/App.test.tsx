@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { App } from "./App";
@@ -33,6 +33,8 @@ describe("PSBT Interop Lab website", () => {
     );
     expect(screen.getByText(/quickstart proves one real handoff/i)).toBeInTheDocument();
     expect(screen.getByText(/matrix runs all 31 bundled scenarios/i)).toBeInTheDocument();
+    expect(screen.getByText("PSBT Interop Lab 0.6.0")).toBeInTheDocument();
+    expect(screen.getByText(/available now as version 0\.6\.0/i)).toBeInTheDocument();
   });
 
   it("shows a real command-to-report proof walkthrough", () => {
@@ -61,6 +63,7 @@ describe("PSBT Interop Lab website", () => {
     await user.click(screen.getByRole("button", { name: "Copy install command" }));
 
     expect(screen.getByText(installCommand)).toBeInTheDocument();
+    expect(installCommand).toContain("psbt-interop-lab@0.6.0");
     expect(screen.getByText("Install command copied")).toBeInTheDocument();
   });
 
@@ -76,14 +79,48 @@ describe("PSBT Interop Lab website", () => {
     ).toBeInTheDocument();
   });
 
-  it("shows the same structured classification developers receive in v0.5.4 reports", () => {
+  it("shows a catalog-backed preview of structured conformance diagnostics", () => {
     render(<App />);
 
+    expect(screen.getByText("Conformance report fields")).toBeInTheDocument();
+    expect(screen.queryByText("v0.5.4 report output")).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Classification" })).toBeInTheDocument();
     expect(screen.getByText("Implementation divergence")).toBeInTheDocument();
+    expect(screen.getByText("Unique PSBT map keys")).toBeInTheDocument();
     expect(screen.getByText("btcsuite-go")).toBeInTheDocument();
-    expect(screen.getByText("Investigation required")).toBeInTheDocument();
-    expect(screen.getByText("finding:duplicate-global-key")).toBeInTheDocument();
+    expect(screen.getByText("Code or dependency change")).toBeInTheDocument();
+    expect(
+      screen.getByText("finding:btcsuite-go-duplicate-global-key-accepted"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("bip174.map-keys.unique")).toBeInTheDocument();
+    expect(screen.getByText("must")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /BIP174.*Specification/i })).toHaveAttribute(
+      "href",
+      "https://github.com/bitcoin/bips/blob/master/bip-0174.mediawiki",
+    );
+  });
+
+  it("attributes the empty final scriptSig finding only to rust-psbt", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: /PSBTv2 finalization/i }));
+
+    expect(screen.getByText("bip174.final-scriptsig.empty-omitted")).toBeInTheDocument();
+    const classification = screen
+      .getByRole("heading", { name: "Classification" })
+      .closest("section");
+    if (!classification) throw new Error("Missing classification section");
+    expect(within(classification).getByText("rust-psbt-v2")).toBeInTheDocument();
+    expect(
+      screen.getAllByText(/empty final scriptSig is represented by omitting/i).length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getByText(
+        /libwally strictly reject(?:ed|s) the explicit empty field as noncanonical/i,
+      ),
+    ).toBeInTheDocument();
+    expect(within(classification).queryByText("rust-psbt-v2 / libwally")).not.toBeInTheDocument();
   });
 
   it("opens and filters project search", async () => {

@@ -1,3 +1,4 @@
+import type { ConformanceRuleId } from "../conformance/rules.js";
 import type {
   AdapterOperation,
   AdapterRole,
@@ -29,8 +30,11 @@ export interface ScenarioAssertionEvidence {
 
 export interface ScenarioFinding {
   readonly id: string;
+  readonly ruleId: ConformanceRuleId;
   readonly implementation: string;
   readonly summary: string;
+  readonly actual: string;
+  readonly evidence?: readonly string[];
 }
 
 export interface ScenarioExecutionOutput {
