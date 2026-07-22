@@ -593,6 +593,8 @@ async function ensureMatureUtxos(
     count: Math.max(0, required[id] - utxos[id].length),
   }));
   if (shortages.every((shortage) => shortage.count === 0)) return { blockchain, utxos };
+  const maturitySink = shortages.find((shortage) => shortage.count > 0);
+  if (!maturitySink) throw new Error("Fixture funding shortage could not be resolved");
 
   for (const shortage of shortages) {
     if (shortage.count === 0) continue;
@@ -608,7 +610,7 @@ async function ensureMatureUtxos(
   parseGeneratedBlocks(
     await rpc.call("generatetoaddress", {
       nblocks: COINBASE_MATURITY_BLOCKS,
-      address: descriptors[LEGACY_DESCRIPTOR_ID].address,
+      address: descriptors[maturitySink.id].address,
       maxtries: DEFAULT_GENERATE_MAX_TRIES,
     }),
     COINBASE_MATURITY_BLOCKS,
