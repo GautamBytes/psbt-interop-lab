@@ -845,6 +845,13 @@ svg {
   font-size: 14px;
 }
 
+.report-classification__heading p {
+  margin: 6px 0 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
 .report-classification dl {
   display: grid;
   grid-template-columns: repeat(5, minmax(112px, 1fr));

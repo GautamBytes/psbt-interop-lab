@@ -176,6 +176,38 @@ describe("HTML report", () => {
     expect(html).toContain('href="https://github.com/bitcoin/bips/blob/master/bip-0174.mediawiki"');
   });
 
+  test("redacts dynamic strings in Markdown reports even when the manifest is not pre-redacted", () => {
+    const value = manifest();
+    const firstScenario = value.scenarios[0];
+    if (!firstScenario?.findings?.[0]) throw new Error("Missing report fixture finding");
+    const valueWithSecretFinding: RunManifest = {
+      ...value,
+      scenarios: [
+        {
+          ...firstScenario,
+          findings: [
+            {
+              ...firstScenario.findings[0],
+              summary: `Accepted a duplicate global key with mnemonic: ${TEST_MNEMONIC}`,
+              actual: `btcsuite accepted a duplicate global key with wif=${TESTNET_WIF}.`,
+              evidence: [`seed=${TEST_MNEMONIC}`],
+            },
+          ],
+        },
+        ...value.scenarios.slice(1),
+      ],
+    };
+
+    const markdown = generateMarkdownReport(valueWithSecretFinding);
+
+    expect(markdown).not.toContain(TESTNET_WIF);
+    expect(markdown).not.toContain(TEST_SLIP132_PRIVATE_KEY);
+    expect(markdown).not.toContain(TEST_MNEMONIC);
+    expect(markdown).not.toContain(MINIMAL_PSBT);
+    expect(markdown).toContain("[redacted:secret]");
+    expect(markdown).toContain("[redacted:psbt]");
+  });
+
   test("renders classifications in the HTML report", () => {
     const html = generateHtmlReport(manifest());
 

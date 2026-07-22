@@ -143,6 +143,13 @@ function failureEvidence(failure: PsbtTransitionFailure, assertionName: string):
   ].join("; ");
 }
 
+function requireActualBehavior(value: unknown, label: string): string {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new TypeError(`${label} must include actual behavior`);
+  }
+  return value;
+}
+
 function classifyFailure(
   failure: PsbtTransitionFailure,
   assertion: ScenarioAssertionEvidence,
@@ -255,12 +262,13 @@ export function classifyScenario(scenario: ScenarioResult): readonly ReportClass
   }
 
   for (const finding of scenario.findings ?? []) {
+    const actual = requireActualBehavior(finding.actual, `Scenario finding ${finding.id}`);
     addClassification(
       classifications,
       fromRule(finding.ruleId, {
         observedAt: finding.implementation,
         summary: finding.summary,
-        actual: finding.actual,
+        actual,
       }),
       `finding:${finding.id}`,
     );
@@ -270,7 +278,7 @@ export function classifyScenario(scenario: ScenarioResult): readonly ReportClass
         fromRule(finding.ruleId, {
           observedAt: finding.implementation,
           summary: finding.summary,
-          actual: finding.actual,
+          actual,
         }),
         evidence,
       );

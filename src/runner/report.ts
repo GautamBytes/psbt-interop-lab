@@ -94,26 +94,27 @@ function markdownClassification(classification: ReportClassification): string[] 
 }
 
 export function generateMarkdownReport(manifest: RunManifest): string {
+  const redactedManifest = redactValue(manifest) as RunManifest;
   const filtered =
-    (manifest.selectors?.requested.scenarios?.length ?? 0) > 0 ||
-    manifest.selectors?.requested.category !== undefined;
+    (redactedManifest.selectors?.requested.scenarios?.length ?? 0) > 0 ||
+    redactedManifest.selectors?.requested.category !== undefined;
   const selection = filtered
-    ? `Filtered run: requested ${manifest.selectors?.requested.scenarios?.map((id) => `\`${id}\``).join(", ") || "all scenarios"}${manifest.selectors?.requested.category ? ` in category \`${manifest.selectors.requested.category}\`` : ""}; executed ${manifest.selectors?.executed.scenarios.length ?? 0} scenario(s).`
+    ? `Filtered run: requested ${redactedManifest.selectors?.requested.scenarios?.map((id) => `\`${id}\``).join(", ") || "all scenarios"}${redactedManifest.selectors?.requested.category ? ` in category \`${redactedManifest.selectors.requested.category}\`` : ""}; executed ${redactedManifest.selectors?.executed.scenarios.length ?? 0} scenario(s).`
     : undefined;
   const lines = [
     "# PSBT Interop Lab Proof",
     "",
-    `Run: \`${manifest.runId}\``,
-    `Outcome: **${manifest.outcome.toUpperCase()}**`,
-    manifest.core
-      ? `Bitcoin Core: \`${manifest.core.subversion}\` on regtest at height ${manifest.core.blocks}`
+    `Run: \`${redactedManifest.runId}\``,
+    `Outcome: **${redactedManifest.outcome.toUpperCase()}**`,
+    redactedManifest.core
+      ? `Bitcoin Core: \`${redactedManifest.core.subversion}\` on regtest at height ${redactedManifest.core.blocks}`
       : "Bitcoin Core: not required by selected scenarios",
     ...(selection ? [selection] : []),
     "",
     "## Scenarios",
     "",
   ];
-  for (const scenario of manifest.scenarios) {
+  for (const scenario of redactedManifest.scenarios) {
     const classifications = classifyScenario(scenario);
     lines.push(
       `### ${scenario.title}`,
@@ -200,7 +201,7 @@ export function generateMarkdownReport(manifest: RunManifest): string {
   lines.push(
     "## Checkpoints",
     "",
-    ...manifest.checkpoints.map(
+    ...redactedManifest.checkpoints.map(
       (checkpoint) =>
         `- \`${checkpoint.scenario}/${checkpoint.stage}\`: ${checkpoint.facts.byteLength} bytes, SHA256 \`${checkpoint.facts.sha256}\``,
     ),

@@ -81,6 +81,7 @@ describe("PSBT Interop Lab website", () => {
 
     expect(screen.getByRole("heading", { name: "Classification" })).toBeInTheDocument();
     expect(screen.getByText("Implementation divergence")).toBeInTheDocument();
+    expect(screen.getByText("Unique PSBT map keys")).toBeInTheDocument();
     expect(screen.getByText("btcsuite-go")).toBeInTheDocument();
     expect(screen.getByText("Code or dependency change")).toBeInTheDocument();
     expect(screen.getByText("finding:duplicate-global-key")).toBeInTheDocument();

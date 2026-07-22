@@ -204,6 +204,24 @@ describe("report classification", () => {
     ).toThrow("Unknown conformance rule: bip999.unknown");
   });
 
+  test("fails closed when a runtime finding omits actual behavior", () => {
+    expect(() =>
+      classifyScenario(
+        scenario({
+          findings: [
+            {
+              id: "blank-actual",
+              ruleId: "bip174.map-keys.unique",
+              implementation: "example-wallet",
+              summary: "Referenced a rule without observed behavior.",
+              actual: "   ",
+            },
+          ],
+        }),
+      ),
+    ).toThrow("Scenario finding blank-actual must include actual behavior");
+  });
+
   test("does not infer a specific category when structured guidance is absent", () => {
     const classifications = classifyScenario(
       scenario({

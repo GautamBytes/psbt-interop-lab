@@ -78,6 +78,7 @@ export function CompatibilityReport() {
                 <div className="report-classification__heading">
                   <span>v0.5.4 report output</span>
                   <h4 id="classification-title">Classification</h4>
+                  <p>{classificationRule.title}</p>
                 </div>
                 <dl>
                   <div className="report-classification__field">
