@@ -89,8 +89,10 @@ function manifest(): RunManifest {
         findings: [
           {
             id: "known-parser-divergence",
+            ruleId: "bip174.map-keys.unique",
             implementation: "btcsuite-go",
             summary: "Accepted a duplicate global key",
+            actual: "btcsuite accepted a duplicate global key.",
           },
         ],
       },

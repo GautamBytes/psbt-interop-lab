@@ -83,8 +83,11 @@ describe("scenario engine", () => {
           findings: [
             {
               id: "parser-accepted-duplicate-key",
+              ruleId: "bip174.map-keys.unique",
               implementation: "example-parser",
               summary: `Accepted invalid input; wif=${TESTNET_WIF}`,
+              actual: `Accepted duplicate key; wif=${TESTNET_WIF}`,
+              evidence: [`probe-wif=${TESTNET_WIF}`],
             },
           ],
         })),
@@ -98,8 +101,11 @@ describe("scenario engine", () => {
       findings: [
         {
           id: "parser-accepted-duplicate-key",
+          ruleId: "bip174.map-keys.unique",
           implementation: "example-parser",
           summary: "Accepted invalid input; wif=[redacted:secret]",
+          actual: "Accepted duplicate key; wif=[redacted:secret]",
+          evidence: ["probe-wif=[redacted:secret]"],
         },
       ],
     });

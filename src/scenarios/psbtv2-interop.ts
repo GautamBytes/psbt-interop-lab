@@ -192,9 +192,12 @@ async function extractWithBoth(
       findings: [
         {
           id: "rust-psbt-v2-final-scriptsig-required",
+          ruleId: "bip174.final-scriptsig.empty-omitted",
           implementation: RUST,
           summary:
             "The extractor rejected a valid SegWit final witness because PSBT_IN_FINAL_SCRIPTSIG was omitted.",
+          actual:
+            "The extractor required PSBT_IN_FINAL_SCRIPTSIG to be present with a zero-length value.",
         },
       ],
     };
@@ -222,9 +225,12 @@ async function extractWithBoth(
       findings: [
         {
           id: "libwally-empty-final-scriptsig-rejected",
+          ruleId: "bip174.final-scriptsig.empty-omitted",
           implementation: WALLY,
           summary:
             "The strict parser rejected a SegWit PSBT containing an explicit empty PSBT_IN_FINAL_SCRIPTSIG.",
+          actual:
+            "The strict parser rejected PSBT_IN_FINAL_SCRIPTSIG with a zero-length value.",
         },
       ],
     };

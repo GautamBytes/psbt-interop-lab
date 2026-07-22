@@ -5,6 +5,7 @@ import type {
   PsbtVersion,
 } from "../protocol/types.js";
 import type { PsbtTransitionFailure, PsbtTransitionPolicy } from "../psbt/invariants.js";
+import type { ConformanceRuleId } from "../conformance/rules.js";
 
 export type ScenarioOutcome = "passed" | "failed" | "unsupported" | "skipped";
 
@@ -29,8 +30,11 @@ export interface ScenarioAssertionEvidence {
 
 export interface ScenarioFinding {
   readonly id: string;
+  readonly ruleId: ConformanceRuleId;
   readonly implementation: string;
   readonly summary: string;
+  readonly actual: string;
+  readonly evidence?: readonly string[];
 }
 
 export interface ScenarioExecutionOutput {

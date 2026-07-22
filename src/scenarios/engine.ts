@@ -201,8 +201,13 @@ function copyAssertions(
 function copyFindings(findings: readonly ScenarioFinding[] | undefined): ScenarioFinding[] {
   return (findings ?? []).map((finding) => ({
     id: finding.id,
+    ruleId: finding.ruleId,
     implementation: redactSensitiveText(finding.implementation),
     summary: redactSensitiveText(finding.summary),
+    actual: redactSensitiveText(finding.actual),
+    ...(finding.evidence !== undefined
+      ? { evidence: finding.evidence.map((value) => redactSensitiveText(value)) }
+      : {}),
   }));
 }
 

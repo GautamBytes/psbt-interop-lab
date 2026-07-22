@@ -1,3 +1,11 @@
+import {
+  getConformanceRule,
+  type ConformanceNormativeLevel,
+  type ConformanceRuleConfidence,
+  type ConformanceRuleId,
+  type ConformanceRuleRepairability,
+  type ConformanceRuleSeverity,
+} from "../conformance/rules.js";
 import type { PsbtSafeGuidanceCode, PsbtTransitionFailure } from "../psbt/invariants.js";
 import type { ScenarioAssertionEvidence, ScenarioResult } from "../scenarios/definition.js";
 
@@ -15,69 +23,106 @@ export type ReportClassificationId =
   | "implementation-divergence"
   | "known-regression";
 
-export type ReportClassificationSeverity = "stop" | "review" | "info";
-export type ReportRepairability =
-  | "code-or-dependency-change"
-  | "investigation-required"
-  | "not-a-code-defect";
-export type ReportClassificationConfidence = "high" | "medium" | "low";
+export type ReportClassificationSeverity = ConformanceRuleSeverity;
+export type ReportRepairability = ConformanceRuleRepairability;
+export type ReportClassificationConfidence = ConformanceRuleConfidence;
 
 export interface ReportClassification {
   readonly id: ReportClassificationId;
+  readonly ruleId: ConformanceRuleId;
   readonly label: string;
   readonly severity: ReportClassificationSeverity;
   readonly observedAt: string;
   readonly repairability: ReportRepairability;
   readonly confidence: ReportClassificationConfidence;
+  readonly normativeLevel: ConformanceNormativeLevel;
+  readonly sourceName: string;
+  readonly sourceUrl: string;
+  readonly sourceSection: string;
+  readonly expected: string;
+  readonly actual: readonly string[];
   readonly summary: string;
   readonly evidence: readonly string[];
 }
 
-type ClassificationWithoutEvidence = Omit<ReportClassification, "evidence">;
+type ClassificationWithoutCollections = Omit<ReportClassification, "actual" | "evidence"> & {
+  readonly actual: string;
+};
 
 interface GuidanceClassification {
+  readonly ruleId: ConformanceRuleId;
   readonly id: ReportClassificationId;
   readonly label: string;
-  readonly repairability: ReportRepairability;
 }
 
 const GUIDANCE_CLASSIFICATIONS: Readonly<Record<PsbtSafeGuidanceCode, GuidanceClassification>> = {
   TRANSACTION_INTENT_CHANGED: {
+    ruleId: "lab.transaction-intent.unchanged",
     id: "transaction-intent-mutation",
     label: "Transaction intent mutation",
-    repairability: "code-or-dependency-change",
   },
   RESTORE_TX_MODIFIABLE_FLAGS: {
+    ruleId: "lab.psbtv2.modifiability.valid",
     id: "psbtv2-modifiability-violation",
     label: "PSBTv2 modifiability violation",
-    repairability: "code-or-dependency-change",
   },
   RESTORE_EXTENSION_METADATA: {
+    ruleId: "bip174.unknown-keypairs.preserved",
     id: "metadata-loss",
     label: "Metadata loss",
-    repairability: "code-or-dependency-change",
   },
   RESTORE_AND_RESIGN: {
+    ruleId: "lab.signatures.preserved",
     id: "signature-loss",
     label: "Signature loss",
-    repairability: "code-or-dependency-change",
   },
   RESTORE_REMOVED_FIELD: {
+    ruleId: "lab.fields.preserved",
     id: "unexpected-field-loss",
     label: "Unexpected field loss",
-    repairability: "code-or-dependency-change",
   },
   REJECT_CHANGED_FIELD: {
+    ruleId: "lab.fields.immutable",
     id: "field-mutation",
     label: "Unexpected field mutation",
-    repairability: "code-or-dependency-change",
   },
   REVIEW_UNEXPECTED_FIELD: {
+    ruleId: "lab.fields.no-unexpected-addition",
     id: "unexpected-field",
     label: "Unexpected field addition",
-    repairability: "investigation-required",
   },
 };
+
+function fromRule(
+  ruleId: ConformanceRuleId,
+  values: {
+    readonly observedAt: string;
+    readonly summary: string;
+    readonly actual: string;
+    readonly id?: ReportClassificationId;
+    readonly label?: string;
+    readonly severity?: ReportClassificationSeverity;
+    readonly confidence?: ReportClassificationConfidence;
+  },
+): ClassificationWithoutCollections {
+  const rule = getConformanceRule(ruleId);
+  return {
+    id: values.id ?? (rule.category as ReportClassificationId),
+    ruleId,
+    label: values.label ?? rule.title,
+    severity: values.severity ?? rule.severity,
+    observedAt: values.observedAt,
+    repairability: rule.repairability,
+    confidence: values.confidence ?? rule.confidence,
+    normativeLevel: rule.normativeLevel,
+    sourceName: rule.source.name,
+    sourceUrl: rule.source.url,
+    sourceSection: rule.source.section,
+    expected: rule.expected,
+    actual: values.actual,
+    summary: values.summary,
+  };
+}
 
 function locationLabel(failure: PsbtTransitionFailure): string {
   return failure.location.kind === "global"
@@ -101,44 +146,56 @@ function failureEvidence(failure: PsbtTransitionFailure, assertionName: string):
 function classifyFailure(
   failure: PsbtTransitionFailure,
   assertion: ScenarioAssertionEvidence,
-): ClassificationWithoutEvidence {
+): ClassificationWithoutCollections {
   const observedAt = assertion.likelyImplementation ?? "undetermined";
   const guidance = failure.guidance;
   if (!guidance) {
-    return {
+    return fromRule("lab.workflow.completed", {
       id: "workflow-failure",
       label: "Unclassified transition failure",
       severity: "review",
       observedAt,
-      repairability: "investigation-required",
       confidence: "low",
       summary: "The transition failed without structured safety guidance.",
-    };
+      actual: `${failure.code} at ${locationLabel(failure)}.`,
+    });
   }
   const classification = GUIDANCE_CLASSIFICATIONS[guidance.code];
-  return {
-    ...classification,
+  return fromRule(classification.ruleId, {
+    id: classification.id,
+    label: classification.label,
     severity: guidance.severity,
     observedAt,
     confidence: "high",
     summary: guidance.summary,
-  };
+    actual: guidance.summary,
+  });
 }
 
 function addClassification(
   classifications: Map<string, ReportClassification>,
-  classification: ClassificationWithoutEvidence,
+  classification: ClassificationWithoutCollections,
   evidence: string,
 ): void {
-  const key = `${classification.id}\0${classification.observedAt}`;
+  const key = `${classification.id}\0${classification.ruleId}\0${classification.observedAt}`;
   const existing = classifications.get(key);
   if (existing) {
-    if (!existing.evidence.includes(evidence)) {
-      classifications.set(key, { ...existing, evidence: [...existing.evidence, evidence] });
-    }
+    classifications.set(key, {
+      ...existing,
+      actual: existing.actual.includes(classification.actual)
+        ? existing.actual
+        : [...existing.actual, classification.actual],
+      evidence: existing.evidence.includes(evidence)
+        ? existing.evidence
+        : [...existing.evidence, evidence],
+    });
     return;
   }
-  classifications.set(key, { ...classification, evidence: [evidence] });
+  classifications.set(key, {
+    ...classification,
+    actual: [classification.actual],
+    evidence: [evidence],
+  });
 }
 
 export function classifyScenario(scenario: ScenarioResult): readonly ReportClassification[] {
@@ -155,15 +212,15 @@ export function classifyScenario(scenario: ScenarioResult): readonly ReportClass
     if (!assertion.passed && (assertion.failures?.length ?? 0) === 0) {
       addClassification(
         classifications,
-        {
+        fromRule("lab.workflow.completed", {
           id: "workflow-failure",
           label: "Workflow failure",
           severity: "review",
           observedAt: assertion.likelyImplementation ?? "undetermined",
-          repairability: "investigation-required",
           confidence: assertion.likelyImplementation ? "medium" : "low",
           summary: "A workflow assertion failed without a field-level transition violation.",
-        },
+          actual: assertion.summary ?? `Assertion ${assertion.name} failed.`,
+        }),
         `assertion:${assertion.name}`,
       );
     }
@@ -172,15 +229,13 @@ export function classifyScenario(scenario: ScenarioResult): readonly ReportClass
   if (scenario.policyAccepted === false) {
     addClassification(
       classifications,
-      {
+      fromRule("core.transaction.policy-accepted", {
         id: "core-policy-rejection",
         label: "Bitcoin Core policy rejection",
-        severity: "stop",
         observedAt: "bitcoin-core",
-        repairability: "investigation-required",
-        confidence: "high",
         summary: "Bitcoin Core rejected the extracted transaction under regtest mempool policy.",
-      },
+        actual: "Bitcoin Core returned allowed=false for the extracted transaction.",
+      }),
       "core:testmempoolaccept",
     );
   }
@@ -188,15 +243,13 @@ export function classifyScenario(scenario: ScenarioResult): readonly ReportClass
   for (const missing of scenario.missingCapabilities ?? []) {
     addClassification(
       classifications,
-      {
+      fromRule("lab.capability.declared", {
         id: "capability-mismatch",
         label: "Capability mismatch",
-        severity: "info",
         observedAt: missing.adapter,
-        repairability: "not-a-code-defect",
-        confidence: "high",
         summary: "The implementation did not declare a capability required by this scenario.",
-      },
+        actual: `Missing ${missing.kind} capability ${String(missing.value)}.`,
+      }),
       `${missing.kind}:${String(missing.value)}`,
     );
   }
@@ -204,33 +257,36 @@ export function classifyScenario(scenario: ScenarioResult): readonly ReportClass
   for (const finding of scenario.findings ?? []) {
     addClassification(
       classifications,
-      {
-        id: "implementation-divergence",
-        label: "Implementation divergence",
-        severity: "review",
+      fromRule(finding.ruleId, {
         observedAt: finding.implementation,
-        repairability: "investigation-required",
-        confidence: "medium",
-        summary:
-          "The implementation behaved differently from another parser or the expected interoperability boundary.",
-      },
+        summary: finding.summary,
+        actual: finding.actual,
+      }),
       `finding:${finding.id}`,
     );
+    for (const evidence of finding.evidence ?? []) {
+      addClassification(
+        classifications,
+        fromRule(finding.ruleId, {
+          observedAt: finding.implementation,
+          summary: finding.summary,
+          actual: finding.actual,
+        }),
+        evidence,
+      );
+    }
   }
 
   if (scenario.expectedFailure) {
     addClassification(
       classifications,
-      {
+      fromRule("lab.known-regression.recorded", {
         id: "known-regression",
         label: "Known regression specimen",
-        severity: "info",
         observedAt: scenario.expectedFailure.implementation,
-        repairability: "not-a-code-defect",
-        confidence: "high",
-        summary:
-          "The scenario intentionally preserves a historical failure as a regression specimen.",
-      },
+        summary: "The scenario intentionally preserves a historical failure as a regression specimen.",
+        actual: `The specimen returned ${scenario.expectedFailure.errorClass}.`,
+      }),
       `expected-failure:${scenario.expectedFailure.errorClass}`,
     );
   }

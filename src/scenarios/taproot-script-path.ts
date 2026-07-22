@@ -243,9 +243,12 @@ function createHandoffScenario(
         });
         findings.push({
           id: "bdk-taproot-finalize-removes-output-origins",
+          ruleId: "bip371.output-tap-bip32-derivation.finalization-cleanup",
           implementation: "bdk-wallet-current",
           summary:
             "Finalization removed PSBT_OUT_TAP_BIP32_DERIVATION entries even though the transaction and exact script-path witness remained valid.",
+          actual:
+            "BDK Wallet removed PSBT_OUT_TAP_BIP32_DERIVATION while constructing the final script witness.",
         });
       } else {
         assertions.push(finalizationTransition);

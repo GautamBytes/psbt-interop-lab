@@ -103,10 +103,14 @@ export function createBip370VectorScenario(
               findings: [
                 {
                   id: "bip370-valid-tx-modifiable-flags-rejected",
+                  ruleId: "bip370.valid-vectors.accepted" as const,
                   implementation: adapter,
                   summary: `Native strict parsing rejected valid vectors ${expectedValidRejections
                     .map((failure) => failure.split(":")[0])
                     .join(", ")} containing undefined transaction-modifiable flag bits.`,
+                  actual: `Native strict parsing rejected valid vectors ${expectedValidRejections
+                    .map((failure) => failure.split(":")[0])
+                    .join(", ")}.`,
                 },
               ],
             }
