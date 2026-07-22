@@ -30,6 +30,27 @@ describe("release documentation", () => {
     expect(existsSync(join(process.cwd(), "docs/superpowers/specs"))).toBe(false);
   });
 
+  it("keeps every raw repository resource imported by the website in Vercel builds", () => {
+    const importedResources = [
+      read("website/src/pages/documents.ts"),
+      read("website/src/pages/repository-resources.ts"),
+    ].flatMap((source) =>
+      [...source.matchAll(/from "\.\.\/\.\.\/\.\.\/([^"?]+)\?raw"/g)].flatMap((match) =>
+        match[1] ? [match[1]] : [],
+      ),
+    );
+    const includedPaths = new Set(
+      read(".vercelignore")
+        .split("\n")
+        .filter((line) => line.startsWith("!"))
+        .map((line) => line.slice(1)),
+    );
+
+    for (const path of importedResources) {
+      expect(includedPaths.has(path), path).toBe(true);
+    }
+  });
+
   it("documents the active PSBTv2 and Taproot script-path capabilities", () => {
     const psbtv2 = read("adapters/rust-psbt-v2/README.md");
     const bdk = read("adapters/bdk-wallet-current/README.md");
