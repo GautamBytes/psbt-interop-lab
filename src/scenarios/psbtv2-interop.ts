@@ -14,6 +14,48 @@ const SIGNING_METADATA = [0x02, 0x03, 0x04, 0x05, 0x06] as const;
 const RUST = "rust-psbt-v2";
 const WALLY = "libwally";
 
+interface FinalScriptSigInteropObservation {
+  readonly rustStatus: AdapterResponse["status"];
+  readonly rustErrorClass: string | undefined;
+  readonly wallyStatus: AdapterResponse["status"];
+  readonly wallyErrorClass: string | undefined;
+  readonly hasWitnessWithoutScriptSig: boolean;
+  readonly hasWitnessWithEmptyScriptSig: boolean;
+}
+
+export type FinalScriptSigInteropClassification =
+  | {
+      readonly kind: "rust-requires-empty-final-scriptsig";
+      readonly ruleId: "bip174.final-scriptsig.empty-omitted";
+    }
+  | { readonly kind: "wally-rejected-noncanonical-empty-final-scriptsig" }
+  | { readonly kind: "unclassified" };
+
+export function classifyFinalScriptSigInterop(
+  observation: FinalScriptSigInteropObservation,
+): FinalScriptSigInteropClassification {
+  if (
+    observation.rustStatus === "rejected" &&
+    observation.rustErrorClass === "extract.not_finalized" &&
+    observation.wallyStatus === "ok" &&
+    observation.hasWitnessWithoutScriptSig
+  ) {
+    return {
+      kind: "rust-requires-empty-final-scriptsig",
+      ruleId: "bip174.final-scriptsig.empty-omitted",
+    };
+  }
+  if (
+    observation.rustStatus === "ok" &&
+    observation.wallyStatus === "rejected" &&
+    observation.wallyErrorClass === "psbt.parse_failed" &&
+    observation.hasWitnessWithEmptyScriptSig
+  ) {
+    return { kind: "wally-rejected-noncanonical-empty-final-scriptsig" };
+  }
+  return { kind: "unclassified" };
+}
+
 function partialSignatureKeys(psbt: string): readonly string[] {
   const keys: string[] = [];
   for (const map of parsePsbtDocument(psbt).maps) {
@@ -168,13 +210,17 @@ async function extractWithBoth(
       scriptSig?.value.byteLength === 0
     );
   });
+  const classification = classifyFinalScriptSigInterop({
+    rustStatus: rust.status,
+    rustErrorClass: rust.status === "ok" ? undefined : rust.error.class,
+    wallyStatus: wally.status,
+    wallyErrorClass: wally.status === "ok" ? undefined : wally.error.class,
+    hasWitnessWithoutScriptSig,
+    hasWitnessWithEmptyScriptSig,
+  });
 
   if (rust.status !== "ok") {
-    const knownDivergence =
-      rust.status === "rejected" &&
-      rust.error.class === "extract.not_finalized" &&
-      hasWitnessWithoutScriptSig &&
-      wally.status === "ok";
+    const knownDivergence = classification.kind === "rust-requires-empty-final-scriptsig";
     if (!knownDivergence) {
       context.outputString(rust, "transaction", "extract");
     }
@@ -195,7 +241,7 @@ async function extractWithBoth(
           ruleId: "bip174.final-scriptsig.empty-omitted",
           implementation: RUST,
           summary:
-            "The extractor rejected a valid SegWit final witness because PSBT_IN_FINAL_SCRIPTSIG was omitted.",
+            "rust-psbt-v2 rejected a finalized SegWit PSBT whose empty final scriptSig was correctly omitted.",
           actual:
             "The extractor required PSBT_IN_FINAL_SCRIPTSIG to be present with a zero-length value.",
         },
@@ -205,34 +251,22 @@ async function extractWithBoth(
 
   const rustTransaction = context.outputString(rust, "transaction", "extract");
   if (wally.status !== "ok") {
-    const knownDivergence =
-      wally.status === "rejected" &&
-      wally.error.class === "psbt.parse_failed" &&
-      hasWitnessWithEmptyScriptSig;
-    if (!knownDivergence) {
+    const expectedStrictRejection =
+      classification.kind === "wally-rejected-noncanonical-empty-final-scriptsig";
+    if (!expectedStrictRejection) {
       context.outputString(wally, "transaction", "extract");
     }
     assertions.push({
-      name: "libwally-reported-empty-final-scriptsig-interop-divergence",
+      name: "libwally-rejected-noncanonical-empty-final-scriptsig",
       passed: true,
       likelyImplementation: WALLY,
       summary:
-        "libwally strict parsing rejects the explicit empty final scriptSig emitted by rust-psbt-v2",
+        "libwally strictly rejected the explicit empty final scriptSig that BIP174 says must be omitted",
     });
     return {
       transaction: rustTransaction,
       libwallyCanParse: false,
-      findings: [
-        {
-          id: "libwally-empty-final-scriptsig-rejected",
-          ruleId: "bip174.final-scriptsig.empty-omitted",
-          implementation: WALLY,
-          summary:
-            "The strict parser rejected a SegWit PSBT containing an explicit empty PSBT_IN_FINAL_SCRIPTSIG.",
-          actual:
-            "The strict parser rejected PSBT_IN_FINAL_SCRIPTSIG with a zero-length value.",
-        },
-      ],
+      findings: [],
     };
   }
   const wallyTransaction = context.outputString(wally, "transaction", "extract");
