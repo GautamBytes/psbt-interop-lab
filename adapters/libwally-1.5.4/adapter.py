@@ -19,6 +19,10 @@ MAX_FIXTURE_COMMITMENTS_BYTES = 4 * 1024
 MAX_COMBINE_PSBT = 16
 SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 SAFE_COMMITMENT = re.compile(r"^sha256:[0-9a-f]{64}$")
+PSBT_MAGIC = b"psbt\xff"
+PSBT_GLOBAL_TX_MODIFIABLE = 0x06
+PSBT_GLOBAL_VERSION = 0xFB
+DEFINED_TX_MODIFIABLE_MASK = 0x07
 ALLOWED_FIXTURES = {
     "p2wpkh",
     "intent-rich-p2wpkh",
@@ -55,6 +59,13 @@ class PayloadError(Exception):
     def __init__(self, code):
         super().__init__(code)
         self.code = code
+
+
+class ParsedPsbt:
+    def __init__(self, raw, psbt, original_tx_modifiable_flags=None):
+        self.raw = raw
+        self.psbt = psbt
+        self.original_tx_modifiable_flags = original_tx_modifiable_flags
 
 
 def implementation(digest):
@@ -140,6 +151,69 @@ def parse_fixture_commitments(raw):
     return parsed
 
 
+def read_compact_size(raw, offset):
+    if offset >= len(raw):
+        return None
+    first = raw[offset]
+    offset += 1
+    if first < 0xFD:
+        return first, offset
+    if first == 0xFD:
+        size = 2
+    elif first == 0xFE:
+        size = 4
+    else:
+        size = 8
+    if offset + size > len(raw):
+        return None
+    return int.from_bytes(raw[offset : offset + size], "little"), offset + size
+
+
+def normalize_undefined_tx_modifiable_flags(raw):
+    if not raw.startswith(PSBT_MAGIC):
+        return None
+    offset = len(PSBT_MAGIC)
+    version = 0
+    modifiable_offset = None
+    original_flags = None
+    while True:
+        key_length = read_compact_size(raw, offset)
+        if key_length is None:
+            return None
+        key_size, offset = key_length
+        if key_size == 0:
+            break
+        if offset + key_size > len(raw):
+            return None
+        key = raw[offset : offset + key_size]
+        offset += key_size
+        value_length = read_compact_size(raw, offset)
+        if value_length is None:
+            return None
+        value_size, offset = value_length
+        if offset + value_size > len(raw):
+            return None
+        value_offset = offset
+        value = raw[value_offset : value_offset + value_size]
+        offset += value_size
+        if key == bytes([PSBT_GLOBAL_VERSION]) and value_size == 4:
+            version = int.from_bytes(value, "little")
+        if key == bytes([PSBT_GLOBAL_TX_MODIFIABLE]) and value_size == 1:
+            modifiable_offset = value_offset
+            original_flags = value[0]
+
+    if (
+        version != 2
+        or modifiable_offset is None
+        or original_flags is None
+        or original_flags & ~DEFINED_TX_MODIFIABLE_MASK == 0
+    ):
+        return None
+    normalized = bytearray(raw)
+    normalized[modifiable_offset] = original_flags & DEFINED_TX_MODIFIABLE_MASK
+    return bytes(normalized), original_flags
+
+
 def parse_encoded_psbt(encoded):
     if not isinstance(encoded, str) or len(encoded) > MAX_LINE_BYTES:
         raise PayloadError("invalid_psbt")
@@ -151,9 +225,20 @@ def parse_encoded_psbt(encoded):
         raise PayloadError("invalid_psbt")
     try:
         psbt = wally.psbt_from_base64(encoded, wally.WALLY_PSBT_PARSE_FLAG_STRICT)
+        return ParsedPsbt(raw, psbt)
     except Exception:
-        raise PayloadError("invalid_psbt") from None
-    return raw, psbt
+        normalized = normalize_undefined_tx_modifiable_flags(raw)
+        if normalized is None:
+            raise PayloadError("invalid_psbt") from None
+        normalized_raw, original_flags = normalized
+        normalized_encoded = base64.b64encode(normalized_raw).decode("ascii")
+        try:
+            psbt = wally.psbt_from_base64(
+                normalized_encoded, wally.WALLY_PSBT_PARSE_FLAG_STRICT
+            )
+        except Exception:
+            raise PayloadError("invalid_psbt") from None
+        return ParsedPsbt(raw, psbt, original_flags)
 
 
 def parse_psbt_payload(payload, fields=("psbt",)):
@@ -192,6 +277,18 @@ def modifiable_flags(psbt):
     return wally.psbt_get_tx_modifiable_flags(psbt)
 
 
+def parsed_modifiable_flags(parsed):
+    if parsed.original_tx_modifiable_flags is not None:
+        return parsed.original_tx_modifiable_flags
+    return modifiable_flags(parsed.psbt)
+
+
+def roundtrip_base64(parsed):
+    if parsed.original_tx_modifiable_flags is not None:
+        return base64.b64encode(parsed.raw).decode("ascii")
+    return serialize_psbt(parsed.psbt)
+
+
 def finalized_input_count(psbt):
     return sum(
         1
@@ -208,7 +305,8 @@ def partial_signature_input_count(psbt):
     )
 
 
-def inspect_output(psbt):
+def inspect_output(parsed):
+    psbt = parsed.psbt
     output = {
         "psbtVersion": wally.psbt_get_version(psbt),
         "inputs": wally.psbt_get_num_inputs(psbt),
@@ -217,7 +315,7 @@ def inspect_output(psbt):
         "partialSignatureInputs": partial_signature_input_count(psbt),
         **transaction_identity(psbt),
     }
-    flags = modifiable_flags(psbt)
+    flags = parsed_modifiable_flags(parsed)
     if flags is not None:
         output["transactionModifiableFlags"] = flags
     return output
@@ -231,8 +329,8 @@ def fixture_payload(payload):
         or payload.get("fixtureId") not in ALLOWED_FIXTURES
     ):
         raise PayloadError("invalid_payload")
-    _, psbt = parse_psbt_payload(payload, ("psbt", "network", "fixtureId"))
-    return psbt, payload["fixtureId"]
+    parsed = parse_psbt_payload(payload, ("psbt", "network", "fixtureId"))
+    return parsed.psbt, payload["fixtureId"]
 
 
 def verify_fixture_commitment(psbt, fixture_id, commitments):
@@ -381,7 +479,7 @@ def hello(request_id, digest, payload):
 
 def native_parse(request_id, digest, payload):
     try:
-        _, psbt = parse_psbt_payload(payload)
+        parsed = parse_psbt_payload(payload)
     except PayloadError as error:
         return parse_error_response(request_id, digest, error, "psbt.native_parse_failed")
     return success(
@@ -389,17 +487,17 @@ def native_parse(request_id, digest, payload):
         digest,
         {
             "nativeParser": "libwally-core",
-            "psbtVersion": wally.psbt_get_version(psbt),
-            "inputs": wally.psbt_get_num_inputs(psbt),
-            "outputs": wally.psbt_get_num_outputs(psbt),
+            "psbtVersion": wally.psbt_get_version(parsed.psbt),
+            "inputs": wally.psbt_get_num_inputs(parsed.psbt),
+            "outputs": wally.psbt_get_num_outputs(parsed.psbt),
         },
     )
 
 
 def inspect(request_id, digest, payload):
     try:
-        _, psbt = parse_psbt_payload(payload)
-        output = inspect_output(psbt)
+        parsed = parse_psbt_payload(payload)
+        output = inspect_output(parsed)
     except PayloadError as error:
         return parse_error_response(request_id, digest, error)
     except Exception:
@@ -415,17 +513,17 @@ def inspect(request_id, digest, payload):
 
 def roundtrip(request_id, digest, payload):
     try:
-        raw, psbt = parse_psbt_payload(payload)
+        parsed = parse_psbt_payload(payload)
     except PayloadError as error:
         return parse_error_response(request_id, digest, error)
-    encoded = serialize_psbt(psbt)
+    encoded = roundtrip_base64(parsed)
     return success(
         request_id,
         digest,
         {
             "psbt": encoded,
-            "byteIdentical": base64.b64decode(encoded) == raw,
-            "psbtVersion": wally.psbt_get_version(psbt),
+            "byteIdentical": base64.b64decode(encoded) == parsed.raw,
+            "psbtVersion": wally.psbt_get_version(parsed.psbt),
         },
     )
 
@@ -500,7 +598,7 @@ def combine(request_id, digest, payload):
             "psbts must contain between two and sixteen PSBT strings",
         )
     try:
-        psbts = [parse_encoded_psbt(encoded)[1] for encoded in encoded_psbts]
+        psbts = [parse_encoded_psbt(encoded).psbt for encoded in encoded_psbts]
         identities = [transaction_identity(psbt) for psbt in psbts]
     except PayloadError as error:
         return parse_error_response(request_id, digest, error)
@@ -594,9 +692,9 @@ def finalize(request_id, digest, payload, commitments):
 
 def extract(request_id, digest, payload):
     try:
-        _, psbt = parse_psbt_payload(payload)
-        identity = transaction_identity(psbt)
-        if not wally.psbt_is_finalized(psbt):
+        parsed = parse_psbt_payload(payload)
+        identity = transaction_identity(parsed.psbt)
+        if not wally.psbt_is_finalized(parsed.psbt):
             return failure(
                 request_id,
                 digest,
@@ -604,7 +702,7 @@ def extract(request_id, digest, payload):
                 "extract.not_finalized",
                 "PSBT must be fully finalized before extraction",
             )
-        tx = wally.psbt_extract(psbt, wally.WALLY_PSBT_EXTRACT_FINAL)
+        tx = wally.psbt_extract(parsed.psbt, wally.WALLY_PSBT_EXTRACT_FINAL)
         transaction = bytes(
             wally.tx_to_bytes(tx, wally.WALLY_TX_FLAG_USE_WITNESS)
         )
@@ -646,7 +744,8 @@ def convert(request_id, digest, payload):
             "convert expects a psbt and targetVersion 0 or 2",
         )
     try:
-        _, psbt = parse_psbt_payload(payload, ("psbt", "targetVersion"))
+        parsed = parse_psbt_payload(payload, ("psbt", "targetVersion"))
+        psbt = parsed.psbt
         source_version = wally.psbt_get_version(psbt)
         before = transaction_identity(psbt)
         wally.psbt_set_version(psbt, 0, payload["targetVersion"])
