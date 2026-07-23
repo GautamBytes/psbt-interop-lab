@@ -297,104 +297,107 @@ function proofHarness(
 }
 
 describe("proof runtime", () => {
-  test("does not allowlist libwally rejections of valid BIP370 vectors", async () => {
-    const registration = PROOF_SCENARIO_REGISTRATIONS.find(
-      ({ id }) => id === "bip370-official-vectors-libwally",
-    );
-    expect(registration).toBeDefined();
-    if (!registration) return;
+  test.each(["valid-08", "valid-13"])(
+    "does not allowlist libwally rejection of BIP370 %s",
+    async (rejectedVectorId) => {
+      const registration = PROOF_SCENARIO_REGISTRATIONS.find(
+        ({ id }) => id === "bip370-official-vectors-libwally",
+      );
+      expect(registration).toBeDefined();
+      if (!registration) return;
 
-    const validIds = new Map<string, string>(
-      BIP370_VALID_VECTORS.map((vector) => [vector.base64, vector.id]),
-    );
-    const implementation = {
-      name: "libwally-core",
-      version: "1.5.4",
-      sourceRevision: "libwally-core-release_1.5.4",
-      artifactDigest: `sha256:${"a".repeat(64)}`,
-    };
-    const adapter = {
-      request: vi.fn(async (request: AdapterRequest): Promise<AdapterResponse> => {
-        const encoded = request.payload["psbt"];
-        const validId = typeof encoded === "string" ? validIds.get(encoded) : undefined;
-        if (request.operation === "native-parse" && validId === "valid-08") {
-          return {
-            protocol: "psbt-lab.adapter/0.2",
-            id: request.id,
-            status: "rejected",
-            implementation,
-            error: {
-              class: "psbt.native_parse_failed",
-              message: "Native parser rejected the vector",
-            },
-          };
-        }
-        try {
-          if (typeof encoded !== "string") throw new Error("missing psbt");
-          parsePsbtDocument(encoded);
-          return {
-            protocol: "psbt-lab.adapter/0.2",
-            id: request.id,
-            status: "ok",
-            implementation,
-            output:
-              request.operation === "roundtrip"
-                ? { psbt: encoded, byteIdentical: true }
-                : { nativeParser: implementation.name },
-          };
-        } catch {
-          return {
-            protocol: "psbt-lab.adapter/0.2",
-            id: request.id,
-            status: "rejected",
-            implementation,
-            error: {
-              class: "psbt.native_parse_failed",
-              message: "Native parser rejected the vector",
-            },
-          };
-        }
-      }),
-    };
-    const context = new ScenarioExecutionContext({
-      rpc: { call: vi.fn() } as never,
-      artifacts: {
-        checkpoint: vi.fn(async (scenario: string, stage: string, psbt: string) => ({
-          scenario,
-          stage,
-          psbtPath: `checkpoints/${scenario}/${stage}.psbt`,
-          factsPath: `checkpoints/${scenario}/${stage}.facts.json`,
-          facts: extractWireFacts(psbt),
-        })),
-      },
-      adapters: new Map([["libwally", adapter]]),
-      adapterTimeoutMs: 1_000,
-    });
-    const negotiated: NegotiatedAdapter = {
-      registryId: "libwally",
-      implementation,
-      capabilities: {
-        operations: ["hello", "native-parse", "roundtrip"],
-        roles: ["parser"],
-        psbtVersions: [2],
-        scriptTypes: [],
-      },
-    };
+      const validIds = new Map<string, string>(
+        BIP370_VALID_VECTORS.map((vector) => [vector.base64, vector.id]),
+      );
+      const implementation = {
+        name: "libwally-core",
+        version: "1.5.4",
+        sourceRevision: "libwally-core-release_1.5.4",
+        artifactDigest: `sha256:${"a".repeat(64)}`,
+      };
+      const adapter = {
+        request: vi.fn(async (request: AdapterRequest): Promise<AdapterResponse> => {
+          const encoded = request.payload["psbt"];
+          const validId = typeof encoded === "string" ? validIds.get(encoded) : undefined;
+          if (request.operation === "native-parse" && validId === rejectedVectorId) {
+            return {
+              protocol: "psbt-lab.adapter/0.2",
+              id: request.id,
+              status: "rejected",
+              implementation,
+              error: {
+                class: "psbt.native_parse_failed",
+                message: "Native parser rejected the vector",
+              },
+            };
+          }
+          try {
+            if (typeof encoded !== "string") throw new Error("missing psbt");
+            parsePsbtDocument(encoded);
+            return {
+              protocol: "psbt-lab.adapter/0.2",
+              id: request.id,
+              status: "ok",
+              implementation,
+              output:
+                request.operation === "roundtrip"
+                  ? { psbt: encoded, byteIdentical: true }
+                  : { nativeParser: implementation.name },
+            };
+          } catch {
+            return {
+              protocol: "psbt-lab.adapter/0.2",
+              id: request.id,
+              status: "rejected",
+              implementation,
+              error: {
+                class: "psbt.native_parse_failed",
+                message: "Native parser rejected the vector",
+              },
+            };
+          }
+        }),
+      };
+      const context = new ScenarioExecutionContext({
+        rpc: { call: vi.fn() } as never,
+        artifacts: {
+          checkpoint: vi.fn(async (scenario: string, stage: string, psbt: string) => ({
+            scenario,
+            stage,
+            psbtPath: `checkpoints/${scenario}/${stage}.psbt`,
+            factsPath: `checkpoints/${scenario}/${stage}.facts.json`,
+            facts: extractWireFacts(psbt),
+          })),
+        },
+        adapters: new Map([["libwally", adapter]]),
+        adapterTimeoutMs: 1_000,
+      });
+      const negotiated: NegotiatedAdapter = {
+        registryId: "libwally",
+        implementation,
+        capabilities: {
+          operations: ["hello", "native-parse", "roundtrip"],
+          roles: ["parser"],
+          psbtVersions: [2],
+          scriptTypes: [],
+        },
+      };
 
-    const [result] = await runScenarioCatalog(
-      [registration.create(undefined)],
-      context,
-      new Map([["libwally", negotiated]]),
-    );
+      const [result] = await runScenarioCatalog(
+        [registration.create(undefined)],
+        context,
+        new Map([["libwally", negotiated]]),
+      );
 
-    expect(result).toMatchObject({ outcome: "failed" });
-    expect(result?.assertions).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ name: "bip370-valid-vectors", passed: false }),
-      ]),
-    );
-    expect(result?.findings).toBeUndefined();
-  });
+      expect(result).toMatchObject({ outcome: "failed" });
+      expect(result?.assertions).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ name: "bip370-valid-vectors", passed: false }),
+        ]),
+      );
+      expect(result?.findings).toBeUndefined();
+    },
+  );
 
   test("publishes static resource metadata and resolves selectors without runtime state", async () => {
     const proofModule = (await import("../../src/scenarios/proof.js")) as unknown as {
