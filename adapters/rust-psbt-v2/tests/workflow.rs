@@ -322,10 +322,18 @@ fn assert_finalize_and_extract(psbt: Psbt, fixture_id: &str) {
     let finalized = finalized_response["output"]["psbt"]
         .as_str()
         .expect("finalized PSBT");
+    let finalized_psbt = Psbt::from_str(finalized).expect("finalized PSBT parses");
     assert!(
-        Psbt::from_str(finalized)
-            .expect("finalized PSBT parses")
-            .is_finalized()
+        finalized_psbt
+            .inputs
+            .iter()
+            .all(|input| input.final_script_witness.is_some())
+    );
+    assert!(
+        finalized_psbt
+            .inputs
+            .iter()
+            .all(|input| input.final_script_sig.is_none())
     );
 
     let extracted_response = handle_value(request("extract", json!({ "psbt": finalized })), DIGEST);
@@ -361,6 +369,72 @@ fn finalizes_and_extracts_p2wpkh_with_native_library_apis() {
     let psbt = fixture_psbt(false);
     let signed = sign_with_adapter(&psbt, "p2wpkh");
     assert_finalize_and_extract(signed, "p2wpkh");
+}
+
+#[test]
+fn finalizes_p2wpkh_without_noncanonical_empty_final_scriptsig() {
+    let psbt = fixture_psbt(false);
+    let signed = sign_with_adapter(&psbt, "p2wpkh");
+    let commitments = authorized_commitments("p2wpkh", &signed);
+
+    let finalized_response = handle_value_with_commitments(
+        request(
+            "finalize",
+            json!({
+                "psbt": encoded(&signed),
+                "network": "regtest",
+                "fixtureId": "p2wpkh"
+            }),
+        ),
+        DIGEST,
+        &commitments,
+    );
+
+    assert_eq!(finalized_response["status"], "ok", "{finalized_response:#}");
+    let finalized = Psbt::from_str(
+        finalized_response["output"]["psbt"]
+            .as_str()
+            .expect("finalized PSBT"),
+    )
+    .expect("finalized PSBT parses");
+    assert!(finalized.inputs[0].final_script_witness.is_some());
+    assert_eq!(finalized.inputs[0].final_script_sig, None);
+}
+
+#[test]
+fn extracts_p2wpkh_with_omitted_empty_final_scriptsig() {
+    let psbt = fixture_psbt(false);
+    let signed = sign_with_adapter(&psbt, "p2wpkh");
+    let commitments = authorized_commitments("p2wpkh", &signed);
+    let finalized_response = handle_value_with_commitments(
+        request(
+            "finalize",
+            json!({
+                "psbt": encoded(&signed),
+                "network": "regtest",
+                "fixtureId": "p2wpkh"
+            }),
+        ),
+        DIGEST,
+        &commitments,
+    );
+    assert_eq!(finalized_response["status"], "ok", "{finalized_response:#}");
+    let mut finalized = Psbt::from_str(
+        finalized_response["output"]["psbt"]
+            .as_str()
+            .expect("finalized PSBT"),
+    )
+    .expect("finalized PSBT parses");
+    assert!(finalized.inputs[0].final_script_witness.is_some());
+    finalized.inputs[0].final_script_sig = None;
+
+    let extracted_response = handle_value(
+        request("extract", json!({ "psbt": encoded(&finalized) })),
+        DIGEST,
+    );
+
+    assert_eq!(extracted_response["status"], "ok", "{extracted_response:#}");
+    assert!(extracted_response["output"]["transaction"].is_string());
 }
 
 #[test]

@@ -25,6 +25,26 @@ PUBKEY_3 = bytes.fromhex(
     "02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9"
 )
 PRIVATE_KEY_1 = bytes.fromhex("00" * 31 + "01")
+VALID_BIP370_UNDEFINED_TX_MODIFIABLE = (
+    "cHNidP8BAgQCAAAAAQQBAQEFAQIBBgEIAfsEAgAAAAABAFICAAAAAcGqJW4hS5ahgi"
+    "+T3kK/87Xz/40FGTBuNRXXUVpegFsSAAAAAAD/////ARjGmjsAAAAAFgAUsKOvFEII"
+    "QSaTyn0WaFK1LbCu8G4AAAAAAQEfGMaaOwAAAAAWABSwo68UQghBJpPKfRZoUrUtsK7"
+    "wbgEOIAsK2SFBnByHGXNdctxzn56p4GONH+TB7vD5lECEgV/IAQ8EAAAAAAAiAgLWA"
+    "fhIRqZ1X3dr4A49nej7EKzJNfuDxF+wFi1MrVq3khj2nYc+VAAAgAEAAIAAAACAAA"
+    "AAACoAAAABAwgACK8vAAAAAAEEFgAUxDD2TEdW2jENvRoIVXLvKZkmJywAIgIC42+"
+    "/9T3VNAcM+P05ZhRoDzV6m4Xbc0C/HPp0XSrXs0AY9p2HPlQAAIABAACAAAAAgAEA"
+    "AABkAAAAAQMIi73rCwAAAAABBBYAFE3Rk6yWSlasG54cyoRU/i9HT4UTAA=="
+)
+VALID_BIP370_ALL_TX_MODIFIABLE_BITS = (
+    "cHNidP8BAgQCAAAAAQQBAQEFAQIBBgH/AfsEAgAAAAABAFICAAAAAcGqJW4hS5ahgi"
+    "+T3kK/87Xz/40FGTBuNRXXUVpegFsSAAAAAAD/////ARjGmjsAAAAAFgAUsKOvFEII"
+    "QSaTyn0WaFK1LbCu8G4AAAAAAQEfGMaaOwAAAAAWABSwo68UQghBJpPKfRZoUrUtsK7"
+    "wbgEOIAsK2SFBnByHGXNdctxzn56p4GONH+TB7vD5lECEgV/IAQ8EAAAAAAAiAgLWA"
+    "fhIRqZ1X3dr4A49nej7EKzJNfuDxF+wFi1MrVq3khj2nYc+VAAAgAEAAIAAAACAAA"
+    "AAACoAAAABAwgACK8vAAAAAAEEFgAUxDD2TEdW2jENvRoIVXLvKZkmJywAIgIC42+"
+    "/9T3VNAcM+P05ZhRoDzV6m4Xbc0C/HPp0XSrXs0AY9p2HPlQAAIABAACAAAAAgAEA"
+    "AABkAAAAAQMIi73rCwAAAAABBBYAFE3Rk6yWSlasG54cyoRU/i9HT4UTAA=="
+)
 
 
 def request(operation, payload):
@@ -141,6 +161,27 @@ class AdapterTests(unittest.TestCase):
         self.assertTrue(inspected["unsignedTxSha256"].startswith("sha256:"))
         self.assertEqual(roundtripped["psbt"], encoded)
         self.assertTrue(roundtripped["byteIdentical"])
+
+    def test_accepts_valid_bip370_undefined_tx_modifiable_flags(self):
+        for vector, expected_flags in (
+            (VALID_BIP370_UNDEFINED_TX_MODIFIABLE, 8),
+            (VALID_BIP370_ALL_TX_MODIFIABLE_BITS, 255),
+        ):
+            for operation in ("native-parse", "inspect", "roundtrip"):
+                with self.subTest(operation=operation, expected_flags=expected_flags):
+                    output = ok(
+                        operation,
+                        {"psbt": vector},
+                    )
+
+                    self.assertEqual(output["psbtVersion"], 2)
+                    if operation == "inspect":
+                        self.assertEqual(
+                            output["transactionModifiableFlags"], expected_flags
+                        )
+                    if operation == "roundtrip":
+                        self.assertEqual(output["psbt"], vector)
+                        self.assertTrue(output["byteIdentical"])
 
     def test_strict_parser_and_exact_payload_shape_reject_invalid_input(self):
         invalid = base64.b64encode(b"not a psbt").decode("ascii")

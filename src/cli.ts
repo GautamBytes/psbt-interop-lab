@@ -65,6 +65,18 @@ interface RunOptions {
   category?: string;
 }
 
+export type BaselineOptions = Omit<RunOptions, "suite">;
+
+interface BaselineRunRequest extends BaselineOptions {
+  readonly suite: "proof";
+}
+
+export interface BaselineDependencies {
+  readonly checkRuntime: () => Promise<DoctorCheck[]>;
+  readonly execute: (options: BaselineRunRequest) => Promise<void>;
+  readonly write: (value: string) => void;
+}
+
 export interface QuickstartOptions {
   readonly artifacts: string;
   readonly build: boolean;
@@ -252,6 +264,29 @@ function defaultQuickstartDependencies(): QuickstartDependencies {
   };
 }
 
+function defaultBaselineDependencies(): BaselineDependencies {
+  return {
+    checkRuntime: () => doctor(),
+    execute: executeProof,
+    write: (value) => process.stdout.write(value),
+  };
+}
+
+export async function runBaseline(
+  options: BaselineOptions,
+  dependencies: BaselineDependencies = defaultBaselineDependencies(),
+): Promise<void> {
+  dependencies.write("PSBT Interop Lab baseline\n\n[1/2] Checking the local runtime...\n");
+  const checks = await dependencies.checkRuntime();
+  dependencies.write(`${formatDoctorChecks(checks)}\n`);
+  if (doctorHasBlockingFailure(checks)) {
+    throw new Error("Baseline cannot continue because required runtime checks failed");
+  }
+
+  dependencies.write("\n[2/2] Running the complete proof matrix...\n");
+  await dependencies.execute({ ...options, suite: "proof" });
+}
+
 export async function runQuickstart(
   options: QuickstartOptions,
   dependencies: QuickstartDependencies = defaultQuickstartDependencies(),
@@ -323,6 +358,12 @@ export function createProgram(): Command {
     .option("--no-build", "Use existing Docker images without rebuilding")
     .option("--keep-core", "Leave the local Bitcoin Core regtest service running")
     .action(async (options: QuickstartOptions) => runQuickstart(options));
+
+  addRuntimeOptions(
+    program
+      .command("baseline")
+      .description("Check the runtime and run the complete active proof matrix"),
+  ).action(async (options: BaselineOptions) => runBaseline(options));
 
   program
     .command("doctor")

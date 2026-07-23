@@ -617,7 +617,7 @@ export const PROOF_SCENARIO_REGISTRATIONS: readonly ProofScenarioRegistration[] 
   registerScenario(
     "bip370-official-vectors-libwally",
     { core: false, fixtures: [], adapters: ["libwally"] },
-    () => createBip370VectorScenario("libwally", "libwally-core", ["valid-08", "valid-13"]),
+    () => createBip370VectorScenario("libwally", "libwally-core"),
   ),
   ...(["psbtv2-p2wpkh-rust-to-libwally", "psbtv2-p2wpkh-libwally-to-rust"] as const).map((id) =>
     registerScenario(

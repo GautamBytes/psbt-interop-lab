@@ -169,9 +169,9 @@ input is final; removal during earlier transitions remains a preservation failur
 requires the exact committed script-path witness and Core policy acceptance.
 PSBTv2 scenarios send all 14 valid and 21 invalid official BIP370 vectors through rust-psbt-v2 and
 libwally, then run bidirectional P2WPKH and cross-library 2-of-3 workflows. Core policy-checks every
-completed transaction. The empty final-scriptSig diagnostic attributes rust-psbt's requirement for
-an explicit empty field as the standards divergence; libwally's strict rejection of that field is
-the expected BIP174 behavior.
+completed transaction. The rust-psbt-v2 adapter serializes finalized SegWit PSBTs with canonical
+omission of empty final scriptSig fields and accepts the same canonical form before native
+extraction; strict rejection of an explicit zero-length field remains expected BIP174 behavior.
 
 Scenario findings carry a stable rule ID and the actual observation into the central conformance
 catalog. Classification adds normative level, authoritative source, expected behavior, severity,

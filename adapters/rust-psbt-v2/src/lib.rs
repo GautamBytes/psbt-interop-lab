@@ -673,6 +673,45 @@ fn clear_non_final_fields(input: &mut Input) {
     input.tap_merkle_root = None;
 }
 
+fn final_script_sig_is_empty(input: &Input) -> bool {
+    input
+        .final_script_sig
+        .as_ref()
+        .is_some_and(|script| script.is_empty())
+}
+
+fn input_has_final_script_data(input: &Input) -> bool {
+    input.final_script_witness.is_some()
+        || input
+            .final_script_sig
+            .as_ref()
+            .is_some_and(|script| !script.is_empty())
+}
+
+fn finalized_input_count(psbt: &Psbt) -> usize {
+    psbt.inputs
+        .iter()
+        .filter(|input| input_has_final_script_data(input))
+        .count()
+}
+
+fn omit_empty_final_script_sigs(psbt: &mut Psbt) {
+    for input in &mut psbt.inputs {
+        if final_script_sig_is_empty(input) {
+            input.final_script_sig = None;
+        }
+    }
+}
+
+fn native_extractable_psbt(mut psbt: Psbt) -> Psbt {
+    for input in &mut psbt.inputs {
+        if input.final_script_sig.is_none() && input.final_script_witness.is_some() {
+            input.final_script_sig = Some(ScriptBuf::new());
+        }
+    }
+    psbt
+}
+
 fn finalize_preserving_intent(
     mut psbt: Psbt,
     fixture_id: &str,
@@ -776,7 +815,7 @@ fn finalize(request: &Request, digest: &str, commitments: &FixtureCommitments) -
     };
     let secp = Secp256k1::verification_only();
     let native = finalizer.finalize(&secp).ok();
-    let finalized = match native
+    let mut finalized = match native
         .filter(|candidate| native_finalization_preserves_intent(&parsed.psbt, candidate))
         .map(Ok)
         .unwrap_or_else(|| finalize_preserving_intent(parsed.psbt, fixture_id, &public_key))
@@ -786,17 +825,14 @@ fn finalize(request: &Request, digest: &str, commitments: &FixtureCommitments) -
             return failure(&request.id, digest, "rejected", "finalize.failed", message);
         }
     };
-    let finalized_inputs = finalized
-        .inputs
-        .iter()
-        .filter(|input| input.is_finalized())
-        .count();
+    omit_empty_final_script_sigs(&mut finalized);
+    let finalized_inputs = finalized_input_count(&finalized);
     success(
         &request.id,
         digest,
         json!({
             "psbt": STANDARD.encode(finalized.serialize()),
-            "finalized": finalized.is_finalized(),
+            "finalized": finalized_inputs == finalized.inputs.len(),
             "finalizedInputs": finalized_inputs
         }),
     )
@@ -830,7 +866,7 @@ fn extract(request: &Request, digest: &str) -> Value {
             "PSBTv2 transaction identity could not be determined",
         );
     };
-    let extractor = match Extractor::new(parsed.psbt) {
+    let extractor = match Extractor::new(native_extractable_psbt(parsed.psbt)) {
         Ok(extractor) => extractor,
         Err(_) => {
             return failure(

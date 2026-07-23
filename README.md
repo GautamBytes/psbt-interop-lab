@@ -180,9 +180,10 @@ The current baseline allows only btcsuite 1.2.0 to either accept or reject the d
 probe; another parser accepting malformed input, or any parser crashing or timing out, still fails
 the scenario.
 
-The PSBTv2 baseline also names strict-parser differences around an explicit empty final scriptSig
-and undefined `PSBT_GLOBAL_TX_MODIFIABLE` bits. These findings are bounded to the affected
-implementations; completed transactions still have to pass Bitcoin Core policy on isolated regtest.
+The PSBTv2 baseline now enforces the canonical omission of empty final scriptSig fields and accepts
+the official BIP370 vectors with undefined `PSBT_GLOBAL_TX_MODIFIABLE` bits, while transition checks
+still require unknown bits to remain unchanged. Completed transactions still have to pass Bitcoin
+Core policy on isolated regtest.
 The Taproot script-path baseline permits `PSBT_OUT_TAP_BIP32_DERIVATION` cleanup only at the
 BIP371 finalization boundary, after every input is final. Earlier removal remains a metadata
 preservation failure. The exact committed leaf witness and the extracted transaction must still

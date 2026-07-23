@@ -12,6 +12,7 @@ describe("CLI program", () => {
 
     expect(commands).toEqual([
       "quickstart",
+      "baseline",
       "doctor",
       "self-test",
       "list",
@@ -81,14 +82,30 @@ describe("CLI program", () => {
     expect(artifacts?.defaultValue).toBe(resolve(process.cwd(), "artifacts"));
   });
 
-  test.each(["run", "matrix"])("accepts an external adapter manifest for %s", (commandName) => {
-    const command = createProgram().commands.find((candidate) => candidate.name() === commandName);
+  test("offers a baseline command with runtime options but no suite selector", () => {
+    const baseline = createProgram().commands.find((command) => command.name() === "baseline");
 
-    expect(command?.options.some((option) => option.long === "--adapter-manifest")).toBe(true);
-    expect(command?.options.some((option) => option.long === "--suite-manifest")).toBe(true);
+    expect(baseline?.options.some((option) => option.long === "--artifacts")).toBe(true);
+    expect(baseline?.options.some((option) => option.long === "--adapter-manifest")).toBe(true);
+    expect(baseline?.options.some((option) => option.long === "--suite-manifest")).toBe(true);
+    expect(baseline?.options.some((option) => option.long === "--scenario")).toBe(true);
+    expect(baseline?.options.some((option) => option.long === "--category")).toBe(true);
+    expect(baseline?.options.some((option) => option.long === "--suite")).toBe(false);
   });
 
-  test.each(["run", "matrix"])(
+  test.each(["run", "matrix", "baseline"])(
+    "accepts an external adapter manifest for %s",
+    (commandName) => {
+      const command = createProgram().commands.find(
+        (candidate) => candidate.name() === commandName,
+      );
+
+      expect(command?.options.some((option) => option.long === "--adapter-manifest")).toBe(true);
+      expect(command?.options.some((option) => option.long === "--suite-manifest")).toBe(true);
+    },
+  );
+
+  test.each(["run", "matrix", "baseline"])(
     "accepts repeatable scenarios and an optional category for %s",
     (commandName) => {
       const command = createProgram().commands.find(
