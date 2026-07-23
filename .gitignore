@@ -4,6 +4,7 @@ artifacts/
 coverage/
 .DS_Store
 adapters/rust-bitcoin/target/
+adapters/rust-psbt-v2/target/
 __pycache__/
 *.py[cod]
 *.log
