@@ -55,9 +55,9 @@ finalization boundary is not classified as metadata loss.
 ### Empty final scriptSig
 
 BIP174 requires an empty `PSBT_IN_FINAL_SCRIPTSIG` to be omitted. A PSBT containing an explicit
-zero-length value is not treated as equivalent to the canonical absent form. The current PSBTv2
-scenario attributes the divergence to rust-psbt requiring the explicit empty field; libwally's
-strict rejection of that explicit field is recorded as expected parser behavior.
+zero-length value is not treated as equivalent to the canonical absent form. The PSBTv2 scenarios
+require finalized SegWit PSBTs with omitted empty scriptSig fields to remain extractable, while
+strict rejection of an explicit zero-length field remains expected parser behavior.
 
 ## Challenging a Classification
 
