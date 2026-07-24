@@ -4,6 +4,7 @@ import {
   formatDoctorChecks,
   formatProofSummary,
   formatReplaySummary,
+  formatRunComparison,
   formatScenarioCatalog,
 } from "../src/cli-output.js";
 
@@ -84,6 +85,59 @@ describe("CLI output", () => {
     });
     expect(output).toContain("Verified checkpoints: 5");
     expect(output).toContain("FIND  known-parser-divergence: btcsuite-go");
+  });
+
+  test("prints run comparison changes for humans", () => {
+    const output = formatRunComparison({
+      changed: true,
+      base: { runId: "base-run", outcome: "passed", verifiedCheckpoints: 3 },
+      head: { runId: "head-run", outcome: "failed", verifiedCheckpoints: 4 },
+      summary: {
+        runOutcomeChanged: true,
+        scenarioChanges: 1,
+        assertionChanges: 1,
+        findingChanges: 1,
+        adapterChanges: 1,
+      },
+      changes: [
+        { kind: "run-outcome-changed", before: "passed", after: "failed" },
+        {
+          kind: "adapter-changed",
+          adapter: "rust-bitcoin",
+          before: "0.1.0",
+          after: "0.2.0",
+        },
+        {
+          kind: "scenario-outcome-changed",
+          scenarioId: "happy-path",
+          before: "passed",
+          after: "failed",
+        },
+        {
+          kind: "assertion-changed",
+          scenarioId: "happy-path",
+          assertionName: "core-policy-accepted",
+          before: "passed",
+          after: "failed",
+        },
+        {
+          kind: "finding-added",
+          scenarioId: "happy-path",
+          findingId: "policy-rejected",
+          implementation: "rust-bitcoin",
+        },
+      ],
+    });
+
+    expect(output).toContain("Run comparison: CHANGED");
+    expect(output).toContain("Base: base-run PASS");
+    expect(output).toContain("Head: head-run FAIL");
+    expect(output).toContain("Summary: scenarios=1 assertions=1 findings=1 adapters=1");
+    expect(output).toContain("RUN   passed -> failed");
+    expect(output).toContain("ADAPT rust-bitcoin 0.1.0 -> 0.2.0");
+    expect(output).toContain("SCEN  happy-path passed -> failed");
+    expect(output).toContain("ASSERT happy-path core-policy-accepted passed -> failed");
+    expect(output).toContain("FIND+ happy-path policy-rejected rust-bitcoin");
   });
 
   test("keeps unsupported and skipped outcomes distinct from failures", () => {

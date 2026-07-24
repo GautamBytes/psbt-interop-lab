@@ -1,5 +1,6 @@
 import { type DetectorCanaryResult, detectorCanariesPassed } from "./canaries.js";
 import type { AdapterConformanceReport } from "./conformance/check.js";
+import type { RunComparison, RunComparisonChange } from "./runner/compare.js";
 import type { ReplaySummary } from "./runner/replay.js";
 import type { ProofResult, ProofScenarioSummary } from "./scenarios/proof.js";
 
@@ -94,6 +95,56 @@ export function formatReplaySummary(summary: ReplaySummary): string {
     for (const finding of scenario.findings ?? []) {
       lines.push(`FIND  ${finding.id}: ${finding.implementation}`, `      ${finding.summary}`);
     }
+  }
+  return lines.join("\n");
+}
+
+function runOutcomeStatus(outcome: RunComparison["base"]["outcome"]): string {
+  return outcome === "passed" ? "PASS" : "FAIL";
+}
+
+function formatRunComparisonChange(change: RunComparisonChange): string {
+  switch (change.kind) {
+    case "run-outcome-changed":
+      return `RUN   ${change.before} -> ${change.after}`;
+    case "adapter-added":
+      return `ADAPT ${change.adapter} added ${change.after}`;
+    case "adapter-removed":
+      return `ADAPT ${change.adapter} removed ${change.before}`;
+    case "adapter-changed":
+      return `ADAPT ${change.adapter} ${change.before} -> ${change.after}`;
+    case "scenario-added":
+      return `SCEN+ ${change.scenarioId} ${change.after}`;
+    case "scenario-removed":
+      return `SCEN- ${change.scenarioId} ${change.before}`;
+    case "scenario-outcome-changed":
+      return `SCEN  ${change.scenarioId} ${change.before} -> ${change.after}`;
+    case "assertion-added":
+      return `ASSERT+ ${change.scenarioId} ${change.assertionName} ${change.after}`;
+    case "assertion-removed":
+      return `ASSERT- ${change.scenarioId} ${change.assertionName} ${change.before}`;
+    case "assertion-changed":
+      return `ASSERT ${change.scenarioId} ${change.assertionName} ${change.before} -> ${change.after}`;
+    case "finding-added":
+      return `FIND+ ${change.scenarioId} ${change.findingId} ${change.implementation}`;
+    case "finding-removed":
+      return `FIND- ${change.scenarioId} ${change.findingId} ${change.implementation}`;
+    case "finding-changed":
+      return `FIND  ${change.scenarioId} ${change.findingId} ${change.implementation}`;
+  }
+}
+
+export function formatRunComparison(comparison: RunComparison): string {
+  const lines = [
+    `Run comparison: ${comparison.changed ? "CHANGED" : "UNCHANGED"}`,
+    `Base: ${comparison.base.runId} ${runOutcomeStatus(comparison.base.outcome)} (${comparison.base.verifiedCheckpoints} checkpoints)`,
+    `Head: ${comparison.head.runId} ${runOutcomeStatus(comparison.head.outcome)} (${comparison.head.verifiedCheckpoints} checkpoints)`,
+    `Summary: scenarios=${comparison.summary.scenarioChanges} assertions=${comparison.summary.assertionChanges} findings=${comparison.summary.findingChanges} adapters=${comparison.summary.adapterChanges}`,
+  ];
+  if (comparison.changes.length === 0) {
+    lines.push("No recorded compatibility changes.");
+  } else {
+    lines.push("", ...comparison.changes.map((change) => formatRunComparisonChange(change)));
   }
   return lines.join("\n");
 }
