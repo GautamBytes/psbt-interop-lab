@@ -1,3 +1,4 @@
+import { existsSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 
 const mode = process.argv[2] ?? "ok";
@@ -87,6 +88,28 @@ for await (const line of lines) {
   }
   if (mode === "stderr") {
     process.stderr.write("diagnostic".repeat(512));
+  }
+
+  if (mode === "wrong-id-once") {
+    const marker = process.argv[3];
+    if (!marker) throw new Error("wrong-id-once requires a marker path");
+    if (!existsSync(marker)) {
+      writeFileSync(marker, "failed\n", { flag: "wx", mode: 0o600 });
+      process.stdout.write(
+        `${JSON.stringify({
+          protocol: "psbt-lab.adapter/0.2",
+          id: "different-id",
+          status: "ok",
+          implementation: {
+            name: "fake",
+            version: "1.0.0",
+            artifactDigest: `sha256:${"a".repeat(64)}`,
+          },
+          output: { echoed: request.operation },
+        })}\n`,
+      );
+      continue;
+    }
   }
 
   const id = mode === "wrong-id" ? "different-id" : request.id;

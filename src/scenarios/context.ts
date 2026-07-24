@@ -1,5 +1,8 @@
+import { performance } from "node:perf_hooks";
 import type { RpcCaller } from "../core/fixtures.js";
+import { AdapterTimeoutError } from "../protocol/adapter-process.js";
 import type {
+  AdapterImplementation,
   AdapterOperation,
   AdapterRequest,
   AdapterResponse,
@@ -9,11 +12,13 @@ import { ADAPTER_PROTOCOL } from "../protocol/types.js";
 import { parsePsbtDocument } from "../psbt/document.js";
 import { assertPsbtTransition, type PsbtTransitionPolicy } from "../psbt/invariants.js";
 import type { CheckpointRecord } from "../runner/artifacts.js";
-import type { ScenarioAssertionEvidence } from "./definition.js";
+import type { ScenarioAdapterCell, ScenarioAssertionEvidence } from "./definition.js";
 import { ScenarioAssertionError } from "./engine.js";
 
 export interface AdapterRequestClient {
+  readonly implementation?: AdapterImplementation;
   request(request: AdapterRequest, timeoutMs: number): Promise<AdapterResponse>;
+  restart?(): Promise<void>;
 }
 
 export interface CheckpointWriter {
@@ -42,6 +47,8 @@ export interface CorePolicyResult {
   readonly txid?: string;
   readonly rejectReason?: string;
 }
+
+const UNKNOWN_ARTIFACT_DIGEST = `sha256:${"0".repeat(64)}`;
 
 function asObject(value: unknown, label: string): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
@@ -95,12 +102,28 @@ function parsePolicyResult(value: unknown): CorePolicyResult {
   };
 }
 
+function elapsedMilliseconds(startedAt: number): number {
+  return Math.max(0, Math.round((performance.now() - startedAt) * 1000) / 1000);
+}
+
+async function restartAdapter(adapter: AdapterRequestClient): Promise<boolean> {
+  if (!adapter.restart) return false;
+  try {
+    await adapter.restart();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export class ScenarioExecutionContext {
   readonly #rpc: RpcCaller;
   readonly #artifacts: CheckpointWriter;
   readonly #adapters: ReadonlyMap<string, AdapterRequestClient>;
   readonly #adapterTimeoutMs: number;
   readonly #checkpoints: CheckpointRecord[] = [];
+  readonly #adapterCells: ScenarioAdapterCell[] = [];
+  readonly #knownImplementations = new Map<string, AdapterImplementation>();
   #requestCounter = 0;
 
   constructor(options: ScenarioExecutionContextOptions) {
@@ -121,6 +144,10 @@ export class ScenarioExecutionContext {
     return this.#checkpoints;
   }
 
+  takeAdapterCells(): ScenarioAdapterCell[] {
+    return this.#adapterCells.splice(0);
+  }
+
   async request(
     adapterName: string,
     operation: AdapterOperation,
@@ -131,27 +158,79 @@ export class ScenarioExecutionContext {
       throw new Error(`Adapter ${adapterName} is not available`);
     }
     this.#requestCounter += 1;
-    return adapter.request(
-      {
-        protocol: ADAPTER_PROTOCOL,
-        id: `request-${this.#requestCounter}`,
+    const request: AdapterRequest = {
+      protocol: ADAPTER_PROTOCOL,
+      id: `request-${this.#requestCounter}`,
+      operation,
+      payload,
+    };
+    const startedAt = performance.now();
+    try {
+      const response = await adapter.request(request, this.#adapterTimeoutMs);
+      this.#knownImplementations.set(adapterName, response.implementation);
+      const restarted =
+        response.status === "crashed" || response.status === "timeout"
+          ? await restartAdapter(adapter)
+          : false;
+      this.#adapterCells.push({
+        adapter: adapterName,
         operation,
-        payload,
-      },
-      this.#adapterTimeoutMs,
-    );
+        requestId: request.id,
+        status:
+          response.status === "ok"
+            ? "passed"
+            : response.status === "unsupported"
+              ? "unsupported"
+              : "failed",
+        detail:
+          response.status === "ok" ? "ok" : `${response.error.class}: ${response.error.message}`,
+        durationMs: elapsedMilliseconds(startedAt),
+        ...(response.status !== "ok" ? { errorClass: response.error.class } : {}),
+        ...(restarted ? { restarted } : {}),
+      });
+      return response;
+    } catch (error) {
+      const errorClass =
+        error instanceof Error ? error.name || error.constructor.name : typeof error;
+      const message = error instanceof Error ? error.message : String(error);
+      const restarted = await restartAdapter(adapter);
+      this.#adapterCells.push({
+        adapter: adapterName,
+        operation,
+        requestId: request.id,
+        status: "failed",
+        detail: `${errorClass}: ${message}`,
+        durationMs: elapsedMilliseconds(startedAt),
+        errorClass,
+        ...(restarted ? { restarted } : {}),
+      });
+      return {
+        protocol: ADAPTER_PROTOCOL,
+        id: request.id,
+        status: error instanceof AdapterTimeoutError ? "timeout" : "crashed",
+        implementation: this.#knownImplementations.get(adapterName) ??
+          adapter.implementation ?? {
+            name: adapterName,
+            version: "unknown",
+            artifactDigest: UNKNOWN_ARTIFACT_DIGEST,
+          },
+        error: {
+          class: errorClass,
+          message,
+          retryable: true,
+        },
+      };
+    }
   }
 
   outputString(response: AdapterResponse, key: string, operation: string): string {
     if (response.status !== "ok") {
       const message = `${response.implementation.name} ${operation} failed: ${response.error.class}: ${response.error.message}`;
-      if (response.status === "crashed" || response.status === "timeout") {
-        throw new Error(message);
-      }
       throw new ScenarioAssertionError(message, [
         {
           name: `${operation}-adapter-response`,
           passed: false,
+          likelyImplementation: response.implementation.name,
           summary: `${response.implementation.name} returned ${response.status}`,
         },
       ]);

@@ -294,6 +294,7 @@ export interface DockerAdapterOptions {
 
 export interface ProofRuntimeAdapter {
   request: AdapterProcess["request"];
+  restart?(): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -995,11 +996,8 @@ export async function runProofWithDependencies(
           ...(await negotiateBuiltInAdapter(id, context)),
           registryId: id,
         });
-      } catch (error) {
-        const detail = error instanceof Error ? error.message : "unknown adapter error";
-        throw new Error(`Failed to negotiate built-in adapter ${id}: ${detail}`, {
-          cause: error,
-        });
+      } catch {
+        // Capability checks will mark scenarios that require this adapter as unsupported.
       }
     }
     const externalNegotiated = new Map<string, NegotiatedAdapter>();

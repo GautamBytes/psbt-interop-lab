@@ -14,6 +14,7 @@ import {
 
 export interface ExternalAdapterProcess {
   request(request: AdapterRequest, timeoutMs: number): Promise<AdapterResponse>;
+  restart?(): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -78,6 +79,7 @@ export function createExternalAdapterRegistry(
         assertIdentity(definition.id, response, definition.expected);
         return response;
       },
+      ...(child.restart ? { restart: () => child.restart?.() ?? Promise.resolve() } : {}),
       close: () => child.close(),
     };
     registry.set(definition.id, {

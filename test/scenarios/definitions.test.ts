@@ -590,6 +590,69 @@ describe("BDK regression scenario", () => {
     expect(go.requests.map(({ operation }) => operation)).toEqual(["sign", "finalize-inputs"]);
   });
 
+  test.each(["crashed", "timeout"] as const)(
+    "keeps BDK adapter %s as scenario evidence instead of infrastructure failures",
+    async (status) => {
+      const initial = encodedPsbt([[], []]);
+      const signed = encodedPsbt([[signedInput()], [signedInput()]]);
+      const mixed = encodedPsbt([[finalizedInput()], [signedInput()]]);
+      const rust = adapter((request) =>
+        success(request, rustImplementation, {
+          psbt: request.operation === "finalize-inputs" ? mixed : signed,
+        }),
+      );
+      const bdk = adapter((request) =>
+        request.operation === "finalize"
+          ? {
+              protocol: "psbt-lab.adapter/0.2",
+              id: request.id,
+              status,
+              implementation: bdkImplementation,
+              error: {
+                class: status === "timeout" ? "AdapterTimeoutError" : "adapter.process_exit",
+                message: status === "timeout" ? "adapter timed out" : "adapter exited",
+              },
+            }
+          : success(request, bdkImplementation, { psbt: initial }),
+      );
+      const context = executionContext(
+        new Map([
+          ["rust-bitcoin", rust],
+          ["bdkpython", bdk],
+        ]),
+      );
+
+      const [result] = await runScenarioCatalog(
+        [createBdkRegressionScenario(fixture("bdk-finalize-regression", initial, 2))],
+        context,
+        new Map([
+          ["rust-bitcoin", rustNegotiated],
+          ["bdkpython", bdkNegotiated],
+        ]),
+      );
+
+      expect(result).toMatchObject({
+        outcome: "failed",
+        assertions: expect.arrayContaining([
+          expect.objectContaining({
+            name: "bdk-regression-reproduced",
+            passed: false,
+            likelyImplementation: "bdkpython",
+          }),
+        ]),
+        adapterCells: expect.arrayContaining([
+          expect.objectContaining({
+            adapter: "bdkpython",
+            operation: "finalize",
+            status: "failed",
+            errorClass: status === "timeout" ? "AdapterTimeoutError" : "adapter.process_exit",
+          }),
+        ]),
+      });
+      expect(result).not.toHaveProperty("infrastructureError");
+    },
+  );
+
   test("fails if the selected finalizer also finalizes the second input", async () => {
     const initial = encodedPsbt([[], []]);
     const signed = encodedPsbt([[signedInput()], [signedInput()]]);

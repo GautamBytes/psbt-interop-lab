@@ -1,10 +1,15 @@
 import { describe, expect, test, vi } from "vitest";
 import type { NegotiatedAdapter } from "../../src/protocol/types.js";
-import type { ScenarioDefinition } from "../../src/scenarios/definition.js";
+import type { ScenarioAdapterCell, ScenarioDefinition } from "../../src/scenarios/definition.js";
 import { runScenarioCatalog, ScenarioAssertionError } from "../../src/scenarios/engine.js";
 
 interface TestContext {
   calls: string[];
+}
+
+interface CellContext extends TestContext {
+  cells: ScenarioAdapterCell[];
+  takeAdapterCells(): ScenarioAdapterCell[];
 }
 
 const rustAdapter: NegotiatedAdapter = {
@@ -36,11 +41,11 @@ function passingEvidence(name: string) {
   return [{ name, passed: true }] as const;
 }
 
-function scenario(
+function scenario<Context = TestContext>(
   id: string,
-  run: ScenarioDefinition<TestContext>["run"],
-  overrides: Partial<ScenarioDefinition<TestContext>> = {},
-): ScenarioDefinition<TestContext> {
+  run: ScenarioDefinition<Context>["run"],
+  overrides: Partial<ScenarioDefinition<Context>> = {},
+): ScenarioDefinition<Context> {
   return {
     id,
     title: id,
@@ -73,6 +78,57 @@ describe("scenario engine", () => {
       { id: "first", outcome: "passed" },
       { id: "second", outcome: "passed" },
     ]);
+  });
+
+  test("attaches scenario adapter cells without leaking preflight negotiation cells", async () => {
+    const context: CellContext = {
+      calls: [],
+      cells: [
+        {
+          adapter: "rust-bitcoin",
+          operation: "hello",
+          requestId: "request-1",
+          status: "passed",
+          detail: "ok",
+          durationMs: 0.1,
+        },
+      ],
+      takeAdapterCells() {
+        return this.cells.splice(0);
+      },
+    };
+    const scenarioCell: ScenarioAdapterCell = {
+      adapter: "rust-bitcoin",
+      operation: "sign",
+      requestId: "request-2",
+      status: "failed",
+      detail: `AdapterTimeoutError: timed out ${MINIMAL_PSBT}`,
+      durationMs: 10,
+      errorClass: "AdapterTimeoutError",
+      restarted: true,
+    };
+
+    const [result] = await runScenarioCatalog(
+      [
+        scenario("captures-cells", async (value: CellContext) => {
+          value.cells.push(scenarioCell);
+          return { summary: "captured", assertions: passingEvidence("captured") };
+        }),
+      ],
+      context,
+      new Map(),
+    );
+
+    expect(result).toMatchObject({
+      outcome: "passed",
+      adapterCells: [
+        {
+          ...scenarioCell,
+          detail: "AdapterTimeoutError: timed out [redacted:psbt]",
+        },
+      ],
+    });
+    expect(JSON.stringify(result)).not.toContain(MINIMAL_PSBT);
   });
 
   test("preserves and redacts compatibility findings without failing a completed scenario", async () => {
@@ -138,6 +194,26 @@ describe("scenario engine", () => {
     expect(result).toMatchObject({
       id: "taproot-sign",
       outcome: "unsupported",
+      adapterCells: expect.arrayContaining([
+        expect.objectContaining({
+          adapter: "rust-bitcoin",
+          operation: "sign",
+          status: "unsupported",
+          errorClass: "capability.psbtVersion.missing",
+        }),
+        expect.objectContaining({
+          adapter: "rust-bitcoin",
+          operation: "sign",
+          status: "unsupported",
+          errorClass: "capability.scriptType.missing",
+        }),
+        expect.objectContaining({
+          adapter: "rust-bitcoin",
+          operation: "sign",
+          status: "unsupported",
+          errorClass: "capability.feature.missing",
+        }),
+      ]),
       missingCapabilities: [
         { adapter: "rust-bitcoin", kind: "psbtVersion", value: 2 },
         { adapter: "rust-bitcoin", kind: "scriptType", value: "p2tr-keypath" },
@@ -184,6 +260,14 @@ describe("scenario engine", () => {
     expect(run).not.toHaveBeenCalled();
     expect(result).toMatchObject({
       outcome: "unsupported",
+      adapterCells: [
+        expect.objectContaining({
+          adapter: "rust-bitcoin",
+          operation: "finalize-inputs",
+          status: "unsupported",
+          errorClass: "capability.operationScriptType.missing",
+        }),
+      ],
       missingCapabilities: [
         {
           adapter: "rust-bitcoin",

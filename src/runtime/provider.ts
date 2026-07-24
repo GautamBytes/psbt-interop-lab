@@ -2,6 +2,7 @@ import type { AdapterImplementation, AdapterRequest, AdapterResponse } from "../
 
 export interface RuntimeAdapterProcess {
   request(request: AdapterRequest, timeoutMs: number): Promise<AdapterResponse>;
+  restart?(): Promise<void>;
   close(): Promise<void>;
 }
 

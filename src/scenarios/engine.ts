@@ -1,10 +1,15 @@
 import { performance } from "node:perf_hooks";
-import type { NegotiatedAdapter } from "../protocol/types.js";
+import {
+  type AdapterOperation,
+  adapterOperations,
+  type NegotiatedAdapter,
+} from "../protocol/types.js";
 import type { PsbtTransitionFailure } from "../psbt/invariants.js";
 import { redactSensitiveText } from "../runner/report.js";
 import type {
   AdapterCapabilityRequirement,
   MissingCapability,
+  ScenarioAdapterCell,
   ScenarioAssertionEvidence,
   ScenarioDefinition,
   ScenarioExecutionOutput,
@@ -13,6 +18,7 @@ import type {
 } from "./definition.js";
 
 const SAFE_IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+const ADAPTER_OPERATIONS = new Set<string>(adapterOperations);
 
 export class ScenarioAssertionError extends Error {
   override readonly name = "ScenarioAssertionError";
@@ -121,6 +127,24 @@ function elapsedMilliseconds(startedAt: number): number {
   return Math.max(0, Math.round((performance.now() - startedAt) * 1000) / 1000);
 }
 
+interface AdapterCellCapture {
+  takeAdapterCells(): readonly ScenarioAdapterCell[];
+}
+
+function adapterCellCapture(value: unknown): AdapterCellCapture | undefined {
+  if (typeof value !== "object" || value === null || !("takeAdapterCells" in value)) {
+    return undefined;
+  }
+  const candidate = value as { takeAdapterCells?: unknown };
+  return typeof candidate.takeAdapterCells === "function"
+    ? (candidate as AdapterCellCapture)
+    : undefined;
+}
+
+function takeAdapterCells(value: unknown): readonly ScenarioAdapterCell[] {
+  return adapterCellCapture(value)?.takeAdapterCells() ?? [];
+}
+
 function copyFailure(failure: PsbtTransitionFailure): PsbtTransitionFailure {
   const location =
     failure.location.kind === "global"
@@ -211,6 +235,56 @@ function copyFindings(findings: readonly ScenarioFinding[] | undefined): Scenari
   }));
 }
 
+function copyAdapterCells(
+  cells: readonly ScenarioAdapterCell[] | undefined,
+): ScenarioAdapterCell[] {
+  return (cells ?? []).map((cell) => ({
+    adapter: redactSensitiveText(cell.adapter),
+    operation: cell.operation,
+    requestId: redactSensitiveText(cell.requestId),
+    status: cell.status,
+    detail: redactSensitiveText(cell.detail),
+    durationMs: cell.durationMs,
+    ...(cell.errorClass !== undefined ? { errorClass: redactSensitiveText(cell.errorClass) } : {}),
+    ...(cell.restarted !== undefined ? { restarted: cell.restarted } : {}),
+  }));
+}
+
+function isAdapterOperation(value: unknown): value is AdapterOperation {
+  return typeof value === "string" && ADAPTER_OPERATIONS.has(value);
+}
+
+function operationForMissingCapability(
+  missing: MissingCapability,
+  requirements: readonly AdapterCapabilityRequirement[],
+): AdapterOperation {
+  if (missing.kind === "operation" && isAdapterOperation(missing.value)) {
+    return missing.value;
+  }
+  if (missing.kind === "operationScriptType" && typeof missing.value === "string") {
+    const [operation] = missing.value.split(":");
+    if (isAdapterOperation(operation)) return operation;
+  }
+  return (
+    requirements.find(({ adapter }) => adapter === missing.adapter)?.operations?.[0] ?? "hello"
+  );
+}
+
+function unsupportedAdapterCells(
+  missingCapabilities: readonly MissingCapability[],
+  requirements: readonly AdapterCapabilityRequirement[],
+): ScenarioAdapterCell[] {
+  return missingCapabilities.map((missing, index) => ({
+    adapter: missing.adapter,
+    operation: operationForMissingCapability(missing, requirements),
+    requestId: `unsupported-${index + 1}`,
+    status: "unsupported",
+    detail: `Missing ${missing.kind} capability ${missing.value}`,
+    durationMs: 0,
+    errorClass: `capability.${missing.kind}.missing`,
+  }));
+}
+
 function assertValidCatalog<Context>(catalog: readonly ScenarioDefinition<Context>[]): void {
   const identifiers = new Set<string>();
   for (const [index, definition] of catalog.entries()) {
@@ -230,8 +304,10 @@ function completedResult<Context>(
   definition: ScenarioDefinition<Context>,
   output: ScenarioExecutionOutput,
   startedAt: number,
+  capturedAdapterCells: readonly ScenarioAdapterCell[] = [],
 ): ScenarioResult {
   const assertions = copyAssertions(output.assertions);
+  const adapterCells = copyAdapterCells([...capturedAdapterCells, ...(output.adapterCells ?? [])]);
   const passed =
     assertions.length > 0 &&
     assertions.every((assertion) => assertion.passed && (assertion.failures?.length ?? 0) === 0);
@@ -243,6 +319,7 @@ function completedResult<Context>(
     summary: redactSensitiveText(output.summary ?? definition.summary),
     durationMs: elapsedMilliseconds(startedAt),
     assertions,
+    ...(adapterCells.length ? { adapterCells } : {}),
     ...(output.findings?.length ? { findings: copyFindings(output.findings) } : {}),
     ...(output.expectedFailure
       ? {
@@ -261,6 +338,7 @@ function infrastructureFailureResult<Context>(
   definition: ScenarioDefinition<Context>,
   error: unknown,
   startedAt: number,
+  capturedAdapterCells: readonly ScenarioAdapterCell[] = [],
 ): ScenarioResult {
   const errorClass =
     error instanceof Error
@@ -277,6 +355,9 @@ function infrastructureFailureResult<Context>(
     outcome: "failed",
     summary: redactSensitiveText(`${definition.id} failed before producing scenario assertions.`),
     durationMs: elapsedMilliseconds(startedAt),
+    ...(capturedAdapterCells.length
+      ? { adapterCells: copyAdapterCells(capturedAdapterCells) }
+      : {}),
     assertions: [
       {
         name: "scenario-executed",
@@ -302,8 +383,10 @@ export async function runScenarioCatalog<Context>(
 
   for (const definition of catalog) {
     const startedAt = performance.now();
+    takeAdapterCells(context);
     const missingCapabilities = findMissingCapabilities(definition.requirements, adapters);
     if (missingCapabilities.length > 0) {
+      const adapterCells = unsupportedAdapterCells(missingCapabilities, definition.requirements);
       results.push({
         id: definition.id,
         title: definition.title,
@@ -314,6 +397,7 @@ export async function runScenarioCatalog<Context>(
         ),
         durationMs: elapsedMilliseconds(startedAt),
         assertions: [],
+        adapterCells: copyAdapterCells(adapterCells),
         missingCapabilities,
       });
       continue;
@@ -322,6 +406,7 @@ export async function runScenarioCatalog<Context>(
     const requestedSkipReason = await definition.skip?.(context);
     if (requestedSkipReason !== undefined) {
       const skipReason = redactSensitiveText(requestedSkipReason);
+      const capturedAdapterCells = takeAdapterCells(context);
       results.push({
         id: definition.id,
         title: definition.title,
@@ -331,14 +416,18 @@ export async function runScenarioCatalog<Context>(
         durationMs: elapsedMilliseconds(startedAt),
         assertions: [],
         skipReason,
+        ...(capturedAdapterCells.length
+          ? { adapterCells: copyAdapterCells(capturedAdapterCells) }
+          : {}),
       });
       continue;
     }
 
     try {
       const output = await definition.run(context);
-      results.push(completedResult(definition, output, startedAt));
+      results.push(completedResult(definition, output, startedAt, takeAdapterCells(context)));
     } catch (error) {
+      const capturedAdapterCells = takeAdapterCells(context);
       results.push(
         error instanceof ScenarioAssertionError
           ? {
@@ -349,8 +438,11 @@ export async function runScenarioCatalog<Context>(
               summary: redactSensitiveText(error.message),
               durationMs: elapsedMilliseconds(startedAt),
               assertions: copyAssertions(error.assertions),
+              ...(capturedAdapterCells.length
+                ? { adapterCells: copyAdapterCells(capturedAdapterCells) }
+                : {}),
             }
-          : infrastructureFailureResult(definition, error, startedAt),
+          : infrastructureFailureResult(definition, error, startedAt, capturedAdapterCells),
       );
     }
   }

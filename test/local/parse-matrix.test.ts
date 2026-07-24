@@ -165,4 +165,38 @@ describe("local parse matrix", () => {
     expect(report.outcome).toBe("failed");
     expect(runtime.close).toHaveBeenCalledOnce();
   });
+
+  test("restarts after a fixture transport failure and continues later cells", async () => {
+    const matrix = await import("../../src/local/parse-matrix.js");
+    let failedOnce = false;
+    const process = {
+      request: vi.fn(async (request: AdapterRequest): Promise<AdapterResponse> => {
+        if (request.operation === "hello") return response(request);
+        if (request.operation === "native-parse" && !failedOnce) {
+          failedOnce = true;
+          throw new Error("adapter emitted malformed JSON");
+        }
+        return response(request);
+      }),
+      restart: vi.fn(async () => undefined),
+      close: vi.fn(async () => undefined),
+    };
+    const runtime = provider([
+      {
+        id: "fixture-parser",
+        availability: "available",
+        process,
+        timeoutMs: 5_000,
+        expected: IMPLEMENTATION,
+      },
+    ]);
+
+    const report = await matrix.runParseMatrix(runtime);
+
+    expect(process.restart).toHaveBeenCalledTimes(1);
+    expect(report.summary).toEqual({ passed: 1, failed: 1, unsupported: 0 });
+    expect(report.cells.map(({ status }) => status)).toEqual(["failed", "passed"]);
+    expect(report.outcome).toBe("failed");
+    expect(runtime.close).toHaveBeenCalledOnce();
+  });
 });

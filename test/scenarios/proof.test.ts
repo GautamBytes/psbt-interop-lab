@@ -816,21 +816,60 @@ describe("proof runtime", () => {
     for (const adapter of harness.adapters) expect(adapter.close).toHaveBeenCalledTimes(1);
   });
 
-  test("names the built-in adapter whose hello negotiation fails", async () => {
+  test("continues the proof matrix when a built-in hello negotiation fails", async () => {
     const harness = proofHarness(false, "psbt-interop-lab/bitcoinjs-lib:7.0.1");
-
-    await expect(
-      runProofWithDependencies(
-        {
-          rpc: {} as never,
-          artifactRoot: "/tmp/psbt-lab-test",
-          projectDirectory: "/project",
+    const catalog: readonly ScenarioDefinition<ScenarioExecutionContext>[] = [
+      {
+        id: "bitcoinjs-required-runtime",
+        title: "BitcoinJS required runtime",
+        category: "test",
+        summary: "Requires bitcoinjs-lib",
+        requirements: [{ adapter: "bitcoinjs-lib", operations: ["sign"] }],
+        async run() {
+          return { assertions: [{ name: "unexpected-run", passed: true }] };
         },
-        harness.dependencies,
-      ),
-    ).rejects.toThrow(
-      /Failed to negotiate built-in adapter bitcoinjs-lib: adapter exited during hello/,
+      },
+      {
+        id: "rust-runtime",
+        title: "Rust runtime",
+        category: "test",
+        summary: "Requires rust-bitcoin",
+        requirements: [{ adapter: "rust-bitcoin", operations: ["roundtrip"] }],
+        async run() {
+          return { assertions: [{ name: "rust-ran", passed: true }] };
+        },
+      },
+    ];
+    harness.dependencies.createCatalog = vi.fn(() => catalog);
+
+    const result = await runProofWithDependencies(
+      {
+        rpc: {} as never,
+        artifactRoot: "/tmp/psbt-lab-test",
+        projectDirectory: "/project",
+      },
+      harness.dependencies,
     );
+
+    expect(result.manifest).toMatchObject({
+      outcome: "failed",
+      scenarios: [
+        {
+          id: "bitcoinjs-required-runtime",
+          outcome: "unsupported",
+          adapterCells: [
+            expect.objectContaining({
+              adapter: "bitcoinjs-lib",
+              operation: "sign",
+              status: "unsupported",
+              errorClass: "capability.adapter.missing",
+            }),
+          ],
+        },
+        { id: "rust-runtime", outcome: "passed" },
+      ],
+    });
+    expect(result.manifest.adapters.map(({ name }) => name)).not.toContain("bitcoinjs-lib");
     for (const adapter of harness.adapters) expect(adapter.close).toHaveBeenCalledTimes(1);
   });
 

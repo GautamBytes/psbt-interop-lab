@@ -180,6 +180,10 @@ The current baseline allows only btcsuite 1.2.0 to either accept or reject the d
 probe; another parser accepting malformed input, or any parser crashing or timing out, still fails
 the scenario.
 
+Each adapter request is also captured as a report cell with adapter ID, operation, request ID,
+status, duration, and error detail. Adapter transport failures and malformed responses are recorded
+as failed cells, and restartable adapter processes are restarted before later cells continue.
+
 The PSBTv2 baseline now enforces the canonical omission of empty final scriptSig fields and accepts
 the official BIP370 vectors with undefined `PSBT_GLOBAL_TX_MODIFIABLE` bits, while transition checks
 still require unknown bits to remain unchanged. Completed transactions still have to pass Bitcoin

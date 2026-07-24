@@ -305,4 +305,59 @@ describe("HTML report", () => {
       expect(report).toContain("[redacted:psbt]");
     }
   });
+
+  test("renders adapter cells in human and machine reports", () => {
+    const value = manifest();
+    const firstScenario = value.scenarios[0];
+    if (!firstScenario) throw new Error("Missing report fixture scenario");
+    const valueWithCells: RunManifest = {
+      ...value,
+      scenarios: [
+        {
+          ...firstScenario,
+          adapterCells: [
+            {
+              adapter: "rust-bitcoin",
+              operation: "sign",
+              requestId: "request-7",
+              status: "failed",
+              detail: `AdapterTimeoutError: timed out while signing ${MINIMAL_PSBT}; seed=${TEST_MNEMONIC}`,
+              durationMs: 50,
+              errorClass: "AdapterTimeoutError",
+              restarted: true,
+            },
+            {
+              adapter: "bitcoinjs-lib",
+              operation: "roundtrip",
+              requestId: "request-8",
+              status: "passed",
+              detail: "ok",
+              durationMs: 5,
+            },
+          ],
+        },
+        ...value.scenarios.slice(1),
+      ],
+    };
+
+    const json = JSON.stringify(generateJsonReport(valueWithCells));
+    const markdown = generateMarkdownReport(valueWithCells);
+    const html = generateHtmlReport(valueWithCells);
+
+    expect(json).toContain("adapterCells");
+    for (const report of [json, markdown, html]) {
+      expect(report).toContain("rust-bitcoin");
+      expect(report).toContain("request-7");
+      expect(report).toContain("AdapterTimeoutError");
+      expect(report).toContain("restarted");
+      expect(report).not.toContain(TEST_MNEMONIC);
+      expect(report).not.toContain(MINIMAL_PSBT);
+      expect(report).toContain("[redacted:secret]");
+      expect(report).toContain("[redacted:psbt]");
+    }
+    expect(markdown).toContain("Adapter cells:");
+    expect(markdown).toContain("FAILED");
+    expect(markdown).toContain("PASSED");
+    expect(html).toContain("Adapter cells");
+  });
 });

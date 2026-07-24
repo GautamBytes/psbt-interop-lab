@@ -174,9 +174,17 @@ export function createBdkRegressionScenario(
         fixtureId: fixture.id,
       });
       if (bdkResponse.status === "crashed" || bdkResponse.status === "timeout") {
-        throw new Error(
-          `bdkpython finalize failed: ${bdkResponse.error.class}: ${bdkResponse.error.message}`,
-        );
+        assertions.push({
+          name: "bdk-regression-reproduced",
+          passed: false,
+          likelyImplementation: bdkResponse.implementation.name,
+          summary: `BDK ${bdkResponse.status} before reproducing the frozen regression: ${bdkResponse.error.class}`,
+        });
+        return {
+          summary:
+            "BDK could not be checked against issue #488 because its finalize adapter call did not complete.",
+          assertions,
+        };
       }
       const reproduced = isExpectedBdkFailure(bdkResponse);
       assertions.push({

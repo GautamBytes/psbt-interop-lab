@@ -116,6 +116,7 @@ export class AdapterProcess {
     this.#failPending(new AdapterProtocolError("Adapter process closed"));
     const child = this.#child;
     if (!child || child.exitCode !== null || child.signalCode !== null) {
+      this.#child = undefined;
       return;
     }
 
@@ -125,6 +126,21 @@ export class AdapterProcess {
     forceKill.unref();
     await once(child, "exit").catch(() => undefined);
     clearTimeout(forceKill);
+    if (this.#child === child) {
+      this.#child = undefined;
+    }
+  }
+
+  async restart(): Promise<void> {
+    if (this.#closed) {
+      return;
+    }
+    const child = this.#child;
+    this.#failPending(new AdapterProtocolError("Adapter process restarted"));
+    this.#terminate();
+    if (child && child.exitCode === null && child.signalCode === null) {
+      await once(child, "exit").catch(() => undefined);
+    }
   }
 
   #start(): ChildProcessWithoutNullStreams {
@@ -157,14 +173,19 @@ export class AdapterProcess {
       }
     });
     child.on("error", (error) => {
+      if (this.#child !== child) return;
       this.#failPending(new AdapterProtocolError(`Adapter process error: ${error.message}`));
+      this.#child = undefined;
     });
     child.on("exit", (code, signal) => {
+      if (this.#child !== child) return;
       this.#failPending(
         new AdapterProtocolError(
           `Adapter exited before responding (code=${String(code)}, signal=${String(signal)})`,
         ),
       );
+      this.#child = undefined;
+      this.#stdoutBuffer = Buffer.alloc(0);
     });
 
     return child;
@@ -245,8 +266,9 @@ export class AdapterProcess {
   }
 
   #terminate(): void {
-    this.#closed = true;
     const child = this.#child;
+    this.#child = undefined;
+    this.#stdoutBuffer = Buffer.alloc(0);
     if (child && child.exitCode === null && child.signalCode === null) {
       child.kill("SIGKILL");
     }
