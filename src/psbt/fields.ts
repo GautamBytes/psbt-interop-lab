@@ -1,5 +1,14 @@
 export type PsbtFieldScope = "global" | "input" | "output";
-export type PsbtFieldBip = "BIP174" | "BIP370" | "BIP371";
+export type PsbtFieldBip =
+  | "BIP127"
+  | "BIP174"
+  | "BIP322"
+  | "BIP353"
+  | "BIP370"
+  | "BIP371"
+  | "BIP373"
+  | "BIP375"
+  | "BIP376";
 export type PsbtFieldKind = "standard" | "proprietary" | "unknown";
 
 export interface PsbtFieldMetadata {
@@ -48,6 +57,27 @@ export const PSBT_FIELD_REGISTRY: readonly PsbtFieldMetadata[] = Object.freeze([
     "Transaction modifiable flags",
     "BIP370",
   ),
+  registeredField(
+    "global",
+    0x07,
+    "PSBT_GLOBAL_SP_ECDH_SHARE",
+    "Silent Payment global ECDH share",
+    "BIP375",
+  ),
+  registeredField(
+    "global",
+    0x08,
+    "PSBT_GLOBAL_SP_DLEQ",
+    "Silent Payment global DLEQ proof",
+    "BIP375",
+  ),
+  registeredField(
+    "global",
+    0x09,
+    "PSBT_GLOBAL_GENERIC_SIGNED_MESSAGE",
+    "Generic signed message",
+    "BIP322",
+  ),
   registeredField("global", 0xfb, "PSBT_GLOBAL_VERSION", "PSBT version", "BIP174"),
   registeredField("global", 0xfc, "PSBT_GLOBAL_PROPRIETARY", "Proprietary global field", "BIP174"),
 
@@ -60,6 +90,13 @@ export const PSBT_FIELD_REGISTRY: readonly PsbtFieldMetadata[] = Object.freeze([
   registeredField("input", 0x06, "PSBT_IN_BIP32_DERIVATION", "BIP32 derivation", "BIP174"),
   registeredField("input", 0x07, "PSBT_IN_FINAL_SCRIPTSIG", "Final scriptSig", "BIP174"),
   registeredField("input", 0x08, "PSBT_IN_FINAL_SCRIPTWITNESS", "Final script witness", "BIP174"),
+  registeredField(
+    "input",
+    0x09,
+    "PSBT_IN_POR_COMMITMENT",
+    "Proof-of-reserves commitment",
+    "BIP127",
+  ),
   registeredField("input", 0x0a, "PSBT_IN_RIPEMD160", "RIPEMD160 preimage", "BIP174"),
   registeredField("input", 0x0b, "PSBT_IN_SHA256", "SHA256 preimage", "BIP174"),
   registeredField("input", 0x0c, "PSBT_IN_HASH160", "HASH160 preimage", "BIP174"),
@@ -99,6 +136,37 @@ export const PSBT_FIELD_REGISTRY: readonly PsbtFieldMetadata[] = Object.freeze([
   ),
   registeredField("input", 0x17, "PSBT_IN_TAP_INTERNAL_KEY", "Taproot internal key", "BIP371"),
   registeredField("input", 0x18, "PSBT_IN_TAP_MERKLE_ROOT", "Taproot Merkle root", "BIP371"),
+  registeredField(
+    "input",
+    0x1a,
+    "PSBT_IN_MUSIG2_PARTICIPANT_PUBKEYS",
+    "MuSig2 participant public keys",
+    "BIP373",
+  ),
+  registeredField("input", 0x1b, "PSBT_IN_MUSIG2_PUB_NONCE", "MuSig2 public nonce", "BIP373"),
+  registeredField(
+    "input",
+    0x1c,
+    "PSBT_IN_MUSIG2_PARTIAL_SIG",
+    "MuSig2 participant partial signature",
+    "BIP373",
+  ),
+  registeredField(
+    "input",
+    0x1d,
+    "PSBT_IN_SP_ECDH_SHARE",
+    "Silent Payment input ECDH share",
+    "BIP375",
+  ),
+  registeredField("input", 0x1e, "PSBT_IN_SP_DLEQ", "Silent Payment input DLEQ proof", "BIP375"),
+  registeredField(
+    "input",
+    0x1f,
+    "PSBT_IN_SP_SPEND_BIP32_DERIVATION",
+    "Silent Payment spend key BIP32 derivation",
+    "BIP376",
+  ),
+  registeredField("input", 0x20, "PSBT_IN_SP_TWEAK", "Silent Payment tweak", "BIP376"),
   registeredField("input", 0xfc, "PSBT_IN_PROPRIETARY", "Proprietary input field", "BIP174"),
 
   registeredField("output", 0x00, "PSBT_OUT_REDEEM_SCRIPT", "Redeem script", "BIP174"),
@@ -115,6 +183,16 @@ export const PSBT_FIELD_REGISTRY: readonly PsbtFieldMetadata[] = Object.freeze([
     "Taproot BIP32 derivation",
     "BIP371",
   ),
+  registeredField(
+    "output",
+    0x08,
+    "PSBT_OUT_MUSIG2_PARTICIPANT_PUBKEYS",
+    "MuSig2 participant public keys",
+    "BIP373",
+  ),
+  registeredField("output", 0x09, "PSBT_OUT_SP_V0_INFO", "Silent Payment v0 data", "BIP375"),
+  registeredField("output", 0x0a, "PSBT_OUT_SP_V0_LABEL", "Silent Payment v0 label", "BIP375"),
+  registeredField("output", 0x35, "PSBT_OUT_DNSSEC_PROOF", "BIP353 DNSSEC proof", "BIP353"),
   registeredField("output", 0xfc, "PSBT_OUT_PROPRIETARY", "Proprietary output field", "BIP174"),
 ]);
 

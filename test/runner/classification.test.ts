@@ -255,6 +255,34 @@ describe("report classification", () => {
     ]);
   });
 
+  test("classifies infrastructure failures as runtime workflow failures", () => {
+    const classifications = classifyScenario(
+      scenario({
+        infrastructureError: {
+          errorClass: "AdapterTimeoutError",
+          message: "Adapter request request-1 timed out after 1000ms",
+        },
+        assertions: [
+          {
+            name: "scenario-executed",
+            passed: false,
+            likelyImplementation: "scenario-runtime",
+            summary: "AdapterTimeoutError: Adapter request request-1 timed out after 1000ms",
+          },
+        ],
+      }),
+    );
+
+    expect(classifications).toEqual([
+      expect.objectContaining({
+        id: "workflow-failure",
+        severity: "review",
+        observedAt: "scenario-runtime",
+        evidence: ["assertion:scenario-executed"],
+      }),
+    ]);
+  });
+
   test("describes a policy-forbidden removal without calling the field BIP-required", () => {
     const classifications = classifyScenario(
       scenario({

@@ -84,4 +84,8 @@ export interface ScenarioResult extends ScenarioExecutionOutput {
   readonly durationMs: number;
   readonly missingCapabilities?: readonly MissingCapability[];
   readonly skipReason?: string;
+  readonly infrastructureError?: {
+    readonly errorClass: string;
+    readonly message: string;
+  };
 }

@@ -10,6 +10,9 @@ be driven by real wallet and library maintainers using those foundations.
 - Expand PSBTv2 coverage beyond the current rust-psbt/libwally P2WPKH and 2-of-3 workflows.
 - Add Taproot script-path threshold leaves and carefully selected legacy profiles beyond the
   deterministic single-leaf signing and finalization paths.
+- Add executable workflows for MuSig2, Silent Payments, proof-of-reserves, generic signed message,
+  and DNSSEC proof PSBT fields. The diagnostic registry names these fields, but compatibility
+  scenarios still need fixtures and adapter support.
 - Let bundled signers authorize specific custom public fixture templates through the existing
   `user-fixture-template-v1` capability boundary.
 

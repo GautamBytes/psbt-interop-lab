@@ -791,16 +791,28 @@ describe("proof runtime", () => {
   test("closes every adapter exactly once after an infrastructure failure", async () => {
     const harness = proofHarness(true);
 
-    await expect(
-      runProofWithDependencies(
+    const result = await runProofWithDependencies(
+      {
+        rpc: {} as never,
+        artifactRoot: "/tmp/psbt-lab-test",
+        projectDirectory: "/project",
+      },
+      harness.dependencies,
+    );
+
+    expect(result.manifest).toMatchObject({
+      outcome: "failed",
+      scenarios: [
         {
-          rpc: {} as never,
-          artifactRoot: "/tmp/psbt-lab-test",
-          projectDirectory: "/project",
+          id: "runtime-lifecycle",
+          outcome: "failed",
+          infrastructureError: {
+            errorClass: "Error",
+            message: "Core unavailable",
+          },
         },
-        harness.dependencies,
-      ),
-    ).rejects.toThrow(/Core unavailable/);
+      ],
+    });
     for (const adapter of harness.adapters) expect(adapter.close).toHaveBeenCalledTimes(1);
   });
 
