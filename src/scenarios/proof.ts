@@ -1045,7 +1045,10 @@ export async function runProofWithDependencies(
           categories: [...new Set(scenarios.map(({ category }) => category))],
         },
       },
-      adapters: negotiated.map((adapter) => adapter.implementation),
+      adapters: negotiated.map((adapter) => ({
+        ...adapter.implementation,
+        capabilities: adapter.capabilities,
+      })),
       scenarios,
       checkpoints: [...context.checkpoints],
     };

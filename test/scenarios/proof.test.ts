@@ -947,6 +947,17 @@ describe("proof runtime", () => {
     expect(result.manifest.outcome).toBe("passed");
     expect(result.manifest.adapters).toHaveLength(8);
     expect(result.manifest.adapters[7]).toMatchObject({ name: "actual-wallet-library" });
+    expect(result.manifest.adapters[7]?.capabilities).toEqual({
+      operations: ["hello", "native-parse", "roundtrip", "sign"],
+      roles: ["parser", "signer"],
+      psbtVersions: [0],
+      scriptTypes: ["p2wpkh", "p2wsh", "p2tr-keypath"],
+      operationScriptTypes: {
+        roundtrip: ["p2wpkh", "p2wsh", "p2tr-keypath"],
+        sign: ["p2wpkh", "p2wsh", "p2tr-keypath"],
+      },
+      features: ["fixture-commitment-sha256"],
+    });
     expect(createExternalAdapter).toHaveBeenCalledOnce();
     const processOptions = createExternalAdapter.mock.calls[0]?.[0];
     expect(processOptions).toMatchObject({

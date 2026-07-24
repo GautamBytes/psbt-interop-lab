@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { chmod, type FileHandle, mkdir, open, rename, unlink } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
-import type { AdapterImplementation } from "../protocol/types.js";
+import type { AdapterHelloCapabilities, AdapterImplementation } from "../protocol/types.js";
 import { extractWireFacts, type PsbtWireFacts } from "../psbt/wire-facts.js";
 import type { ScenarioResult } from "../scenarios/definition.js";
 
@@ -16,6 +16,10 @@ export interface CheckpointRecord {
 }
 
 export type ScenarioRecord = ScenarioResult;
+
+export interface RunAdapterRecord extends AdapterImplementation {
+  readonly capabilities?: AdapterHelloCapabilities;
+}
 
 export interface RunSelectors {
   requested: {
@@ -42,7 +46,7 @@ export interface RunManifest {
     connections: number;
   };
   selectors?: RunSelectors;
-  adapters: AdapterImplementation[];
+  adapters: RunAdapterRecord[];
   scenarios: ScenarioRecord[];
   checkpoints: CheckpointRecord[];
 }

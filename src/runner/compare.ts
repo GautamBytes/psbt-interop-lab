@@ -1,12 +1,18 @@
 import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import type { AdapterImplementation } from "../protocol/types.js";
+import type { AdapterHelloCapabilities } from "../protocol/types.js";
+import type { PsbtWireFacts } from "../psbt/wire-facts.js";
 import type {
   ScenarioAssertionEvidence,
   ScenarioFinding,
   ScenarioOutcome,
 } from "../scenarios/definition.js";
-import type { RunManifest, ScenarioRecord } from "./artifacts.js";
+import type {
+  CheckpointRecord,
+  RunAdapterRecord,
+  RunManifest,
+  ScenarioRecord,
+} from "./artifacts.js";
 import { verifyReplay } from "./replay.js";
 
 export type RunComparisonChange =
@@ -43,6 +49,21 @@ export type RunComparisonChange =
       readonly afterSourceRevision?: string;
       readonly beforeArtifactDigest?: string;
       readonly afterArtifactDigest?: string;
+    }
+  | {
+      readonly kind: "adapter-capabilities-changed";
+      readonly adapter: string;
+      readonly before?: AdapterHelloCapabilities;
+      readonly after?: AdapterHelloCapabilities;
+    }
+  | {
+      readonly kind: "checkpoint-added" | "checkpoint-removed" | "checkpoint-facts-changed";
+      readonly scenarioId: string;
+      readonly stage: string;
+      readonly beforeSha256?: string;
+      readonly afterSha256?: string;
+      readonly beforeFacts?: PsbtWireFacts;
+      readonly afterFacts?: PsbtWireFacts;
     };
 
 export interface RunComparison {
@@ -63,6 +84,8 @@ export interface RunComparison {
     readonly assertionChanges: number;
     readonly findingChanges: number;
     readonly adapterChanges: number;
+    readonly capabilityChanges: number;
+    readonly checkpointChanges: number;
   };
   readonly changes: readonly RunComparisonChange[];
 }
@@ -76,7 +99,8 @@ function assertRunManifest(value: unknown): asserts value is RunManifest {
     ((value as Partial<RunManifest>).outcome !== "passed" &&
       (value as Partial<RunManifest>).outcome !== "failed") ||
     !Array.isArray((value as Partial<RunManifest>).adapters) ||
-    !Array.isArray((value as Partial<RunManifest>).scenarios)
+    !Array.isArray((value as Partial<RunManifest>).scenarios) ||
+    !Array.isArray((value as Partial<RunManifest>).checkpoints)
   ) {
     throw new Error("Comparison manifest does not match psbt-lab.run/0.1");
   }
@@ -116,12 +140,53 @@ function findingFingerprint(finding: ScenarioFinding): string {
   });
 }
 
-function adapterFingerprint(adapter: AdapterImplementation): string {
+function adapterFingerprint(adapter: RunAdapterRecord): string {
   return JSON.stringify({
     version: adapter.version,
     sourceRevision: adapter.sourceRevision,
     artifactDigest: adapter.artifactDigest,
   });
+}
+
+function sorted<T extends string | number>(values: readonly T[] | undefined): T[] {
+  return [...(values ?? [])].sort((left, right) => {
+    if (left < right) return -1;
+    if (left > right) return 1;
+    return 0;
+  });
+}
+
+function normalizedCapabilities(
+  capabilities: AdapterHelloCapabilities | undefined,
+): AdapterHelloCapabilities | undefined {
+  if (capabilities === undefined) return undefined;
+  const operationScriptTypeEntries = Object.entries(capabilities.operationScriptTypes ?? {});
+  const normalized: AdapterHelloCapabilities = {
+    operations: sorted(capabilities.operations),
+    roles: sorted(capabilities.roles),
+    psbtVersions: sorted(capabilities.psbtVersions),
+    scriptTypes: sorted(capabilities.scriptTypes),
+  };
+  if (operationScriptTypeEntries.length > 0) {
+    normalized.operationScriptTypes = Object.fromEntries(
+      operationScriptTypeEntries
+        .sort(([left], [right]) => {
+          if (left < right) return -1;
+          if (left > right) return 1;
+          return 0;
+        })
+        .map(([operation, scriptTypes]) => [operation, sorted(scriptTypes)]),
+    ) as NonNullable<AdapterHelloCapabilities["operationScriptTypes"]>;
+  }
+  if (capabilities.features !== undefined) {
+    normalized.features = sorted(capabilities.features);
+  }
+  return normalized;
+}
+
+function capabilitiesFingerprint(adapter: RunAdapterRecord): string | undefined {
+  const normalized = normalizedCapabilities(adapter.capabilities);
+  return normalized === undefined ? undefined : JSON.stringify(normalized);
 }
 
 interface AdapterBeforeFields {
@@ -136,7 +201,7 @@ interface AdapterAfterFields {
   readonly afterArtifactDigest: string;
 }
 
-function adapterBeforeFields(adapter: AdapterImplementation): AdapterBeforeFields {
+function adapterBeforeFields(adapter: RunAdapterRecord): AdapterBeforeFields {
   return {
     before: adapter.version,
     ...(adapter.sourceRevision ? { beforeSourceRevision: adapter.sourceRevision } : {}),
@@ -144,7 +209,7 @@ function adapterBeforeFields(adapter: AdapterImplementation): AdapterBeforeField
   };
 }
 
-function adapterAfterFields(adapter: AdapterImplementation): AdapterAfterFields {
+function adapterAfterFields(adapter: RunAdapterRecord): AdapterAfterFields {
   return {
     after: adapter.version,
     ...(adapter.sourceRevision ? { afterSourceRevision: adapter.sourceRevision } : {}),
@@ -153,8 +218,8 @@ function adapterAfterFields(adapter: AdapterImplementation): AdapterAfterFields 
 }
 
 function compareAdapters(
-  baseAdapters: readonly AdapterImplementation[],
-  headAdapters: readonly AdapterImplementation[],
+  baseAdapters: readonly RunAdapterRecord[],
+  headAdapters: readonly RunAdapterRecord[],
 ): RunComparisonChange[] {
   const changes: RunComparisonChange[] = [];
   const baseByName = byId(baseAdapters, (adapter) => adapter.name);
@@ -184,6 +249,97 @@ function compareAdapters(
         adapter: adapterName,
         ...adapterBeforeFields(base),
         ...adapterAfterFields(head),
+      });
+    }
+    if (base && head && capabilitiesFingerprint(base) !== capabilitiesFingerprint(head)) {
+      const before = normalizedCapabilities(base.capabilities);
+      const after = normalizedCapabilities(head.capabilities);
+      changes.push({
+        kind: "adapter-capabilities-changed",
+        adapter: adapterName,
+        ...(before === undefined ? {} : { before }),
+        ...(after === undefined ? {} : { after }),
+      });
+    }
+  }
+  return changes;
+}
+
+interface IndexedCheckpoint {
+  readonly checkpoint: CheckpointRecord;
+}
+
+function checkpointBaseKey(checkpoint: CheckpointRecord): string {
+  return `${checkpoint.scenario}\0${checkpoint.stage}`;
+}
+
+function indexCheckpoints(
+  checkpoints: readonly CheckpointRecord[],
+): Map<string, IndexedCheckpoint> {
+  const seen = new Map<string, number>();
+  return new Map(
+    checkpoints.map((checkpoint) => {
+      const baseKey = checkpointBaseKey(checkpoint);
+      const occurrence = seen.get(baseKey) ?? 0;
+      seen.set(baseKey, occurrence + 1);
+      const key = `${baseKey}\0${occurrence}`;
+      return [key, { checkpoint }];
+    }),
+  );
+}
+
+function factsFingerprint(facts: PsbtWireFacts): string {
+  return JSON.stringify(facts);
+}
+
+function checkpointChangeFields(checkpoint: CheckpointRecord): {
+  readonly scenarioId: string;
+  readonly stage: string;
+} {
+  return {
+    scenarioId: checkpoint.scenario,
+    stage: checkpoint.stage,
+  };
+}
+
+function compareCheckpoints(
+  baseCheckpoints: readonly CheckpointRecord[],
+  headCheckpoints: readonly CheckpointRecord[],
+): RunComparisonChange[] {
+  const changes: RunComparisonChange[] = [];
+  const baseByKey = indexCheckpoints(baseCheckpoints);
+  const headByKey = indexCheckpoints(headCheckpoints);
+  for (const key of [...new Set([...baseByKey.keys(), ...headByKey.keys()])].sort()) {
+    const base = baseByKey.get(key)?.checkpoint;
+    const head = headByKey.get(key)?.checkpoint;
+    const checkpoint = head ?? base;
+    if (!checkpoint) continue;
+    if (!base && head) {
+      changes.push({
+        kind: "checkpoint-added",
+        ...checkpointChangeFields(head),
+        afterSha256: head.facts.sha256,
+        afterFacts: head.facts,
+      });
+      continue;
+    }
+    if (base && !head) {
+      changes.push({
+        kind: "checkpoint-removed",
+        ...checkpointChangeFields(base),
+        beforeSha256: base.facts.sha256,
+        beforeFacts: base.facts,
+      });
+      continue;
+    }
+    if (base && head && factsFingerprint(base.facts) !== factsFingerprint(head.facts)) {
+      changes.push({
+        kind: "checkpoint-facts-changed",
+        ...checkpointChangeFields(checkpoint),
+        beforeSha256: base.facts.sha256,
+        afterSha256: head.facts.sha256,
+        beforeFacts: base.facts,
+        afterFacts: head.facts,
       });
     }
   }
@@ -326,13 +482,22 @@ export async function compareRuns(
   }
   changes.push(...compareAdapters(base.manifest.adapters, head.manifest.adapters));
   changes.push(...compareScenarios(base.manifest.scenarios, head.manifest.scenarios));
+  changes.push(...compareCheckpoints(base.manifest.checkpoints, head.manifest.checkpoints));
 
   const summary = {
     runOutcomeChanged: base.manifest.outcome !== head.manifest.outcome,
     scenarioChanges: changes.filter((change) => change.kind.startsWith("scenario-")).length,
     assertionChanges: changes.filter((change) => change.kind.startsWith("assertion-")).length,
     findingChanges: changes.filter((change) => change.kind.startsWith("finding-")).length,
-    adapterChanges: changes.filter((change) => change.kind.startsWith("adapter-")).length,
+    adapterChanges: changes.filter(
+      (change) =>
+        change.kind === "adapter-added" ||
+        change.kind === "adapter-removed" ||
+        change.kind === "adapter-changed",
+    ).length,
+    capabilityChanges: changes.filter((change) => change.kind === "adapter-capabilities-changed")
+      .length,
+    checkpointChanges: changes.filter((change) => change.kind.startsWith("checkpoint-")).length,
   };
   return {
     changed: changes.length > 0,

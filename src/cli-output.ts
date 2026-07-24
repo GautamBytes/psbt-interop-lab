@@ -103,6 +103,10 @@ function runOutcomeStatus(outcome: RunComparison["base"]["outcome"]): string {
   return outcome === "passed" ? "PASS" : "FAIL";
 }
 
+function shortSha256(value: string | undefined): string {
+  return value === undefined ? "unknown" : value.slice(0, 12);
+}
+
 function formatRunComparisonChange(change: RunComparisonChange): string {
   switch (change.kind) {
     case "run-outcome-changed":
@@ -113,6 +117,8 @@ function formatRunComparisonChange(change: RunComparisonChange): string {
       return `ADAPT ${change.adapter} removed ${change.before}`;
     case "adapter-changed":
       return `ADAPT ${change.adapter} ${change.before} -> ${change.after}`;
+    case "adapter-capabilities-changed":
+      return `CAP   ${change.adapter} capabilities changed`;
     case "scenario-added":
       return `SCEN+ ${change.scenarioId} ${change.after}`;
     case "scenario-removed":
@@ -131,6 +137,12 @@ function formatRunComparisonChange(change: RunComparisonChange): string {
       return `FIND- ${change.scenarioId} ${change.findingId} ${change.implementation}`;
     case "finding-changed":
       return `FIND  ${change.scenarioId} ${change.findingId} ${change.implementation}`;
+    case "checkpoint-added":
+      return `FIELD+ ${change.scenarioId} ${change.stage} ${shortSha256(change.afterSha256)}`;
+    case "checkpoint-removed":
+      return `FIELD- ${change.scenarioId} ${change.stage} ${shortSha256(change.beforeSha256)}`;
+    case "checkpoint-facts-changed":
+      return `FIELD ${change.scenarioId} ${change.stage} ${shortSha256(change.beforeSha256)} -> ${shortSha256(change.afterSha256)}`;
   }
 }
 
@@ -139,7 +151,7 @@ export function formatRunComparison(comparison: RunComparison): string {
     `Run comparison: ${comparison.changed ? "CHANGED" : "UNCHANGED"}`,
     `Base: ${comparison.base.runId} ${runOutcomeStatus(comparison.base.outcome)} (${comparison.base.verifiedCheckpoints} checkpoints)`,
     `Head: ${comparison.head.runId} ${runOutcomeStatus(comparison.head.outcome)} (${comparison.head.verifiedCheckpoints} checkpoints)`,
-    `Summary: scenarios=${comparison.summary.scenarioChanges} assertions=${comparison.summary.assertionChanges} findings=${comparison.summary.findingChanges} adapters=${comparison.summary.adapterChanges}`,
+    `Summary: scenarios=${comparison.summary.scenarioChanges} assertions=${comparison.summary.assertionChanges} findings=${comparison.summary.findingChanges} adapters=${comparison.summary.adapterChanges} capabilities=${comparison.summary.capabilityChanges} fields=${comparison.summary.checkpointChanges}`,
   ];
   if (comparison.changes.length === 0) {
     lines.push("No recorded compatibility changes.");
