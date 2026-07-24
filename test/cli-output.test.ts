@@ -4,6 +4,7 @@ import {
   formatDoctorChecks,
   formatProofSummary,
   formatReplaySummary,
+  formatRunComparison,
   formatScenarioCatalog,
 } from "../src/cli-output.js";
 
@@ -84,6 +85,104 @@ describe("CLI output", () => {
     });
     expect(output).toContain("Verified checkpoints: 5");
     expect(output).toContain("FIND  known-parser-divergence: btcsuite-go");
+  });
+
+  test("prints run comparison changes for humans", () => {
+    const output = formatRunComparison({
+      changed: true,
+      base: { runId: "base-run", outcome: "passed", verifiedCheckpoints: 3 },
+      head: { runId: "head-run", outcome: "failed", verifiedCheckpoints: 4 },
+      summary: {
+        runOutcomeChanged: true,
+        scenarioChanges: 1,
+        assertionChanges: 1,
+        findingChanges: 1,
+        adapterChanges: 1,
+        capabilityChanges: 1,
+        checkpointChanges: 1,
+      },
+      changes: [
+        { kind: "run-outcome-changed", before: "passed", after: "failed" },
+        {
+          kind: "adapter-changed",
+          adapter: "rust-bitcoin",
+          before: "0.1.0",
+          after: "0.2.0",
+        },
+        {
+          kind: "adapter-capabilities-changed",
+          adapter: "rust-bitcoin",
+        },
+        {
+          kind: "scenario-outcome-changed",
+          scenarioId: "happy-path",
+          before: "passed",
+          after: "failed",
+        },
+        {
+          kind: "assertion-changed",
+          scenarioId: "happy-path",
+          assertionName: "core-policy-accepted",
+          before: "passed",
+          after: "failed",
+        },
+        {
+          kind: "finding-added",
+          scenarioId: "happy-path",
+          findingId: "policy-rejected",
+          implementation: "rust-bitcoin",
+        },
+        {
+          kind: "checkpoint-facts-changed",
+          scenarioId: "happy-path",
+          stage: "signed",
+          beforeSha256: "a".repeat(64),
+          afterSha256: "b".repeat(64),
+        },
+      ],
+    });
+
+    expect(output).toContain("Run comparison: CHANGED");
+    expect(output).toContain("Base: base-run PASS");
+    expect(output).toContain("Head: head-run FAIL");
+    expect(output).toContain(
+      "Summary: scenarios=1 assertions=1 findings=1 adapters=1 capabilities=1 fields=1",
+    );
+    expect(output).toContain("RUN   passed -> failed");
+    expect(output).toContain("ADAPT rust-bitcoin 0.1.0 -> 0.2.0");
+    expect(output).toContain("CAP   rust-bitcoin capabilities changed");
+    expect(output).toContain("SCEN  happy-path passed -> failed");
+    expect(output).toContain("ASSERT happy-path core-policy-accepted passed -> failed");
+    expect(output).toContain("FIND+ happy-path policy-rejected rust-bitcoin");
+    expect(output).toContain("FIELD happy-path signed aaaaaaaaaaaa -> bbbbbbbbbbbb");
+  });
+
+  test("labels same-status assertion evidence changes clearly", () => {
+    const output = formatRunComparison({
+      changed: true,
+      base: { runId: "base-run", outcome: "passed", verifiedCheckpoints: 0 },
+      head: { runId: "head-run", outcome: "passed", verifiedCheckpoints: 0 },
+      summary: {
+        runOutcomeChanged: false,
+        scenarioChanges: 0,
+        assertionChanges: 1,
+        findingChanges: 0,
+        adapterChanges: 0,
+        capabilityChanges: 0,
+        checkpointChanges: 0,
+      },
+      changes: [
+        {
+          kind: "assertion-changed",
+          scenarioId: "happy-path",
+          assertionName: "core-policy-accepted",
+          before: "passed",
+          after: "passed",
+        },
+      ],
+    });
+
+    expect(output).toContain("ASSERT happy-path core-policy-accepted passed details changed");
   });
 
   test("keeps unsupported and skipped outcomes distinct from failures", () => {

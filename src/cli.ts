@@ -13,6 +13,7 @@ import {
   formatDoctorChecks,
   formatProofSummary,
   formatReplaySummary,
+  formatRunComparison,
   formatScenarioCatalog,
 } from "./cli-output.js";
 import { runAdapterConformance } from "./conformance/check.js";
@@ -21,6 +22,7 @@ import { CoreRpc } from "./core/rpc.js";
 import { loadCustomSuiteManifest } from "./custom/manifest.js";
 import { formatParseMatrix, runParseMatrix } from "./local/parse-matrix.js";
 import { createLocalRuntimeProvider } from "./local/provider.js";
+import { compareRuns } from "./runner/compare.js";
 import { verifyReplay } from "./runner/replay.js";
 import {
   assertProofSelectionCompatibility,
@@ -470,6 +472,22 @@ export function createProgram(): Command {
       const summary = await verifyReplay(resolve(directory));
       process.stdout.write(`${formatReplaySummary(summary)}\n`);
       if (summary.outcome !== "passed") {
+        process.exitCode = 1;
+      }
+    });
+
+  program
+    .command("compare <base-artifact-directory> <head-artifact-directory>")
+    .description("Compare two replayable run artifact directories")
+    .option("--json", "Print machine-readable output")
+    .action(async (baseDirectory: string, headDirectory: string, options: { json?: boolean }) => {
+      const comparison = await compareRuns(resolve(baseDirectory), resolve(headDirectory));
+      process.stdout.write(
+        options.json
+          ? `${JSON.stringify(comparison, null, 2)}\n`
+          : `${formatRunComparison(comparison)}\n`,
+      );
+      if (comparison.changed) {
         process.exitCode = 1;
       }
     });

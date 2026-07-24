@@ -1,5 +1,13 @@
 import { spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -22,6 +30,7 @@ describe("CLI program", () => {
       "parse-matrix",
       "stop",
       "replay",
+      "compare",
     ]);
   });
 
@@ -92,6 +101,79 @@ describe("CLI program", () => {
     expect(baseline?.options.some((option) => option.long === "--category")).toBe(true);
     expect(baseline?.options.some((option) => option.long === "--suite")).toBe(false);
   });
+
+  test("compares two artifact directories as JSON", () => {
+    const directory = mkdtempSync(resolve(tmpdir(), "psbt-lab-compare-cli-"));
+    const base = resolve(directory, "base");
+    const head = resolve(directory, "head");
+    const entrypoint = fileURLToPath(new URL("../src/cli.ts", import.meta.url));
+    const baseManifest = {
+      schema: "psbt-lab.run/0.1",
+      runId: "base-run",
+      suite: "proof",
+      startedAt: "2026-07-24T00:00:00.000Z",
+      completedAt: "2026-07-24T00:00:01.000Z",
+      outcome: "passed",
+      adapters: [
+        {
+          name: "rust-bitcoin",
+          version: "0.1.0",
+          artifactDigest: `sha256:${"a".repeat(64)}`,
+        },
+      ],
+      scenarios: [
+        {
+          id: "happy-path",
+          title: "Happy path",
+          category: "cross-library-signing",
+          outcome: "passed",
+          summary: "Policy accepted",
+          durationMs: 1,
+          assertions: [{ name: "core-policy-accepted", passed: true }],
+        },
+      ],
+      checkpoints: [],
+    };
+    const headManifest = {
+      ...baseManifest,
+      runId: "head-run",
+      outcome: "failed",
+      scenarios: [
+        {
+          ...baseManifest.scenarios[0],
+          outcome: "failed",
+          summary: "Policy rejected",
+          assertions: [{ name: "core-policy-accepted", passed: false }],
+        },
+      ],
+    };
+
+    try {
+      mkdirSync(base);
+      mkdirSync(head);
+      writeFileSync(resolve(base, "manifest.json"), `${JSON.stringify(baseManifest)}\n`, {
+        mode: 0o600,
+      });
+      writeFileSync(resolve(head, "manifest.json"), `${JSON.stringify(headManifest)}\n`, {
+        mode: 0o600,
+      });
+
+      const result = spawnSync(
+        process.execPath,
+        ["--import", "tsx", entrypoint, "compare", base, head, "--json"],
+        { encoding: "utf8", timeout: 30_000 },
+      );
+
+      expect(result.status).toBe(1);
+      expect(result.stderr).toBe("");
+      expect(JSON.parse(result.stdout)).toMatchObject({
+        changed: true,
+        summary: { scenarioChanges: 1, assertionChanges: 1 },
+      });
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  }, 35_000);
 
   test.each(["run", "matrix", "baseline"])(
     "accepts an external adapter manifest for %s",
