@@ -20,6 +20,8 @@ const coverage = [
   "All official BIP370 valid and invalid vectors",
   "Target one scenario or category for faster iteration",
   "Run bounded bundled parser checks without Docker",
+  "Capture baselines and compare replay-verified artifacts",
+  "Adapter failure cells with implementation-level context",
   "Transaction intent, RBF, locktime, sighash, and derivations",
   "Malformed native-parser rejection without crashes",
 ] as const;
@@ -158,6 +160,9 @@ export function Sections() {
                 <b>PASS</b> semantic roundtrip preservation{"\n"}
                 {"\n"}
                 <em>Adapter is ready for the matrix.</em>
+                {"\n\n"}
+                <span>$</span> psbt-lab compare artifacts/v0.7.0 artifacts/candidate{"\n"}
+                <b>PASS</b> replay-verified artifact comparison{"\n"}
               </code>
             </pre>
           </section>
