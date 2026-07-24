@@ -3,6 +3,9 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   plugins: [react()],
+  css: {
+    postcss: {},
+  },
   server: {
     host: "0.0.0.0",
     allowedHosts: ["terminal.local"],

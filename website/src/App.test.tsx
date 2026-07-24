@@ -33,8 +33,8 @@ describe("PSBT Interop Lab website", () => {
     );
     expect(screen.getByText(/quickstart proves one real handoff/i)).toBeInTheDocument();
     expect(screen.getByText(/matrix runs all 31 bundled scenarios/i)).toBeInTheDocument();
-    expect(screen.getByText("PSBT Interop Lab 0.6.0")).toBeInTheDocument();
-    expect(screen.getByText(/available now as version 0\.6\.0/i)).toBeInTheDocument();
+    expect(screen.getByText("PSBT Interop Lab 0.7.0")).toBeInTheDocument();
+    expect(screen.getByText(/available now as version 0\.7\.0/i)).toBeInTheDocument();
   });
 
   it("shows a real command-to-report proof walkthrough", () => {
@@ -63,7 +63,7 @@ describe("PSBT Interop Lab website", () => {
     await user.click(screen.getByRole("button", { name: "Copy install command" }));
 
     expect(screen.getByText(installCommand)).toBeInTheDocument();
-    expect(installCommand).toContain("psbt-interop-lab@0.6.0");
+    expect(installCommand).toContain("psbt-interop-lab@0.7.0");
     expect(screen.getByText("Install command copied")).toBeInTheDocument();
   });
 

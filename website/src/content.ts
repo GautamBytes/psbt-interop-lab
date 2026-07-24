@@ -2,7 +2,7 @@ import { publicConformanceRules } from "./generated/conformance-rules";
 
 export const repositoryUrl = "https://github.com/GautamBytes/psbt-interop-lab";
 export const npmUrl = "https://www.npmjs.com/package/psbt-interop-lab";
-export const installCommand = "npx --yes psbt-interop-lab@0.6.0 quickstart";
+export const installCommand = "npx --yes psbt-interop-lab@0.7.0 quickstart";
 
 export type ScenarioStatus = "pass" | "finding" | "supported";
 
