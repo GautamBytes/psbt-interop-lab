@@ -17,6 +17,13 @@ protocol specification.
   key-value maps, minimally encoded CompactSize values, unique complete keys, creator/updater/signer
   roles, and PSBTv0 fields. Its finalizer rules require an empty `PSBT_IN_FINAL_SCRIPTSIG` to remain
   absent.
+- [BIP127](https://bips.dev/127/) defines the PSBT proof-of-reserves commitment input field. The
+  diagnostic field registry names this field when parsing reports, but no active proof-of-reserves
+  workflow is currently executed.
+- [BIP322](https://bips.dev/322/) defines generic signed message support, including the PSBT global
+  signed-message field used by diagnostics.
+- [BIP353](https://bips.dev/353/) defines DNS payment instructions and its DNSSEC proof PSBT output
+  field. The lab only names this field in semantic diagnostics until executable fixtures exist.
 - [BIP370: PSBT Version 2](https://bips.dev/370/) defines PSBTv2's global input/output counts and
   per-input/per-output transaction fields. The wire parser validates PSBTv2 and the rejection matrix
   uses the complete official valid and invalid vector corpus. Dedicated workflows convert
@@ -31,6 +38,14 @@ protocol specification.
   script-path fixtures exercise leaf-script, control-block, and internal-key preservation plus
   bidirectional rust-bitcoin/BDK signing and finalization against an exact committed leaf witness.
   Its finalizer rules permit removal of `PSBT_OUT_TAP_BIP32_DERIVATION` after finalization.
+- [BIP373](https://bips.dev/373/) defines MuSig2 PSBT fields for participant keys, public nonces,
+  and partial signatures. The lab currently names these fields in diagnostics and leaves executable
+  MuSig2 interoperability scenarios as future work.
+- [BIP375](https://bips.dev/375/) defines Silent Payment PSBT send fields for ECDH shares, DLEQ
+  proofs, recipient scan keys, spend keys, labels, and eligible inputs. The lab currently names
+  registered send fields in diagnostics.
+- [BIP376](https://bips.dev/376/) defines Silent Payment PSBT spend fields for spend-key derivation
+  and tweaks. The lab currently names these fields in diagnostics.
 - [BIP382](https://bips.dev/382/) defines `wpkh()` output descriptors, including their use inside
   `sh()`, and [BIP386](https://bips.dev/386/) defines `tr()` descriptors. The fixture factory uses
   these forms for nested SegWit and Taproot script-path regtest outputs.
