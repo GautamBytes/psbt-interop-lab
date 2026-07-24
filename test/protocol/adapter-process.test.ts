@@ -1,3 +1,6 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, test } from "vitest";
 import { AdapterProcess, AdapterProtocolError } from "../../src/protocol/adapter-process.js";
@@ -49,6 +52,24 @@ describe("AdapterProcess", () => {
     const adapter = create("wrong-id");
 
     await expect(adapter.request(request(), 1_000)).rejects.toThrow(/response id/i);
+  });
+
+  test("restarts after a protocol violation before the next request", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "psbt-lab-adapter-restart-"));
+    try {
+      const marker = join(directory, "failed-once");
+      const adapter = create("ok", { args: [fixture, "wrong-id-once", marker] });
+
+      await expect(adapter.request(request("first"), 1_000)).rejects.toThrow(/response id/i);
+      const response = await adapter.request(request("second"), 1_000);
+
+      expect(response.status).toBe("ok");
+      if (response.status === "ok") {
+        expect(response.output).toEqual({ echoed: "hello" });
+      }
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 
   test("terminates an adapter that exceeds its line limit", async () => {

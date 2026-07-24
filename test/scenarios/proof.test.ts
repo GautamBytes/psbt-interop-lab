@@ -829,7 +829,7 @@ describe("proof runtime", () => {
         harness.dependencies,
       ),
     ).rejects.toThrow(
-      /Failed to negotiate built-in adapter bitcoinjs-lib: adapter exited during hello/,
+      /Failed to negotiate built-in adapter bitcoinjs-lib: bitcoinjs-lib hello failed: Error: adapter exited during hello/,
     );
     for (const adapter of harness.adapters) expect(adapter.close).toHaveBeenCalledTimes(1);
   });

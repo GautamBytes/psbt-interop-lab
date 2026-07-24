@@ -59,6 +59,11 @@ ID and includes implementation name, version, and artifact digest. The status is
 `unsupported`, `rejected`, `crashed`, or `timeout`; failures use stable error classes rather than
 language-specific stack traces.
 
+Scenario execution records every adapter request as a scenario adapter cell with adapter ID,
+operation, request ID, status, duration, and failure detail. Transport failures, malformed
+responses, timeouts, and adapter-reported crash/timeout statuses are converted into failed cells;
+restartable adapter processes are restarted before the next matrix cell is attempted.
+
 Startup pins each adapter's self-reported name, version, source revision, operations, and declared
 PSBT-version support as a compatibility check. A malicious adapter can spoof the expected identity strings and
 supply any schema-valid self-reported digest; the runner does not compare a pinned content digest.
@@ -153,8 +158,9 @@ The rejection matrix runs five malformed or undeclared PSBT cases through all fo
 paths. It currently records btcsuite 1.2.0 accepting a duplicate global unsigned-transaction key as
 a compatibility finding. That one baseline cell may resolve to rejection without breaking the run;
 another malformed acceptance, crash, or timeout still fails the scenario. Findings remain visible
-in every report format and the CLI summary. The metadata scenario injects both generic unknown
-fields and valid BIP174 proprietary
+in every report format and the CLI summary, while adapter cells show which implementation and
+operation produced each failed, unsupported, or passed request. The metadata scenario injects both
+generic unknown fields and valid BIP174 proprietary
 entries into every global, input, and output map. It checks them through four roundtrips, three
 independent signers, exact-union combining, Core PSBT finalization, and Core policy acceptance.
 Three regression scenarios

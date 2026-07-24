@@ -37,9 +37,23 @@ export interface ScenarioFinding {
   readonly evidence?: readonly string[];
 }
 
+export type ScenarioAdapterCellStatus = "passed" | "failed" | "unsupported";
+
+export interface ScenarioAdapterCell {
+  readonly adapter: string;
+  readonly operation: AdapterOperation;
+  readonly requestId: string;
+  readonly status: ScenarioAdapterCellStatus;
+  readonly detail: string;
+  readonly durationMs: number;
+  readonly errorClass?: string;
+  readonly restarted?: boolean;
+}
+
 export interface ScenarioExecutionOutput {
   readonly summary?: string;
   readonly assertions: readonly ScenarioAssertionEvidence[];
+  readonly adapterCells?: readonly ScenarioAdapterCell[];
   readonly findings?: readonly ScenarioFinding[];
   readonly expectedFailure?: {
     readonly implementation: string;

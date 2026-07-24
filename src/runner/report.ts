@@ -173,6 +173,21 @@ export function generateMarkdownReport(manifest: RunManifest): string {
         "",
       );
     }
+    if (scenario.adapterCells?.length) {
+      lines.push("Adapter cells:", "");
+      for (const cell of scenario.adapterCells) {
+        const diagnostics = [
+          `request=${markdownCode(cell.requestId)}`,
+          `duration=${markdownText(cell.durationMs.toFixed(3))} ms`,
+          cell.errorClass ? `error=${markdownCode(cell.errorClass)}` : undefined,
+          cell.restarted !== undefined ? `restarted=${cell.restarted ? "yes" : "no"}` : undefined,
+        ].filter((value): value is string => value !== undefined);
+        lines.push(
+          `- **${cell.status.toUpperCase()}** ${markdownCode(cell.adapter)} ${markdownCode(cell.operation)} (${diagnostics.join(", ")}): ${markdownText(cell.detail)}`,
+        );
+      }
+      lines.push("");
+    }
     if (scenario.assertions.length > 0) {
       lines.push("Assertions:", "");
       for (const assertion of scenario.assertions) {
@@ -345,6 +360,21 @@ export function generateHtmlReport(manifest: RunManifest): string {
             `<li><code>${escapeHtml(finding.id)}</code> in <code>${escapeHtml(finding.implementation)}</code>: ${escapeHtml(finding.summary)}</li>`,
         )
         .join("");
+      const adapterCells = (scenario.adapterCells ?? [])
+        .map((cell) => {
+          const diagnostics = [
+            `request ${cell.requestId}`,
+            `${cell.durationMs.toFixed(3)} ms`,
+            cell.errorClass ? `error ${cell.errorClass}` : undefined,
+            cell.restarted !== undefined ? `restarted ${cell.restarted ? "yes" : "no"}` : undefined,
+          ].filter((value): value is string => value !== undefined);
+          return `<li class="adapter-cell adapter-cell--${escapeHtml(cell.status)}">
+            <div><strong>${escapeHtml(cell.status.toUpperCase())}</strong> <code>${escapeHtml(cell.adapter)}</code> <code>${escapeHtml(cell.operation)}</code></div>
+            <p>${escapeHtml(diagnostics.join(" · "))}</p>
+            <p>${escapeHtml(cell.detail)}</p>
+          </li>`;
+        })
+        .join("");
       const infrastructure = scenario.infrastructureError
         ? `<p class="infrastructure"><strong>Infrastructure error</strong>: <code>${escapeHtml(scenario.infrastructureError.errorClass)}</code> ${escapeHtml(scenario.infrastructureError.message)}</p>`
         : "";
@@ -360,6 +390,7 @@ export function generateHtmlReport(manifest: RunManifest): string {
         ${scenario.expectedFailure ? `<p class="expected">Expected failure: <code>${escapeHtml(scenario.expectedFailure.implementation)}</code> · <code>${escapeHtml(scenario.expectedFailure.errorClass)}</code></p>` : ""}
         ${findings ? `<h3>Compatibility findings</h3><ul class="findings">${findings}</ul>` : ""}
         ${missing ? `<h3>Missing capabilities</h3><ul>${missing}</ul>` : ""}
+        ${adapterCells ? `<h3>Adapter cells</h3><ul class="adapter-cells">${adapterCells}</ul>` : ""}
         ${assertions ? `<details open><summary>Assertions (${scenario.assertions.length})</summary><ul class="assertions">${assertions}</ul></details>` : ""}
       </article>`;
     })
@@ -429,6 +460,12 @@ export function generateHtmlReport(manifest: RunManifest): string {
     .infrastructure { border-left: 3px solid var(--fail); padding-left: 10px; }
     .findings { border-left: 3px solid var(--warn); padding-left: 28px; }
     .findings li { margin: 6px 0; }
+    .adapter-cells { display: grid; gap: 6px; padding-left: 0; list-style: none; }
+    .adapter-cell { border: 1px solid var(--line); border-left-width: 3px; border-radius: 4px; padding: 8px 10px; }
+    .adapter-cell p { margin: 4px 0 0; color: var(--muted); }
+    .adapter-cell--passed { border-left-color: var(--pass); }
+    .adapter-cell--failed { border-left-color: var(--fail); }
+    .adapter-cell--unsupported { border-left-color: var(--warn); }
     .classifications { display: grid; gap: 8px; list-style: none; padding: 0; margin: 8px 0 16px; }
     .classification { border: 1px solid var(--line); border-left-width: 3px; border-radius: 4px; padding: 10px 12px; }
     .classification--stop { border-left-color: var(--fail); }

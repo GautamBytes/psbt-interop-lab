@@ -58,6 +58,19 @@ function requireOutputString(response: AdapterResponse, key: string): string {
   return value;
 }
 
+async function restartAfterProcessFailure(adapter: AvailableRuntimeAdapter): Promise<void> {
+  await adapter.process.restart?.().catch(() => undefined);
+}
+
+async function restartIfTerminalStatus(
+  adapter: AvailableRuntimeAdapter,
+  response: AdapterResponse,
+): Promise<void> {
+  if (response.status === "crashed" || response.status === "timeout") {
+    await restartAfterProcessFailure(adapter);
+  }
+}
+
 async function runFixture(
   adapter: AvailableRuntimeAdapter,
   adapterIndex: number,
@@ -75,7 +88,10 @@ async function runFixture(
       adapter.timeoutMs,
     );
     assertIdentity(adapter, parsed);
-    if (parsed.status !== "ok") return failureCell(adapter.id, fixture.id, parsed);
+    if (parsed.status !== "ok") {
+      await restartIfTerminalStatus(adapter, parsed);
+      return failureCell(adapter.id, fixture.id, parsed);
+    }
     if (
       requireOutputString(parsed, "nativeParser") !== adapter.expected.name ||
       parsed.output["psbtVersion"] !== fixture.psbtVersion
@@ -93,7 +109,10 @@ async function runFixture(
       adapter.timeoutMs,
     );
     assertIdentity(adapter, roundtrip);
-    if (roundtrip.status !== "ok") return failureCell(adapter.id, fixture.id, roundtrip);
+    if (roundtrip.status !== "ok") {
+      await restartIfTerminalStatus(adapter, roundtrip);
+      return failureCell(adapter.id, fixture.id, roundtrip);
+    }
     const returned = parsePsbtDocument(requireOutputString(roundtrip, "psbt"));
     const source = parsePsbtDocument(fixture.psbt);
     const transition = assertPsbtTransition("roundtrip", source, returned);
@@ -107,6 +126,7 @@ async function runFixture(
         : "Native parse and semantic roundtrip passed",
     };
   } catch (error) {
+    await restartAfterProcessFailure(adapter);
     return {
       adapterId: adapter.id,
       fixtureId: fixture.id,
@@ -153,6 +173,7 @@ export async function runParseMatrix(provider: RuntimeProvider): Promise<ParseMa
         );
         assertIdentity(adapter, hello);
         if (hello.status !== "ok") {
+          await restartIfTerminalStatus(adapter, hello);
           for (const fixture of LOCAL_PARSE_FIXTURES) {
             cells.push(failureCell(adapter.id, fixture.id, hello));
           }
@@ -160,6 +181,7 @@ export async function runParseMatrix(provider: RuntimeProvider): Promise<ParseMa
         }
         capabilities = parseAdapterHelloCapabilities(hello.output);
       } catch (error) {
+        await restartAfterProcessFailure(adapter);
         for (const fixture of LOCAL_PARSE_FIXTURES) {
           cells.push({
             adapterId: adapter.id,

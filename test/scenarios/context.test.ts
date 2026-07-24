@@ -1,5 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 import type { RpcCaller } from "../../src/core/fixtures.js";
+import { AdapterProtocolError } from "../../src/protocol/adapter-process.js";
 import type { AdapterRequest, AdapterResponse } from "../../src/protocol/types.js";
 import {
   type AdapterRequestClient,
@@ -244,6 +245,84 @@ describe("ScenarioExecutionContext", () => {
     ]);
   });
 
+  test("records adapter request cells and classifies returned failure statuses", async () => {
+    const value = context(fakeAdapter("unsupported"));
+
+    const unsupported = await value.request("rust-bitcoin", "sign", {});
+
+    expect(unsupported.status).toBe("unsupported");
+    expect(value.takeAdapterCells()).toEqual([
+      {
+        adapter: "rust-bitcoin",
+        operation: "sign",
+        requestId: "request-1",
+        status: "unsupported",
+        detail: "adapter.unsupported: unsupported response",
+        durationMs: expect.any(Number),
+        errorClass: "adapter.unsupported",
+      },
+    ]);
+  });
+
+  test("converts adapter transport failures into failed cells and synthetic responses", async () => {
+    const restart = vi.fn(async () => undefined);
+    const adapter: AdapterRequestClient = {
+      restart,
+      request: vi.fn(async () => {
+        throw new AdapterProtocolError("Adapter response is not valid JSON");
+      }),
+    };
+    const value = context(adapter);
+
+    const failed = await value.request("rust-bitcoin", "roundtrip", {});
+
+    expect(failed).toMatchObject({
+      protocol: "psbt-lab.adapter/0.2",
+      id: "request-1",
+      status: "crashed",
+      implementation: { name: "rust-bitcoin", version: "unknown" },
+      error: {
+        class: "AdapterProtocolError",
+        message: "Adapter response is not valid JSON",
+        retryable: true,
+      },
+    });
+    expect(restart).toHaveBeenCalledTimes(1);
+    expect(value.takeAdapterCells()).toMatchObject([
+      {
+        adapter: "rust-bitcoin",
+        operation: "roundtrip",
+        requestId: "request-1",
+        status: "failed",
+        detail: "AdapterProtocolError: Adapter response is not valid JSON",
+        restarted: true,
+      },
+    ]);
+  });
+
+  test.each(["crashed", "timeout"] as const)(
+    "restarts after an adapter returns %s status",
+    async (status) => {
+      const restart = vi.fn(async () => undefined);
+      const adapter = { ...fakeAdapter(status), restart };
+      const value = context(adapter);
+
+      const failed = await value.request("rust-bitcoin", "sign", {});
+
+      expect(failed.status).toBe(status);
+      expect(restart).toHaveBeenCalledTimes(1);
+      expect(value.takeAdapterCells()).toMatchObject([
+        {
+          adapter: "rust-bitcoin",
+          operation: "sign",
+          requestId: "request-1",
+          status: "failed",
+          restarted: true,
+        },
+      ]);
+    },
+  );
+
   test("treats a normal adapter rejection as a scenario assertion failure", async () => {
     const value = context(fakeAdapter("rejected"));
     const rejected = await value.request("rust-bitcoin", "sign", {});
@@ -252,14 +331,25 @@ describe("ScenarioExecutionContext", () => {
   });
 
   test.each(["crashed", "timeout"] as const)(
-    "treats adapter %s as an infrastructure failure",
+    "treats adapter %s as an adapter assertion failure",
     async (status) => {
       const value = context(fakeAdapter(status));
       const failed = await value.request("rust-bitcoin", "sign", {});
 
-      expect(() => value.outputString(failed, "psbt", "sign")).toThrowError(
-        new Error(`rust-bitcoin sign failed: adapter.${status}: ${status} response`),
-      );
+      expect(() => value.outputString(failed, "psbt", "sign")).toThrowError(ScenarioAssertionError);
+      try {
+        value.outputString(failed, "psbt", "sign");
+      } catch (error) {
+        expect(error).toBeInstanceOf(ScenarioAssertionError);
+        expect((error as ScenarioAssertionError).assertions).toEqual([
+          {
+            name: "sign-adapter-response",
+            passed: false,
+            likelyImplementation: "rust-bitcoin",
+            summary: `rust-bitcoin returned ${status}`,
+          },
+        ]);
+      }
     },
   );
 

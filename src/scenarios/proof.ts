@@ -294,6 +294,7 @@ export interface DockerAdapterOptions {
 
 export interface ProofRuntimeAdapter {
   request: AdapterProcess["request"];
+  restart?(): Promise<void>;
   close(): Promise<void>;
 }
 
