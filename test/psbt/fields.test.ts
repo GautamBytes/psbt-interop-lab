@@ -10,6 +10,9 @@ const EXPECTED_FIELDS = {
     [0x04, "PSBT_GLOBAL_INPUT_COUNT", "BIP370"],
     [0x05, "PSBT_GLOBAL_OUTPUT_COUNT", "BIP370"],
     [0x06, "PSBT_GLOBAL_TX_MODIFIABLE", "BIP370"],
+    [0x07, "PSBT_GLOBAL_SP_ECDH_SHARE", "BIP375"],
+    [0x08, "PSBT_GLOBAL_SP_DLEQ", "BIP375"],
+    [0x09, "PSBT_GLOBAL_GENERIC_SIGNED_MESSAGE", "BIP322"],
     [0xfb, "PSBT_GLOBAL_VERSION", "BIP174"],
     [0xfc, "PSBT_GLOBAL_PROPRIETARY", "BIP174"],
   ],
@@ -23,6 +26,7 @@ const EXPECTED_FIELDS = {
     [0x06, "PSBT_IN_BIP32_DERIVATION", "BIP174"],
     [0x07, "PSBT_IN_FINAL_SCRIPTSIG", "BIP174"],
     [0x08, "PSBT_IN_FINAL_SCRIPTWITNESS", "BIP174"],
+    [0x09, "PSBT_IN_POR_COMMITMENT", "BIP127"],
     [0x0a, "PSBT_IN_RIPEMD160", "BIP174"],
     [0x0b, "PSBT_IN_SHA256", "BIP174"],
     [0x0c, "PSBT_IN_HASH160", "BIP174"],
@@ -38,6 +42,13 @@ const EXPECTED_FIELDS = {
     [0x16, "PSBT_IN_TAP_BIP32_DERIVATION", "BIP371"],
     [0x17, "PSBT_IN_TAP_INTERNAL_KEY", "BIP371"],
     [0x18, "PSBT_IN_TAP_MERKLE_ROOT", "BIP371"],
+    [0x1a, "PSBT_IN_MUSIG2_PARTICIPANT_PUBKEYS", "BIP373"],
+    [0x1b, "PSBT_IN_MUSIG2_PUB_NONCE", "BIP373"],
+    [0x1c, "PSBT_IN_MUSIG2_PARTIAL_SIG", "BIP373"],
+    [0x1d, "PSBT_IN_SP_ECDH_SHARE", "BIP375"],
+    [0x1e, "PSBT_IN_SP_DLEQ", "BIP375"],
+    [0x1f, "PSBT_IN_SP_SPEND_BIP32_DERIVATION", "BIP376"],
+    [0x20, "PSBT_IN_SP_TWEAK", "BIP376"],
     [0xfc, "PSBT_IN_PROPRIETARY", "BIP174"],
   ],
   output: [
@@ -49,12 +60,16 @@ const EXPECTED_FIELDS = {
     [0x05, "PSBT_OUT_TAP_INTERNAL_KEY", "BIP371"],
     [0x06, "PSBT_OUT_TAP_TREE", "BIP371"],
     [0x07, "PSBT_OUT_TAP_BIP32_DERIVATION", "BIP371"],
+    [0x08, "PSBT_OUT_MUSIG2_PARTICIPANT_PUBKEYS", "BIP373"],
+    [0x09, "PSBT_OUT_SP_V0_INFO", "BIP375"],
+    [0x0a, "PSBT_OUT_SP_V0_LABEL", "BIP375"],
+    [0x35, "PSBT_OUT_DNSSEC_PROOF", "BIP353"],
     [0xfc, "PSBT_OUT_PROPRIETARY", "BIP174"],
   ],
 } as const;
 
 describe("PSBT field registry", () => {
-  test("covers every BIP174, BIP370, and BIP371 key type used by the lab", () => {
+  test("covers the official PSBT key type registry entries used by diagnostics", () => {
     expect(
       PSBT_FIELD_REGISTRY.map(({ scope, keyType, symbol, bip }) => [scope, keyType, symbol, bip]),
     ).toEqual(

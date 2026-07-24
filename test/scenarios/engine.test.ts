@@ -466,19 +466,44 @@ describe("scenario engine", () => {
     });
   });
 
-  test("aborts immediately on an infrastructure error", async () => {
-    const later = vi.fn();
+  test("records unexpected infrastructure errors and continues with later scenarios", async () => {
+    const context: TestContext = { calls: [] };
+    const later = vi.fn(async (value: TestContext) => {
+      value.calls.push("later");
+      return { summary: "later passed", assertions: passingEvidence("later-completed") };
+    });
     const catalog = [
       scenario("core-down", async () => {
-        throw new Error("Bitcoin Core unavailable");
+        context.calls.push("core-down");
+        throw new Error(`Bitcoin Core unavailable for ${MINIMAL_PSBT}; wif=${TESTNET_WIF}`);
       }),
       scenario("later", later),
     ];
 
-    await expect(runScenarioCatalog(catalog, { calls: [] }, new Map())).rejects.toThrow(
-      /Core unavailable/,
-    );
-    expect(later).not.toHaveBeenCalled();
+    const results = await runScenarioCatalog(catalog, context, new Map());
+
+    expect(context.calls).toEqual(["core-down", "later"]);
+    expect(later).toHaveBeenCalledOnce();
+    expect(results[0]).toMatchObject({
+      id: "core-down",
+      outcome: "failed",
+      summary: "core-down failed before producing scenario assertions.",
+      assertions: [
+        {
+          name: "scenario-executed",
+          passed: false,
+          likelyImplementation: "scenario-runtime",
+          summary: "Error: Bitcoin Core unavailable for [redacted:psbt]; wif=[redacted:secret]",
+        },
+      ],
+      infrastructureError: {
+        errorClass: "Error",
+        message: "Bitcoin Core unavailable for [redacted:psbt]; wif=[redacted:secret]",
+      },
+    });
+    expect(results[1]).toMatchObject({ id: "later", outcome: "passed" });
+    expect(JSON.stringify(results)).not.toContain(MINIMAL_PSBT);
+    expect(JSON.stringify(results)).not.toContain(TESTNET_WIF);
   });
 
   test("supports an explicit deterministic skip without executing the scenario", async () => {

@@ -113,6 +113,36 @@ function manifest(): RunManifest {
   };
 }
 
+function manifestWithInfrastructureError(): RunManifest {
+  const value = manifest();
+  return {
+    ...value,
+    scenarios: [
+      ...value.scenarios,
+      {
+        id: "core-down",
+        title: "Core transport unavailable",
+        category: "runtime",
+        outcome: "failed",
+        summary: "core-down failed before producing scenario assertions.",
+        durationMs: 5,
+        assertions: [
+          {
+            name: "scenario-executed",
+            passed: false,
+            likelyImplementation: "scenario-runtime",
+            summary: `Error: Bitcoin Core unavailable for ${MINIMAL_PSBT}; wif=${TESTNET_WIF}`,
+          },
+        ],
+        infrastructureError: {
+          errorClass: "Error",
+          message: `Bitcoin Core unavailable for ${MINIMAL_PSBT}; wif=${TESTNET_WIF}`,
+        },
+      },
+    ],
+  };
+}
+
 describe("HTML report", () => {
   test("renders a self-contained, escaped, secret-safe compatibility report", () => {
     const html = generateHtmlReport(manifest());
@@ -254,5 +284,25 @@ describe("HTML report", () => {
     expect(html).toContain("rust-bitcoin");
     expect(html).toContain("Code or dependency change");
     expect(html).toContain("Capability mismatch");
+  });
+
+  test("renders infrastructure failures in human and machine reports", () => {
+    const value = manifestWithInfrastructureError();
+    const json = JSON.stringify(generateJsonReport(value));
+    const markdown = generateMarkdownReport(value);
+    const html = generateHtmlReport(value);
+
+    expect(json).toContain('"infrastructureError"');
+    expect(json).toContain("Bitcoin Core unavailable");
+    expect(markdown).toContain("Infrastructure error: `Error`");
+    expect(markdown).toContain("Bitcoin Core unavailable");
+    expect(html).toContain("Infrastructure error");
+    expect(html).toContain("Bitcoin Core unavailable");
+    for (const report of [json, markdown, html]) {
+      expect(report).not.toContain(TESTNET_WIF);
+      expect(report).not.toContain(MINIMAL_PSBT);
+      expect(report).toContain("[redacted:secret]");
+      expect(report).toContain("[redacted:psbt]");
+    }
   });
 });

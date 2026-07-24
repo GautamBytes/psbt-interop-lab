@@ -156,6 +156,12 @@ export function generateMarkdownReport(manifest: RunManifest): string {
     if (classifications.length > 0) {
       lines.push("Classifications:", "", ...classifications.flatMap(markdownClassification), "");
     }
+    if (scenario.infrastructureError) {
+      lines.push(
+        `Infrastructure error: ${markdownCode(scenario.infrastructureError.errorClass)} - ${markdownText(scenario.infrastructureError.message)}`,
+        "",
+      );
+    }
     if (scenario.missingCapabilities) {
       lines.push(
         "Missing capabilities:",
@@ -339,6 +345,9 @@ export function generateHtmlReport(manifest: RunManifest): string {
             `<li><code>${escapeHtml(finding.id)}</code> in <code>${escapeHtml(finding.implementation)}</code>: ${escapeHtml(finding.summary)}</li>`,
         )
         .join("");
+      const infrastructure = scenario.infrastructureError
+        ? `<p class="infrastructure"><strong>Infrastructure error</strong>: <code>${escapeHtml(scenario.infrastructureError.errorClass)}</code> ${escapeHtml(scenario.infrastructureError.message)}</p>`
+        : "";
       return `<article class="scenario">
         <header>
           <div><span class="badge ${escapeHtml(scenario.outcome)}">${escapeHtml(scenario.outcome.toUpperCase())}</span><span class="category">${escapeHtml(scenario.category)}</span></div>
@@ -347,6 +356,7 @@ export function generateHtmlReport(manifest: RunManifest): string {
         </header>
         <p>${escapeHtml(scenario.summary)}</p>
         ${classificationHtml ? `<section class="classification-section" aria-label="Scenario classifications"><h3>Classification</h3><ul class="classifications">${classificationHtml}</ul></section>` : ""}
+        ${infrastructure}
         ${scenario.expectedFailure ? `<p class="expected">Expected failure: <code>${escapeHtml(scenario.expectedFailure.implementation)}</code> · <code>${escapeHtml(scenario.expectedFailure.errorClass)}</code></p>` : ""}
         ${findings ? `<h3>Compatibility findings</h3><ul class="findings">${findings}</ul>` : ""}
         ${missing ? `<h3>Missing capabilities</h3><ul>${missing}</ul>` : ""}
@@ -416,6 +426,7 @@ export function generateHtmlReport(manifest: RunManifest): string {
     .badge.unsupported { color: var(--warn); }
     .badge.skipped { color: var(--info); }
     .expected { border-left: 3px solid var(--warn); padding-left: 10px; }
+    .infrastructure { border-left: 3px solid var(--fail); padding-left: 10px; }
     .findings { border-left: 3px solid var(--warn); padding-left: 28px; }
     .findings li { margin: 6px 0; }
     .classifications { display: grid; gap: 8px; list-style: none; padding: 0; margin: 8px 0 16px; }

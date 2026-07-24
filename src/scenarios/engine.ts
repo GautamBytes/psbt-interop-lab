@@ -226,14 +226,6 @@ function assertValidCatalog<Context>(catalog: readonly ScenarioDefinition<Contex
   }
 }
 
-function redactErrorMessage(error: Error): Error {
-  const redacted = redactSensitiveText(error.message);
-  if (redacted !== error.message) {
-    error.message = redacted;
-  }
-  return error;
-}
-
 function completedResult<Context>(
   definition: ScenarioDefinition<Context>,
   output: ScenarioExecutionOutput,
@@ -262,6 +254,41 @@ function completedResult<Context>(
       : {}),
     ...(output.policyAccepted !== undefined ? { policyAccepted: output.policyAccepted } : {}),
     ...(output.transactionId ? { transactionId: output.transactionId } : {}),
+  };
+}
+
+function infrastructureFailureResult<Context>(
+  definition: ScenarioDefinition<Context>,
+  error: unknown,
+  startedAt: number,
+): ScenarioResult {
+  const errorClass =
+    error instanceof Error
+      ? redactSensitiveText(error.name || error.constructor.name || "Error")
+      : redactSensitiveText(typeof error);
+  const message =
+    error instanceof Error
+      ? redactSensitiveText(error.message)
+      : redactSensitiveText(String(error));
+  return {
+    id: definition.id,
+    title: definition.title,
+    category: definition.category,
+    outcome: "failed",
+    summary: redactSensitiveText(`${definition.id} failed before producing scenario assertions.`),
+    durationMs: elapsedMilliseconds(startedAt),
+    assertions: [
+      {
+        name: "scenario-executed",
+        passed: false,
+        likelyImplementation: "scenario-runtime",
+        summary: `${errorClass}: ${message}`,
+      },
+    ],
+    infrastructureError: {
+      errorClass,
+      message,
+    },
   };
 }
 
@@ -312,18 +339,19 @@ export async function runScenarioCatalog<Context>(
       const output = await definition.run(context);
       results.push(completedResult(definition, output, startedAt));
     } catch (error) {
-      if (!(error instanceof ScenarioAssertionError)) {
-        throw error instanceof Error ? redactErrorMessage(error) : error;
-      }
-      results.push({
-        id: definition.id,
-        title: definition.title,
-        category: definition.category,
-        outcome: "failed",
-        summary: redactSensitiveText(error.message),
-        durationMs: elapsedMilliseconds(startedAt),
-        assertions: copyAssertions(error.assertions),
-      });
+      results.push(
+        error instanceof ScenarioAssertionError
+          ? {
+              id: definition.id,
+              title: definition.title,
+              category: definition.category,
+              outcome: "failed",
+              summary: redactSensitiveText(error.message),
+              durationMs: elapsedMilliseconds(startedAt),
+              assertions: copyAssertions(error.assertions),
+            }
+          : infrastructureFailureResult(definition, error, startedAt),
+      );
     }
   }
 
