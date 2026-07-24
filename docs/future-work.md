@@ -18,7 +18,7 @@ be driven by real wallet and library maintainers using those foundations.
 
 ## Better Diagnostics
 
-- Compare compatibility results across implementation versions to expose new regressions.
+- Publish recurring baseline comparisons as versioned regression reports.
 - Improve minimization of failing custom scenarios into smaller reproducible test cases.
 
 ## Developer Integration

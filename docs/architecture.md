@@ -20,6 +20,7 @@ flowchart LR
   CLI --> Facts["Lossless semantic PSBT parser and transition rules"]
   CLI --> Artifacts["Private checkpoints plus JSON, Markdown, and HTML reports"]
   Artifacts --> Replay["Offline PSBT-digest replay"]
+  Artifacts --> Compare["Replay-verified run comparison"]
 ```
 
 ## Components
@@ -105,6 +106,11 @@ alongside the run's self-reported implementation identities. Replay reparses eac
 its SHA256 against the manifest and stored facts JSON `sha256`; it does not recompute other stored
 facts or recorded outcomes and does not rerun adapters. This does not authenticate the mutable
 artifact directory.
+
+`psbt-lab compare <base> <head>` first verifies both artifact manifests through the replay path,
+then reports scenario status, finding, adapter-cell, and checkpoint digest changes between those
+runs. It compares recorded local evidence; it does not rerun Core or adapters and inherits replay's
+local mutable-directory trust boundary.
 
 Replay rejects absolute and lexically escaping checkpoint paths and caps a manifest at 1,000
 checkpoints. Intermediate symlinks remain trusted. Final-component `O_NOFOLLOW` protection applies
@@ -193,6 +199,10 @@ sequence, and removes a signature. It passes only when the semantic detectors id
 this catalog. The selection changes runtime cost, not assertion depth: each selected scenario keeps
 the same adapter checks, semantic transitions, Core policy oracle, and report artifacts as a full
 matrix run.
+
+`psbt-lab baseline` captures the standard comparison snapshot, and
+`psbt-lab compare <base> <head>` checks whether a later run changed scenario outcomes, findings,
+adapter cells, or checkpoint digests after replay-verifying both artifact directories.
 
 ## Extension Points
 

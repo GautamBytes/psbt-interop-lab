@@ -43,13 +43,15 @@ The first matrix run builds checksum- and digest-pinned images. Later runs can r
 psbt-lab matrix --no-build
 ```
 
-List the executable scenarios or replay a completed run:
+List the executable scenarios, capture a baseline, compare completed runs, or replay evidence:
 
 ```bash
 psbt-lab list
 psbt-lab run --scenario psbtv2-2-of-3-cross-library
 psbt-lab run --category taproot-scriptpath
 psbt-lab parse-matrix --runtime local
+psbt-lab baseline
+psbt-lab compare artifacts/<baseline-run-id> artifacts/<candidate-run-id>
 psbt-lab replay artifacts/<run-id>
 ```
 
@@ -58,6 +60,8 @@ cannot create resources or silently run a different test. `parse-matrix --runtim
 Dockerless parser-only path: the published package currently runs its checksum-pinned bundled
 JavaScript parser and reports native adapters without a published local binary as `unsupported`.
 Use `matrix` for the complete Core-backed, cross-library signing and finalization proof.
+`baseline` records the standard comparison snapshot, and `compare` replay-verifies both artifact
+directories before reporting scenario status, finding, adapter-cell, and checkpoint digest changes.
 
 Stop the local regtest node when finished:
 
