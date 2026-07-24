@@ -22,6 +22,11 @@ export interface ReplaySummary {
   scenarios: RunManifest["scenarios"];
 }
 
+export interface VerifiedReplay {
+  readonly manifest: RunManifest;
+  readonly verifiedCheckpoints: number;
+}
+
 function parseManifest(value: unknown): RunManifest {
   if (typeof value !== "object" || value === null) {
     throw new Error("Replay manifest is not an object");
@@ -132,7 +137,7 @@ async function verifyCheckpoint(directory: string, checkpoint: CheckpointRecord)
   }
 }
 
-export async function verifyReplay(directory: string): Promise<ReplaySummary> {
+export async function loadVerifiedReplay(directory: string): Promise<VerifiedReplay> {
   const canonicalDirectory = await realpath(resolve(directory));
   if (!(await stat(canonicalDirectory)).isDirectory()) {
     throw new Error("Replay path is not a directory");
@@ -155,9 +160,17 @@ export async function verifyReplay(directory: string): Promise<ReplaySummary> {
     await verifyCheckpoint(canonicalDirectory, checkpoint);
   }
   return {
+    manifest,
+    verifiedCheckpoints: manifest.checkpoints.length,
+  };
+}
+
+export async function verifyReplay(directory: string): Promise<ReplaySummary> {
+  const { manifest, verifiedCheckpoints } = await loadVerifiedReplay(directory);
+  return {
     runId: manifest.runId,
     outcome: manifest.outcome,
-    verifiedCheckpoints: manifest.checkpoints.length,
+    verifiedCheckpoints,
     scenarios: manifest.scenarios,
   };
 }

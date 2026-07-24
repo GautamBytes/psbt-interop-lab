@@ -1,5 +1,3 @@
-import { readFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
 import type { AdapterHelloCapabilities } from "../protocol/types.js";
 import type { PsbtWireFacts } from "../psbt/wire-facts.js";
 import type {
@@ -13,7 +11,7 @@ import type {
   RunManifest,
   ScenarioRecord,
 } from "./artifacts.js";
-import { verifyReplay } from "./replay.js";
+import { loadVerifiedReplay } from "./replay.js";
 
 export type RunComparisonChange =
   | {
@@ -110,11 +108,9 @@ async function loadVerifiedManifest(directory: string): Promise<{
   readonly manifest: RunManifest;
   readonly verifiedCheckpoints: number;
 }> {
-  const summary = await verifyReplay(directory);
-  const text = await readFile(join(resolve(directory), "manifest.json"), "utf8");
-  const decoded: unknown = JSON.parse(text);
-  assertRunManifest(decoded);
-  return { manifest: decoded, verifiedCheckpoints: summary.verifiedCheckpoints };
+  const verified = await loadVerifiedReplay(directory);
+  assertRunManifest(verified.manifest);
+  return verified;
 }
 
 function byId<T>(values: readonly T[], id: (value: T) => string): Map<string, T> {
@@ -123,6 +119,17 @@ function byId<T>(values: readonly T[], id: (value: T) => string): Map<string, T>
 
 function assertionStatus(assertion: ScenarioAssertionEvidence): "passed" | "failed" {
   return assertion.passed && (assertion.failures?.length ?? 0) === 0 ? "passed" : "failed";
+}
+
+function assertionFingerprint(assertion: ScenarioAssertionEvidence): string {
+  return JSON.stringify({
+    passed: assertion.passed,
+    policy: assertion.policy,
+    exactBytesEqual: assertion.exactBytesEqual,
+    failures: assertion.failures ?? [],
+    likelyImplementation: assertion.likelyImplementation,
+    summary: assertion.summary,
+  });
 }
 
 function findingKey(finding: ScenarioFinding): string {
@@ -375,7 +382,7 @@ function compareAssertions(
       });
       continue;
     }
-    if (base && head && assertionStatus(base) !== assertionStatus(head)) {
+    if (base && head && assertionFingerprint(base) !== assertionFingerprint(head)) {
       changes.push({
         kind: "assertion-changed",
         scenarioId,

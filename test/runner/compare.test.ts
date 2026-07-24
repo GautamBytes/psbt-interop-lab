@@ -228,6 +228,46 @@ describe("compareRuns", () => {
     });
   });
 
+  test("reports changed assertion evidence when pass status is unchanged", async () => {
+    const baseManifest = manifest();
+    const baseScenario = baseManifest.scenarios[0];
+    if (!baseScenario) {
+      throw new Error("Expected the test manifest to include a scenario");
+    }
+    const base = await temporaryRun(baseManifest);
+    const head = await temporaryRun(
+      manifest({
+        runId: "head-run",
+        scenarios: [
+          {
+            ...baseScenario,
+            assertions: [
+              {
+                name: "core-policy-accepted",
+                passed: true,
+                summary: "Accepted by the baseline policy",
+              },
+            ],
+          },
+        ],
+      }),
+    );
+
+    await expect(compareRuns(base, head)).resolves.toMatchObject({
+      changed: true,
+      summary: { assertionChanges: 1 },
+      changes: [
+        {
+          kind: "assertion-changed",
+          scenarioId: "happy-path",
+          assertionName: "core-policy-accepted",
+          before: "passed",
+          after: "passed",
+        },
+      ],
+    });
+  });
+
   test("reports checkpoint fact changes even when scenario outcomes still pass", async () => {
     const base = await temporaryArtifactRun("base-run", psbt());
     const head = await temporaryArtifactRun("head-run", psbt([entry(0x02, signature, publicKey)]));

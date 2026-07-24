@@ -157,6 +157,34 @@ describe("CLI output", () => {
     expect(output).toContain("FIELD happy-path signed aaaaaaaaaaaa -> bbbbbbbbbbbb");
   });
 
+  test("labels same-status assertion evidence changes clearly", () => {
+    const output = formatRunComparison({
+      changed: true,
+      base: { runId: "base-run", outcome: "passed", verifiedCheckpoints: 0 },
+      head: { runId: "head-run", outcome: "passed", verifiedCheckpoints: 0 },
+      summary: {
+        runOutcomeChanged: false,
+        scenarioChanges: 0,
+        assertionChanges: 1,
+        findingChanges: 0,
+        adapterChanges: 0,
+        capabilityChanges: 0,
+        checkpointChanges: 0,
+      },
+      changes: [
+        {
+          kind: "assertion-changed",
+          scenarioId: "happy-path",
+          assertionName: "core-policy-accepted",
+          before: "passed",
+          after: "passed",
+        },
+      ],
+    });
+
+    expect(output).toContain("ASSERT happy-path core-policy-accepted passed details changed");
+  });
+
   test("keeps unsupported and skipped outcomes distinct from failures", () => {
     const base = {
       title: "Scenario",

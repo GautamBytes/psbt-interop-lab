@@ -130,6 +130,9 @@ function formatRunComparisonChange(change: RunComparisonChange): string {
     case "assertion-removed":
       return `ASSERT- ${change.scenarioId} ${change.assertionName} ${change.before}`;
     case "assertion-changed":
+      if (change.before === change.after) {
+        return `ASSERT ${change.scenarioId} ${change.assertionName} ${change.before} details changed`;
+      }
       return `ASSERT ${change.scenarioId} ${change.assertionName} ${change.before} -> ${change.after}`;
     case "finding-added":
       return `FIND+ ${change.scenarioId} ${change.findingId} ${change.implementation}`;
