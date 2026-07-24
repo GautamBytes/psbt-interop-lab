@@ -1,5 +1,9 @@
 import { performance } from "node:perf_hooks";
-import type { NegotiatedAdapter } from "../protocol/types.js";
+import {
+  type AdapterOperation,
+  adapterOperations,
+  type NegotiatedAdapter,
+} from "../protocol/types.js";
 import type { PsbtTransitionFailure } from "../psbt/invariants.js";
 import { redactSensitiveText } from "../runner/report.js";
 import type {
@@ -14,6 +18,7 @@ import type {
 } from "./definition.js";
 
 const SAFE_IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+const ADAPTER_OPERATIONS = new Set<string>(adapterOperations);
 
 export class ScenarioAssertionError extends Error {
   override readonly name = "ScenarioAssertionError";
@@ -245,6 +250,41 @@ function copyAdapterCells(
   }));
 }
 
+function isAdapterOperation(value: unknown): value is AdapterOperation {
+  return typeof value === "string" && ADAPTER_OPERATIONS.has(value);
+}
+
+function operationForMissingCapability(
+  missing: MissingCapability,
+  requirements: readonly AdapterCapabilityRequirement[],
+): AdapterOperation {
+  if (missing.kind === "operation" && isAdapterOperation(missing.value)) {
+    return missing.value;
+  }
+  if (missing.kind === "operationScriptType" && typeof missing.value === "string") {
+    const [operation] = missing.value.split(":");
+    if (isAdapterOperation(operation)) return operation;
+  }
+  return (
+    requirements.find(({ adapter }) => adapter === missing.adapter)?.operations?.[0] ?? "hello"
+  );
+}
+
+function unsupportedAdapterCells(
+  missingCapabilities: readonly MissingCapability[],
+  requirements: readonly AdapterCapabilityRequirement[],
+): ScenarioAdapterCell[] {
+  return missingCapabilities.map((missing, index) => ({
+    adapter: missing.adapter,
+    operation: operationForMissingCapability(missing, requirements),
+    requestId: `unsupported-${index + 1}`,
+    status: "unsupported",
+    detail: `Missing ${missing.kind} capability ${missing.value}`,
+    durationMs: 0,
+    errorClass: `capability.${missing.kind}.missing`,
+  }));
+}
+
 function assertValidCatalog<Context>(catalog: readonly ScenarioDefinition<Context>[]): void {
   const identifiers = new Set<string>();
   for (const [index, definition] of catalog.entries()) {
@@ -346,6 +386,7 @@ export async function runScenarioCatalog<Context>(
     takeAdapterCells(context);
     const missingCapabilities = findMissingCapabilities(definition.requirements, adapters);
     if (missingCapabilities.length > 0) {
+      const adapterCells = unsupportedAdapterCells(missingCapabilities, definition.requirements);
       results.push({
         id: definition.id,
         title: definition.title,
@@ -356,6 +397,7 @@ export async function runScenarioCatalog<Context>(
         ),
         durationMs: elapsedMilliseconds(startedAt),
         assertions: [],
+        adapterCells: copyAdapterCells(adapterCells),
         missingCapabilities,
       });
       continue;

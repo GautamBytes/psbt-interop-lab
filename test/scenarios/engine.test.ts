@@ -194,6 +194,26 @@ describe("scenario engine", () => {
     expect(result).toMatchObject({
       id: "taproot-sign",
       outcome: "unsupported",
+      adapterCells: expect.arrayContaining([
+        expect.objectContaining({
+          adapter: "rust-bitcoin",
+          operation: "sign",
+          status: "unsupported",
+          errorClass: "capability.psbtVersion.missing",
+        }),
+        expect.objectContaining({
+          adapter: "rust-bitcoin",
+          operation: "sign",
+          status: "unsupported",
+          errorClass: "capability.scriptType.missing",
+        }),
+        expect.objectContaining({
+          adapter: "rust-bitcoin",
+          operation: "sign",
+          status: "unsupported",
+          errorClass: "capability.feature.missing",
+        }),
+      ]),
       missingCapabilities: [
         { adapter: "rust-bitcoin", kind: "psbtVersion", value: 2 },
         { adapter: "rust-bitcoin", kind: "scriptType", value: "p2tr-keypath" },
@@ -240,6 +260,14 @@ describe("scenario engine", () => {
     expect(run).not.toHaveBeenCalled();
     expect(result).toMatchObject({
       outcome: "unsupported",
+      adapterCells: [
+        expect.objectContaining({
+          adapter: "rust-bitcoin",
+          operation: "finalize-inputs",
+          status: "unsupported",
+          errorClass: "capability.operationScriptType.missing",
+        }),
+      ],
       missingCapabilities: [
         {
           adapter: "rust-bitcoin",
