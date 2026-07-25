@@ -187,6 +187,13 @@ describe("CLI program", () => {
     },
   );
 
+  test.each(["run", "matrix", "baseline"])("offers CI report outputs for %s", (commandName) => {
+    const command = createProgram().commands.find((candidate) => candidate.name() === commandName);
+
+    expect(command?.options.some((option) => option.long === "--junit")).toBe(true);
+    expect(command?.options.some((option) => option.long === "--sarif")).toBe(true);
+  });
+
   test.each(["run", "matrix", "baseline"])(
     "accepts repeatable scenarios and an optional category for %s",
     (commandName) => {

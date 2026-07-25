@@ -23,6 +23,7 @@ import { loadCustomSuiteManifest } from "./custom/manifest.js";
 import { formatParseMatrix, runParseMatrix } from "./local/parse-matrix.js";
 import { createLocalRuntimeProvider } from "./local/provider.js";
 import { compareRuns } from "./runner/compare.js";
+import { writeCiReports } from "./runner/ci-reports.js";
 import { verifyReplay } from "./runner/replay.js";
 import {
   assertProofSelectionCompatibility,
@@ -65,6 +66,8 @@ interface RunOptions {
   startCore: boolean;
   scenario: string[];
   category?: string;
+  junit?: string;
+  sarif?: string;
 }
 
 export type BaselineOptions = Omit<RunOptions, "suite">;
@@ -202,6 +205,8 @@ function addRuntimeOptions(command: Command): Command {
       [],
     )
     .option("--category <name>", "Run scenarios in one category")
+    .option("--junit <path>", "Write a JUnit XML report")
+    .option("--sarif <path>", "Write a SARIF 2.1.0 report")
     .option("--no-build", "Use existing Docker images without rebuilding")
     .option("--no-start-core", "Use an already-running Core instance");
 }
@@ -241,6 +246,10 @@ async function executeProof(options: RunOptions): Promise<void> {
     ...(adapterManifest === undefined ? {} : { adapterManifest }),
     ...(customSuite === undefined ? {} : { customSuite }),
     selectors,
+  });
+  await writeCiReports(result.manifest, {
+    ...(options.junit === undefined ? {} : { junit: options.junit }),
+    ...(options.sarif === undefined ? {} : { sarif: options.sarif }),
   });
   process.stdout.write(`${formatProofSummary(result)}\n`);
   if (result.manifest.outcome !== "passed") {
