@@ -36,10 +36,13 @@ function scenarioFailureDetail(scenario: ScenarioResult): string {
 }
 
 export function generateJunitReport(manifest: RunManifest): string {
-  const failures = manifest.scenarios.filter(({ outcome }) => outcome === "failed").length;
-  const skipped = manifest.scenarios.filter(
-    ({ outcome }) => outcome === "unsupported" || outcome === "skipped",
+  const failedScenarios = manifest.scenarios.filter(
+    ({ outcome }) => outcome === "failed" || outcome === "unsupported",
   ).length;
+  const skipped = manifest.scenarios.filter(({ outcome }) => outcome === "skipped").length;
+  const needsRunPolicyFailure = manifest.outcome === "failed" && failedScenarios === 0;
+  const failures = failedScenarios + (needsRunPolicyFailure ? 1 : 0);
+  const tests = manifest.scenarios.length + (needsRunPolicyFailure ? 1 : 0);
   const durationSeconds =
     manifest.scenarios.reduce((total, scenario) => total + scenario.durationMs, 0) / 1000;
   const cases = manifest.scenarios.map((scenario) => {
@@ -51,15 +54,23 @@ export function generateJunitReport(manifest: RunManifest): string {
     if (scenario.outcome === "failed") {
       return `  <testcase ${attributes}>\n    <failure message="${escapeXml(scenario.summary)}">${escapeXml(scenarioFailureDetail(scenario))}</failure>\n  </testcase>`;
     }
-    if (scenario.outcome === "unsupported" || scenario.outcome === "skipped") {
+    if (scenario.outcome === "unsupported") {
+      return `  <testcase ${attributes}>\n    <failure type="capability.unsupported" message="${escapeXml(scenario.summary)}">${escapeXml(scenarioFailureDetail(scenario))}</failure>\n  </testcase>`;
+    }
+    if (scenario.outcome === "skipped") {
       return `  <testcase ${attributes}>\n    <skipped message="${escapeXml(scenario.summary)}" />\n  </testcase>`;
     }
     return `  <testcase ${attributes} />`;
   });
+  if (needsRunPolicyFailure) {
+    cases.push(
+      '  <testcase classname="run-policy" name="PSBT Interop Lab run outcome" time="0.000000">\n    <failure type="run.failed" message="The PSBT Interop Lab command failed">The run manifest is failed even though no scenario emitted a failure. Inspect skipped scenarios and the replayable run manifest.</failure>\n  </testcase>',
+    );
+  }
 
   return [
     '<?xml version="1.0" encoding="UTF-8"?>',
-    `<testsuite name="psbt-interop-lab" tests="${manifest.scenarios.length}" failures="${failures}" skipped="${skipped}" time="${durationSeconds.toFixed(6)}">`,
+    `<testsuite name="psbt-interop-lab" tests="${tests}" failures="${failures}" skipped="${skipped}" time="${durationSeconds.toFixed(6)}">`,
     `  <properties><property name="runId" value="${escapeXml(manifest.runId)}" /></properties>`,
     ...cases,
     "</testsuite>",
@@ -83,6 +94,28 @@ interface SarifResult {
 function assertionRuleId(name: string): string {
   const normalized = name.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
   return `psbt-lab.assertion.${normalized || "failed"}`;
+}
+
+function addSarifError(
+  rules: Map<string, SarifRule>,
+  results: SarifResult[],
+  ruleId: string,
+  name: string,
+  description: string,
+  message: string,
+  properties: Readonly<Record<string, string>>,
+): void {
+  rules.set(ruleId, {
+    id: ruleId,
+    name,
+    shortDescription: { text: description },
+  });
+  results.push({
+    ruleId,
+    level: "error",
+    message: { text: redactSensitiveText(message) },
+    properties,
+  });
 }
 
 export function generateSarifReport(manifest: RunManifest): string {
@@ -111,7 +144,8 @@ export function generateSarifReport(manifest: RunManifest): string {
       });
     }
 
-    for (const assertion of scenario.assertions.filter(({ passed }) => !passed)) {
+    const failedAssertions = scenario.assertions.filter(({ passed }) => !passed);
+    for (const assertion of failedAssertions) {
       const ruleId = assertionRuleId(assertion.name);
       rules.set(ruleId, {
         id: ruleId,
@@ -134,6 +168,48 @@ export function generateSarifReport(manifest: RunManifest): string {
         },
       });
     }
+
+    if (scenario.outcome === "unsupported") {
+      addSarifError(
+        rules,
+        results,
+        "psbt-lab.scenario.unsupported",
+        "unsupported-scenario",
+        "A required interoperability scenario was unsupported",
+        scenario.summary,
+        {
+          scenario: scenario.id,
+          category: scenario.category,
+          outcome: scenario.outcome,
+        },
+      );
+    } else if (scenario.outcome === "failed" && failedAssertions.length === 0) {
+      addSarifError(
+        rules,
+        results,
+        "psbt-lab.scenario.failed",
+        "failed-scenario",
+        "An interoperability scenario failed without assertion evidence",
+        scenarioFailureDetail(scenario),
+        {
+          scenario: scenario.id,
+          category: scenario.category,
+          outcome: scenario.outcome,
+        },
+      );
+    }
+  }
+
+  if (manifest.outcome === "failed" && !results.some(({ level }) => level === "error")) {
+    addSarifError(
+      rules,
+      results,
+      "psbt-lab.run.failed",
+      "failed-run",
+      "The PSBT Interop Lab command failed",
+      "The run manifest is failed even though no scenario emitted an error result. Inspect skipped scenarios and the replayable run manifest.",
+      { runId: manifest.runId, outcome: manifest.outcome },
+    );
   }
 
   return `${JSON.stringify(

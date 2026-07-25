@@ -141,6 +141,15 @@ class AdapterTests(unittest.TestCase):
             ],
         )
         self.assertEqual(response["output"]["psbtVersions"], [0, 2])
+        self.assertEqual(
+            response["output"]["scriptTypes"],
+            ["p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
+        )
+        self.assertEqual(
+            response["output"]["operationScriptTypes"]["convert"],
+            ["p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
+        )
+        self.assertIn("bip371-taproot-roundtrip", response["output"]["features"])
         self.assertIn("bip370-unique-id", response["output"]["features"])
         self.assertIn("unsigned-tx-sha256", response["output"]["features"])
 

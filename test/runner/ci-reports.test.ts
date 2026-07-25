@@ -83,12 +83,13 @@ describe("CI reports", () => {
     const report = generateJunitReport(manifest());
 
     expect(report).toContain(
-      '<testsuite name="psbt-interop-lab" tests="4" failures="1" skipped="2"',
+      '<testsuite name="psbt-interop-lab" tests="4" failures="2" skipped="1"',
     );
     expect(report).toContain('name="Passed &lt;case&gt;"');
     expect(report).toContain('name="Failed &quot;case&quot;"');
     expect(report).toContain('<failure message="Signer leaked wif=[redacted:secret]">');
-    expect(report.match(/<skipped /g)).toHaveLength(2);
+    expect(report).toContain('<failure type="capability.unsupported" message="Missing parser">');
+    expect(report.match(/<skipped /g)).toHaveLength(1);
     expect(report).not.toContain(TEST_WIF);
   });
 
@@ -109,14 +110,46 @@ describe("CI reports", () => {
     expect(report.runs[0]?.tool.driver.rules.map(({ id }) => id)).toEqual([
       "bip174.map-keys.unique",
       "psbt-lab.assertion.taproot-fields-preserved",
+      "psbt-lab.scenario.unsupported",
     ]);
-    expect(report.runs[0]?.results).toHaveLength(2);
+    expect(report.runs[0]?.results).toHaveLength(3);
     expect(report.runs[0]?.results[0]).toMatchObject({
       ruleId: "bip174.map-keys.unique",
       properties: { scenario: "failed-case", implementation: "wallet-adapter" },
     });
     expect(report.runs[0]?.results[1]?.message.text).toContain("[redacted:secret]");
+    expect(report.runs[0]?.results[2]).toMatchObject({
+      ruleId: "psbt-lab.scenario.unsupported",
+      properties: { scenario: "unsupported-case", outcome: "unsupported" },
+    });
     expect(JSON.stringify(report)).not.toContain(TEST_WIF);
+  });
+
+  test("emits a run-policy error when a failed manifest contains only skipped scenarios", () => {
+    const skippedOnly = {
+      ...manifest(),
+      scenarios: [
+        {
+          id: "skipped-case",
+          title: "Skipped case",
+          category: "unit",
+          outcome: "skipped" as const,
+          summary: "Required runtime was unavailable",
+          durationMs: 0,
+          assertions: [],
+        },
+      ],
+    };
+
+    expect(generateJunitReport(skippedOnly)).toContain(
+      '<testcase classname="run-policy" name="PSBT Interop Lab run outcome"',
+    );
+    const sarif = JSON.parse(generateSarifReport(skippedOnly)) as {
+      runs: Array<{ results: Array<{ ruleId: string }> }>;
+    };
+    expect(sarif.runs[0]?.results).toEqual([
+      expect.objectContaining({ ruleId: "psbt-lab.run.failed" }),
+    ]);
   });
 
   test("writes requested reports with private file permissions", async () => {

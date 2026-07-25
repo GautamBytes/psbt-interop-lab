@@ -154,6 +154,7 @@ describe("website documentation routes", () => {
 
   it.each([
     ["manifest schema", "/files/src/conformance/adapter-manifest.schema.json"],
+    ["bitcoinjs-lib consumer example", "/files/examples/wallet-ci-adapter"],
     ["example", "/files/examples/custom-suite.json"],
     ["schema", "/files/src/custom/suite-manifest.schema.json"],
     ["website/", "/files/website"],
@@ -172,6 +173,11 @@ describe("website documentation routes", () => {
     ],
     ["/files/src/custom/suite-manifest.schema.json", "Custom suite schema", /p2tr-scriptpath/],
     ["/files/examples/custom-suite.json", "Custom suite example", /nested-to-taproot/],
+    [
+      "/files/examples/wallet-ci-adapter",
+      "Wallet CI adapter example",
+      /external wallet CI contract/,
+    ],
     ["/files/website", "Website source", /Vite application/],
   ])("renders the internal repository resource at %s", (pathname, heading, content) => {
     window.history.replaceState({}, "", pathname);

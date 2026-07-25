@@ -1169,16 +1169,24 @@ fn reject_sighash_single_pairing(request: &Request, digest: &str) -> Value {
     )
 }
 
-fn add_construct_input(
-    request: &Request,
-    digest: &str,
-    encoded: &str,
-    previous_txid: &str,
+struct ConstructInputArgs<'a> {
+    encoded: &'a str,
+    previous_txid: &'a str,
     output_index: u32,
     sequence: Option<u32>,
     required_height_locktime: Option<u32>,
     required_time_locktime: Option<u32>,
-) -> Value {
+}
+
+fn add_construct_input(request: &Request, digest: &str, input: ConstructInputArgs<'_>) -> Value {
+    let ConstructInputArgs {
+        encoded,
+        previous_txid,
+        output_index,
+        sequence,
+        required_height_locktime,
+        required_time_locktime,
+    } = input;
     if previous_txid.len() != 64
         || !previous_txid
             .bytes()
@@ -1271,10 +1279,16 @@ fn add_construct_output(
     amount_sats: u64,
     script_hex: &str,
 ) -> Value {
-    if amount_sats == 0
-        || amount_sats > 2_100_000_000_000_000
-        || !canonical_lower_hex(script_hex, 10_000)
-    {
+    if amount_sats == 0 {
+        return failure(
+            &request.id,
+            digest,
+            "rejected",
+            "psbt.zero_amount_unsupported",
+            "The pinned psbt-v2 0.3.0 constructor cannot represent a zero-valued output",
+        );
+    }
+    if amount_sats > 2_100_000_000_000_000 || !canonical_lower_hex(script_hex, 10_000) {
         return failure(
             &request.id,
             digest,
@@ -1367,12 +1381,14 @@ fn construct(request: &Request, digest: &str) -> Value {
         } => add_construct_input(
             request,
             digest,
-            &psbt,
-            &previous_txid,
-            output_index,
-            sequence,
-            required_height_locktime,
-            required_time_locktime,
+            ConstructInputArgs {
+                encoded: &psbt,
+                previous_txid: &previous_txid,
+                output_index,
+                sequence,
+                required_height_locktime,
+                required_time_locktime,
+            },
         ),
         ConstructPayload::AddOutput {
             psbt,
@@ -1564,10 +1580,10 @@ pub fn handle_value_with_commitments(
                 "operations": ["hello", "native-parse", "inspect", "roundtrip", "sign", "combine", "finalize", "extract", "construct"],
                 "roles": ["parser", "updater", "signer", "combiner", "finalizer", "extractor", "constructor"],
                 "psbtVersions": [2],
-                "scriptTypes": ["p2wpkh", "p2wsh"],
+                "scriptTypes": ["p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
                 "operationScriptTypes": {
-                    "inspect": ["p2wpkh", "p2wsh"],
-                    "roundtrip": ["p2wpkh", "p2wsh"],
+                    "inspect": ["p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
+                    "roundtrip": ["p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
                     "sign": ["p2wpkh", "p2wsh"],
                     "combine": ["p2wpkh", "p2wsh"],
                     "finalize": ["p2wpkh", "p2wsh"],
@@ -1581,7 +1597,8 @@ pub fn handle_value_with_commitments(
                     "bip370-unique-id",
                     "unsigned-tx-sha256",
                     "bip370-constructor",
-                    "bip370-locktime"
+                    "bip370-locktime",
+                    "bip371-taproot-roundtrip"
                 ]
             }),
         ),

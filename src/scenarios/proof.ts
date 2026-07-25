@@ -25,6 +25,7 @@ import {
 } from "../runner/report.js";
 import { classifyRegression, createBdkRegressionScenario } from "./bdk-regression.js";
 import { createBip370VectorScenario } from "./bip370.js";
+import { createBip371VectorScenario } from "./bip371.js";
 import { type CorePolicyResult, ScenarioExecutionContext } from "./context.js";
 import {
   assertAdapterHello,
@@ -48,13 +49,14 @@ import {
 import { createInvalidInputScenario } from "./invalid-inputs.js";
 import { createMetadataPreservationScenario } from "./metadata-preservation.js";
 import {
-  createMultisigPsbtv2InteropScenario,
-  createP2wpkhPsbtv2InteropScenarios,
-} from "./psbtv2-interop.js";
-import {
   createPsbtv2ConstructorScenario,
   createPsbtv2LocktimeScenario,
 } from "./psbtv2-constructor.js";
+import {
+  createMultisigPsbtv2InteropScenario,
+  createP2wpkhPsbtv2InteropScenarios,
+} from "./psbtv2-interop.js";
+import { createPsbtv2TaprootHandoffScenarios } from "./psbtv2-taproot.js";
 import { createScriptProfileRoundtripScenario } from "./script-profile-roundtrip.js";
 import {
   createTaprootScriptPathCanaryScenario,
@@ -296,6 +298,23 @@ export const PROOF_SCENARIOS: readonly ProofScenarioSummary[] = [
     title: "PSBTv2 BIP370 locktime selection workflow",
     category: "psbtv2-constructor",
   },
+  ...(["rust-bitcoin", "btcsuite-go", "bitcoinjs-lib", "bdk-wallet-current"] as const).map(
+    (adapter) => ({
+      id: `bip371-official-vectors-${adapter}`,
+      title: `Official BIP371 vectors through ${adapter}`,
+      category: "taproot-conformance",
+    }),
+  ),
+  {
+    id: "psbtv2-taproot-rust-to-libwally",
+    title: "PSBTv2 Taproot rust-psbt-v2 to libwally",
+    category: "psbtv2-taproot",
+  },
+  {
+    id: "psbtv2-taproot-libwally-to-rust",
+    title: "PSBTv2 Taproot libwally to rust-psbt-v2",
+    category: "psbtv2-taproot",
+  },
 ];
 
 interface FixtureCommitment {
@@ -394,6 +413,14 @@ function p2wpkhPsbtv2Handoff(
     (candidate) => candidate.id === id,
   );
   if (!scenario) throw new Error(`Missing PSBTv2 P2WPKH scenario ${id}`);
+  return scenario;
+}
+
+function taprootPsbtv2Handoff(
+  id: "psbtv2-taproot-rust-to-libwally" | "psbtv2-taproot-libwally-to-rust",
+): ScenarioDefinition<ScenarioExecutionContext> {
+  const scenario = createPsbtv2TaprootHandoffScenarios().find((candidate) => candidate.id === id);
+  if (!scenario) throw new Error(`Missing PSBTv2 Taproot scenario ${id}`);
   return scenario;
 }
 
@@ -666,6 +693,28 @@ export const PROOF_SCENARIO_REGISTRATIONS: readonly ProofScenarioRegistration[] 
     "psbtv2-locktime-workflow",
     { core: false, fixtures: [], adapters: ["rust-psbt-v2"] },
     () => createPsbtv2LocktimeScenario(),
+  ),
+  ...MODERN_ROUNDTRIP_ADAPTERS.map((adapter) =>
+    registerScenario(
+      `bip371-official-vectors-${adapter}`,
+      { core: false, fixtures: [], adapters: [adapter] },
+      () =>
+        createBip371VectorScenario(
+          adapter,
+          adapter === "bdk-wallet-current" ? "bdk_wallet::bitcoin::Psbt" : adapter,
+        ),
+    ),
+  ),
+  ...(["psbtv2-taproot-rust-to-libwally", "psbtv2-taproot-libwally-to-rust"] as const).map((id) =>
+    registerScenario(
+      id,
+      {
+        core: false,
+        fixtures: [],
+        adapters: ["rust-psbt-v2", "libwally"],
+      },
+      () => taprootPsbtv2Handoff(id),
+    ),
   ),
 ];
 

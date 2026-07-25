@@ -661,6 +661,12 @@ describe("proof runtime", () => {
       "psbtv2-2-of-3-cross-library",
       "psbtv2-constructor-workflow",
       "psbtv2-locktime-workflow",
+      "bip371-official-vectors-rust-bitcoin",
+      "bip371-official-vectors-btcsuite-go",
+      "bip371-official-vectors-bitcoinjs-lib",
+      "bip371-official-vectors-bdk-wallet-current",
+      "psbtv2-taproot-rust-to-libwally",
+      "psbtv2-taproot-libwally-to-rust",
     ]);
   });
 

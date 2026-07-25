@@ -103,6 +103,7 @@ describe("PSBTv2 constructor scenarios", () => {
         "constructor-required-map-fields",
         "constructor-sequence-updated",
         "constructor-counts-after-removal",
+        "constructor-surviving-data-preserved",
         "constructor-sealed-mutation-rejected",
       ]),
     );

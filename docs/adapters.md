@@ -2,7 +2,7 @@
 
 `psbt-lab adapter check` lets a wallet or library maintainer validate a local adapter without
 changing PSBT Interop Lab source. The same manifest can enroll conforming adapters in the full
-matrix while preserving the 31 bundled scenarios.
+matrix while preserving the 39 bundled scenarios.
 
 ## Adapter Manifest
 
@@ -85,8 +85,9 @@ The root composite action wraps this focused path:
     adapter-manifest: ./adapters.json
 ```
 
-It installs `psbt-interop-lab@0.7` with lifecycle scripts disabled, checks the adapter, runs the
-matrix, and uploads the replay, JUnit, and SARIF outputs. `package-spec` can point to a trusted
+It installs the exact `psbt-interop-lab@0.7.0` release with lifecycle scripts disabled, checks the
+adapter, runs the matrix, and uploads the replay, JUnit, and SARIF outputs. `package-spec` can point
+to a trusted
 packed tarball for pre-release validation. The separately installed
 [`examples/wallet-ci-adapter`](../examples/wallet-ci-adapter) package is the executable reference
 consumer.

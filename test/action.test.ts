@@ -9,7 +9,7 @@ describe("GitHub Action", () => {
 
     expect(action).toContain("adapter-manifest:");
     expect(action).toContain("package-spec:");
-    expect(action).toContain('default: "psbt-interop-lab@0.7"');
+    expect(action).toContain('default: "psbt-interop-lab@0.7.0"');
     expect(action).toContain("junit:");
     expect(action).toContain("sarif:");
     expect(action).toContain("build:");
@@ -56,5 +56,14 @@ describe("GitHub Action", () => {
         PSBT_LAB_BUILD: "yes",
       }),
     ).toThrow(/build.*true.*false/i);
+  });
+
+  test("pins the default action install to the exact reviewed release", () => {
+    expect(
+      actionConfiguration({
+        PSBT_LAB_ADAPTER_MANIFEST: "adapter.json",
+        PSBT_LAB_BUILD: "false",
+      }).packageSpec,
+    ).toBe("psbt-interop-lab@0.7.0");
   });
 });

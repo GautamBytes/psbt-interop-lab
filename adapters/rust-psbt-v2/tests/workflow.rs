@@ -58,11 +58,21 @@ fn create_for_construction(fallback_locktime: u32) -> Value {
 }
 
 fn add_input(psbt: &Value, txid_byte: &str, height: Option<u32>, time: Option<u32>) -> Value {
+    add_input_outpoint(psbt, &txid_byte.repeat(64), 0, height, time)
+}
+
+fn add_input_outpoint(
+    psbt: &Value,
+    previous_txid: &str,
+    output_index: u32,
+    height: Option<u32>,
+    time: Option<u32>,
+) -> Value {
     let mut payload = json!({
         "action": "add-input",
         "psbt": psbt["output"]["psbt"],
-        "previousTxid": txid_byte.repeat(64),
-        "outputIndex": 0
+        "previousTxid": previous_txid,
+        "outputIndex": output_index
     });
     if let Some(height) = height {
         payload["requiredHeightLocktime"] = json!(height);
@@ -75,15 +85,17 @@ fn add_input(psbt: &Value, txid_byte: &str, height: Option<u32>, time: Option<u3
 
 #[test]
 fn constructs_updates_removes_and_seals_psbt_v2_maps() {
+    const FIRST_TXID: &str = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
+    const SECOND_TXID: &str = "f0e0d0c0b0a09080706050403020100ffeeddbbccaa998877665544332211000";
     let created = create_for_construction(0);
-    let first_input = add_input(&created, "1", None, None);
+    let first_input = add_input_outpoint(&created, FIRST_TXID, 3, None, None);
     let first_output = construct(json!({
         "action": "add-output",
         "psbt": first_input["output"]["psbt"],
         "amountSats": 50_000,
         "scriptHex": format!("0014{}", "00".repeat(20))
     }));
-    let second_input = add_input(&first_output, "2", None, None);
+    let second_input = add_input_outpoint(&first_output, SECOND_TXID, 7, None, None);
     let second_output = construct(json!({
         "action": "add-output",
         "psbt": second_input["output"]["psbt"],
@@ -117,7 +129,17 @@ fn constructs_updates_removes_and_seals_psbt_v2_maps() {
     assert_eq!(psbt.global.output_count, 1);
     assert_eq!(psbt.inputs.len(), 1);
     assert_eq!(psbt.outputs.len(), 1);
+    assert_eq!(
+        psbt.inputs[0].previous_txid,
+        Txid::from_str(SECOND_TXID).expect("second txid")
+    );
+    assert_eq!(psbt.inputs[0].spent_output_index, 7);
     assert_eq!(psbt.inputs[0].sequence, Some(Sequence(4_294_967_294)));
+    assert_eq!(psbt.outputs[0].amount, Amount::from_sat(40_000));
+    assert_eq!(
+        psbt.outputs[0].script_pubkey,
+        ScriptBuf::from_hex(&format!("0014{}", "11".repeat(20))).expect("second output script")
+    );
     assert_eq!(psbt.global.tx_modifiable_flags & 0x03, 0);
     assert_eq!(sealed["output"]["inputs"], 1);
     assert_eq!(sealed["output"]["outputs"], 1);
@@ -125,6 +147,19 @@ fn constructs_updates_removes_and_seals_psbt_v2_maps() {
     let rejected = add_input(&sealed, "3", None, None);
     assert_eq!(rejected["status"], "rejected");
     assert_eq!(rejected["error"]["class"], "psbt.not_modifiable");
+}
+
+#[test]
+fn rejects_zero_valued_output_with_library_boundary_error() {
+    let created = create_for_construction(0);
+    let response = construct(json!({
+        "action": "add-output",
+        "psbt": created["output"]["psbt"],
+        "amountSats": 0,
+        "scriptHex": "6a"
+    }));
+    assert_eq!(response["status"], "rejected");
+    assert_eq!(response["error"]["class"], "psbt.zero_amount_unsupported");
 }
 
 #[test]

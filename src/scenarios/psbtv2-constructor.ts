@@ -1,5 +1,5 @@
 import type { AdapterResponse, JsonValue } from "../protocol/types.js";
-import { parsePsbtDocument, type PsbtDocument, type PsbtDocumentMap } from "../psbt/document.js";
+import { type PsbtDocument, type PsbtDocumentMap, parsePsbtDocument } from "../psbt/document.js";
 import type { ScenarioExecutionContext } from "./context.js";
 import type { ScenarioAssertionEvidence, ScenarioDefinition } from "./definition.js";
 
@@ -16,6 +16,8 @@ const OUTPUT_SCRIPT = 0x04;
 const MAX_SEQUENCE = 0xffff_fffe;
 const P2WPKH_ZERO = `0014${"00".repeat(20)}`;
 const P2WPKH_ONE = `0014${"11".repeat(20)}`;
+const FIRST_TXID = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
+const SECOND_TXID = "f0e0d0c0b0a09080706050403020100ffeeddbbccaa998877665544332211000";
 
 const REQUIREMENTS = [
   {
@@ -74,6 +76,33 @@ function le32(map: PsbtDocumentMap, keyType: number): number | undefined {
     (candidate) => candidate.keyType === keyType && candidate.keyData.byteLength === 0,
   );
   return entry?.value.byteLength === 4 ? entry.value.readUInt32LE(0) : undefined;
+}
+
+function fieldValue(map: PsbtDocumentMap, keyType: number): Buffer | undefined {
+  const matches = map.entries.filter(
+    (candidate) => candidate.keyType === keyType && candidate.keyData.byteLength === 0,
+  );
+  return matches.length === 1 ? matches[0]?.value : undefined;
+}
+
+function le64(map: PsbtDocumentMap, keyType: number): bigint | undefined {
+  const value = fieldValue(map, keyType);
+  return value?.byteLength === 8 ? value.readBigUInt64LE(0) : undefined;
+}
+
+function inputMatches(map: PsbtDocumentMap, displayTxid: string, outputIndex: number): boolean {
+  const serializedTxid = fieldValue(map, PREVIOUS_TXID);
+  return (
+    serializedTxid?.equals(Buffer.from(displayTxid, "hex").reverse()) === true &&
+    le32(map, OUTPUT_INDEX) === outputIndex
+  );
+}
+
+function outputMatches(map: PsbtDocumentMap, amountSats: number, scriptHex: string): boolean {
+  return (
+    le64(map, OUTPUT_AMOUNT) === BigInt(amountSats) &&
+    fieldValue(map, OUTPUT_SCRIPT)?.equals(Buffer.from(scriptHex, "hex")) === true
+  );
 }
 
 function modifiableFlags(document: PsbtDocument): number {
@@ -161,6 +190,7 @@ function inputPayload(
   psbt: string,
   previousTxid: string,
   locktime: {
+    readonly outputIndex?: number;
     readonly height?: number;
     readonly time?: number;
     readonly sequence?: number;
@@ -170,7 +200,7 @@ function inputPayload(
     action: "add-input",
     psbt,
     previousTxid,
-    outputIndex: 0,
+    outputIndex: locktime.outputIndex ?? 0,
     ...(locktime.sequence === undefined ? {} : { sequence: locktime.sequence }),
     ...(locktime.height === undefined ? {} : { requiredHeightLocktime: locktime.height }),
     ...(locktime.time === undefined ? {} : { requiredTimeLocktime: locktime.time }),
@@ -200,7 +230,10 @@ export function createPsbtv2ConstructorScenario(): ScenarioDefinition<ScenarioEx
         likelyImplementation: ADAPTER,
       });
 
-      const firstInput = await construct(context, inputPayload(createdPsbt, "11".repeat(32)));
+      const firstInput = await construct(
+        context,
+        inputPayload(createdPsbt, FIRST_TXID, { outputIndex: 3 }),
+      );
       const firstInputPsbt = requiredPsbt(firstInput, "add-input");
       const firstOutput = await construct(context, {
         action: "add-output",
@@ -209,7 +242,10 @@ export function createPsbtv2ConstructorScenario(): ScenarioDefinition<ScenarioEx
         scriptHex: P2WPKH_ZERO,
       });
       const firstOutputPsbt = requiredPsbt(firstOutput, "add-output");
-      const secondInput = await construct(context, inputPayload(firstOutputPsbt, "22".repeat(32)));
+      const secondInput = await construct(
+        context,
+        inputPayload(firstOutputPsbt, SECOND_TXID, { outputIndex: 7 }),
+      );
       const secondInputPsbt = requiredPsbt(secondInput, "add-input");
       const secondOutput = await construct(context, {
         action: "add-output",
@@ -224,12 +260,14 @@ export function createPsbtv2ConstructorScenario(): ScenarioDefinition<ScenarioEx
         passed:
           populated.inputCount === 2 &&
           populated.outputCount === 2 &&
-          [0, 1].every((index) =>
-            hasFields(mapAt(populated, "input", index), [PREVIOUS_TXID, OUTPUT_INDEX]),
-          ) &&
-          [0, 1].every((index) =>
-            hasFields(mapAt(populated, "output", index), [OUTPUT_AMOUNT, OUTPUT_SCRIPT]),
-          ),
+          hasFields(mapAt(populated, "input", 0), [PREVIOUS_TXID, OUTPUT_INDEX]) &&
+          hasFields(mapAt(populated, "input", 1), [PREVIOUS_TXID, OUTPUT_INDEX]) &&
+          hasFields(mapAt(populated, "output", 0), [OUTPUT_AMOUNT, OUTPUT_SCRIPT]) &&
+          hasFields(mapAt(populated, "output", 1), [OUTPUT_AMOUNT, OUTPUT_SCRIPT]) &&
+          inputMatches(mapAt(populated, "input", 0), FIRST_TXID, 3) &&
+          inputMatches(mapAt(populated, "input", 1), SECOND_TXID, 7) &&
+          outputMatches(mapAt(populated, "output", 0), 50_000, P2WPKH_ZERO) &&
+          outputMatches(mapAt(populated, "output", 1), 40_000, P2WPKH_ONE),
         likelyImplementation: ADAPTER,
       });
 
@@ -266,6 +304,13 @@ export function createPsbtv2ConstructorScenario(): ScenarioDefinition<ScenarioEx
             reduced.outputCount === 1 &&
             outputNumber(removedOutput, "inputs") === 1 &&
             outputNumber(removedOutput, "outputs") === 1,
+          likelyImplementation: ADAPTER,
+        },
+        {
+          name: "constructor-surviving-data-preserved",
+          passed:
+            inputMatches(mapAt(reduced, "input", 0), SECOND_TXID, 7) &&
+            outputMatches(mapAt(reduced, "output", 0), 40_000, P2WPKH_ONE),
           likelyImplementation: ADAPTER,
         },
       );

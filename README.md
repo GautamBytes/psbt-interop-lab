@@ -27,7 +27,7 @@ semantic detector canaries, then completes one real Bitcoin Core -> rust-bitcoin
 signing and finalization handoff. It writes the same replayable reports as the full suite and stops
 the local regtest node automatically.
 
-For exhaustive compatibility testing, install the CLI once and run the complete 31-scenario matrix:
+For exhaustive compatibility testing, install the CLI once and run the complete 39-scenario matrix:
 
 ```bash
 npm install --global psbt-interop-lab@0.7.0
@@ -90,7 +90,7 @@ Omit that flag on the first run and quickstart builds them before executing the 
 
 The command is intentionally smaller than `matrix`: it proves that the installation, detector
 invariants, real-library handoff, Bitcoin Core oracle, artifact writer, and cleanup path work before
-a developer spends time on the complete suite. A passing quickstart is not a claim that all 31
+a developer spends time on the complete suite. A passing quickstart is not a claim that all 39
 scenarios or all seven implementations are compatible.
 
 Open `artifacts/<run-id>/report.html` for the complete result, or verify later that the recorded
@@ -128,7 +128,7 @@ preservation. It executes the configured command directly with `shell: false`; t
 manifest must therefore be treated as trusted local code. See [the adapter guide](docs/adapters.md)
 and the bundled [manifest schema](src/conformance/adapter-manifest.schema.json).
 
-The matrix keeps all 31 bundled scenarios and appends native-parse and semantic-roundtrip cells for
+The matrix keeps all 39 bundled scenarios and appends native-parse and semantic-roundtrip cells for
 each external adapter across P2WPKH, nested P2SH-P2WPKH, P2WSH, Taproot key-path, and Taproot
 script-path fixtures. It also appends signing handoffs when the adapter declares the matching
 signer capabilities and the `fixture-commitment-sha256` safety feature.
@@ -171,13 +171,19 @@ is capability-gated and runs only when an adapter explicitly advertises
 
 ## Current Coverage
 
-The suite currently runs 31 scenarios:
+The suite currently runs 39 scenarios:
 
 - Core-created P2WPKH, P2WSH, and Taproot key-path signing handoffs through rust-bitcoin,
   btcsuite, bitcoinjs-lib, and current BDK Wallet
 - Nested P2SH-P2WPKH roundtrips plus bidirectional Taproot script-path signing/finalization and
   wrong-leaf/control-block rejection canaries
 - All 14 valid and 21 invalid official BIP370 vectors through rust-psbt-v2 and libwally
+- Native PSBTv2 construction, input/output removal, sequence updates, scope sealing, and BIP370
+  fallback/height/time locktime selection and conflict rejection
+- All 6 valid and 11 invalid official BIP371 vectors through rust-bitcoin, btcsuite,
+  bitcoinjs-lib, and current BDK Wallet
+- Bidirectional PSBTv2 Taproot handoffs across all six valid BIP371 key-path and script-path
+  vectors through rust-psbt-v2 and libwally
 - Bidirectional PSBTv2 P2WPKH handoffs and cross-library 2-of-3 signing, combining, finalization,
   extraction, conversion, and Bitcoin Core policy acceptance
 - Same-input 2-of-3 multisig where Rust and JavaScript sign independent copies, JavaScript
@@ -233,6 +239,9 @@ Each run creates a private directory under `artifacts/<run-id>/` containing:
   the expected PSBT rules
 - `checkpoints/**/*.psbt`: canonical PSBT states at important handoffs
 - `checkpoints/**/*.facts.json`: bounded field facts and hashes
+
+Required scenarios that are unsupported remain command failures in both CI formats: JUnit records
+them as failed capability checks and SARIF emits `psbt-lab.scenario.unsupported`.
 
 The reports classify non-passing behavior by stable rule ID, normative level, category, severity,
 observed implementation boundary, repairability, and confidence. Every classification includes an
