@@ -659,6 +659,8 @@ describe("proof runtime", () => {
       "psbtv2-p2wpkh-rust-to-libwally",
       "psbtv2-p2wpkh-libwally-to-rust",
       "psbtv2-2-of-3-cross-library",
+      "psbtv2-constructor-workflow",
+      "psbtv2-locktime-workflow",
     ]);
   });
 

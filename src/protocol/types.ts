@@ -11,6 +11,7 @@ export const adapterOperations = [
   "finalize-inputs",
   "extract",
   "convert",
+  "construct",
 ] as const;
 
 export type AdapterOperation = (typeof adapterOperations)[number];
@@ -22,6 +23,7 @@ export const adapterRoles = [
   "combiner",
   "finalizer",
   "extractor",
+  "constructor",
 ] as const;
 
 export type AdapterRole = (typeof adapterRoles)[number];

@@ -4,13 +4,19 @@ use std::str::FromStr;
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use psbt_v2::bitcoin::bip32::{DerivationPath, Fingerprint};
 use psbt_v2::bitcoin::consensus;
-use psbt_v2::bitcoin::hex::DisplayHex as _;
+use psbt_v2::bitcoin::hex::{DisplayHex as _, FromHex as _};
 use psbt_v2::bitcoin::opcodes::all::OP_CHECKMULTISIG;
 use psbt_v2::bitcoin::script::Builder;
 use psbt_v2::bitcoin::secp256k1::Secp256k1;
 use psbt_v2::bitcoin::sighash::EcdsaSighashType;
-use psbt_v2::bitcoin::{PrivateKey, PublicKey, ScriptBuf, Witness};
-use psbt_v2::v2::{Extractor, Finalizer, Input, Psbt, Signer};
+use psbt_v2::bitcoin::{
+    Amount, OutPoint, PrivateKey, PublicKey, ScriptBuf, Sequence, TxOut, Txid, Witness, absolute,
+    transaction,
+};
+use psbt_v2::v2::{
+    Constructor, Creator, Extractor, Finalizer, Input, InputsOnlyModifiable, Modifiable, Output,
+    OutputsOnlyModifiable, Psbt, Signer, Updater,
+};
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
@@ -37,6 +43,75 @@ struct Request {
     id: String,
     operation: String,
     payload: Map<String, Value>,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_transaction_version() -> i32 {
+    2
+}
+
+#[derive(Deserialize)]
+#[serde(tag = "action", rename_all = "kebab-case", deny_unknown_fields)]
+enum ConstructPayload {
+    Create {
+        #[serde(default = "default_true", rename = "inputsModifiable")]
+        inputs_modifiable: bool,
+        #[serde(default = "default_true", rename = "outputsModifiable")]
+        outputs_modifiable: bool,
+        #[serde(default, rename = "sighashSingle")]
+        sighash_single: bool,
+        #[serde(default = "default_transaction_version", rename = "transactionVersion")]
+        transaction_version: i32,
+        #[serde(default, rename = "fallbackLocktime")]
+        fallback_locktime: u32,
+    },
+    AddInput {
+        psbt: String,
+        #[serde(rename = "previousTxid")]
+        previous_txid: String,
+        #[serde(rename = "outputIndex")]
+        output_index: u32,
+        sequence: Option<u32>,
+        #[serde(rename = "requiredHeightLocktime")]
+        required_height_locktime: Option<u32>,
+        #[serde(rename = "requiredTimeLocktime")]
+        required_time_locktime: Option<u32>,
+    },
+    AddOutput {
+        psbt: String,
+        #[serde(rename = "amountSats")]
+        amount_sats: u64,
+        #[serde(rename = "scriptHex")]
+        script_hex: String,
+    },
+    RemoveInput {
+        psbt: String,
+        index: usize,
+    },
+    RemoveOutput {
+        psbt: String,
+        index: usize,
+    },
+    SetSequence {
+        psbt: String,
+        index: usize,
+        sequence: u32,
+    },
+    Seal {
+        psbt: String,
+        scope: SealScope,
+    },
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum SealScope {
+    Inputs,
+    Outputs,
+    All,
 }
 
 struct ParsedPsbt {
@@ -1001,6 +1076,420 @@ fn inspect(request: &Request, digest: &str) -> Value {
     )
 }
 
+fn construct_payload(request: &Request) -> Option<ConstructPayload> {
+    serde_json::from_value(Value::Object(request.payload.clone())).ok()
+}
+
+fn parsed_construct_psbt(encoded: &str) -> Option<Psbt> {
+    parse_psbt(encoded).map(|parsed| parsed.psbt)
+}
+
+fn psbt_has_signatures(psbt: &Psbt) -> bool {
+    psbt.inputs.iter().any(|input| {
+        !input.partial_sigs.is_empty()
+            || input.tap_key_sig.is_some()
+            || !input.tap_script_sigs.is_empty()
+            || input.final_script_sig.is_some()
+            || input.final_script_witness.is_some()
+    })
+}
+
+fn canonical_lower_hex(value: &str, max_bytes: usize) -> bool {
+    !value.is_empty()
+        && value.len().is_multiple_of(2)
+        && value.len() / 2 <= max_bytes
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
+fn construct_success(request: &Request, digest: &str, psbt: Psbt) -> Value {
+    let locktime = match psbt.determine_lock_time() {
+        Ok(locktime) => locktime,
+        Err(_) => {
+            return failure(
+                &request.id,
+                digest,
+                "rejected",
+                "psbt.locktime_conflict",
+                "PSBTv2 input locktime requirements are incompatible",
+            );
+        }
+    };
+    let locktime_value = locktime.to_consensus_u32();
+    let locktime_type = if locktime_value == 0 {
+        "none"
+    } else if locktime.is_block_height() {
+        "height"
+    } else {
+        "time"
+    };
+    success(
+        &request.id,
+        digest,
+        json!({
+            "psbt": STANDARD.encode(psbt.serialize()),
+            "psbtVersion": 2,
+            "inputs": psbt.inputs.len(),
+            "outputs": psbt.outputs.len(),
+            "transactionModifiableFlags": psbt.global.tx_modifiable_flags,
+            "locktime": locktime_value,
+            "locktimeType": locktime_type
+        }),
+    )
+}
+
+fn construct_parse_failure(request: &Request, digest: &str) -> Value {
+    failure(
+        &request.id,
+        digest,
+        "rejected",
+        "psbt.parse_failed",
+        "PSBTv2 could not be parsed",
+    )
+}
+
+fn reject_not_modifiable(request: &Request, digest: &str, scope: &str) -> Value {
+    failure(
+        &request.id,
+        digest,
+        "rejected",
+        "psbt.not_modifiable",
+        &format!("PSBTv2 {scope} are sealed"),
+    )
+}
+
+fn reject_sighash_single_pairing(request: &Request, digest: &str) -> Value {
+    failure(
+        &request.id,
+        digest,
+        "rejected",
+        "psbt.sighash_single_pairing",
+        "Signed SIGHASH_SINGLE input/output pairing cannot be changed",
+    )
+}
+
+fn add_construct_input(
+    request: &Request,
+    digest: &str,
+    encoded: &str,
+    previous_txid: &str,
+    output_index: u32,
+    sequence: Option<u32>,
+    required_height_locktime: Option<u32>,
+    required_time_locktime: Option<u32>,
+) -> Value {
+    if previous_txid.len() != 64
+        || !previous_txid
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
+        return failure(
+            &request.id,
+            digest,
+            "rejected",
+            "protocol.invalid_payload",
+            "previousTxid must be 32-byte lowercase display-order hex",
+        );
+    }
+    if required_height_locktime.is_some_and(|value| value == 0 || value >= 500_000_000)
+        || required_time_locktime.is_some_and(|value| value < 500_000_000)
+    {
+        return failure(
+            &request.id,
+            digest,
+            "rejected",
+            "protocol.invalid_payload",
+            "Required locktime is outside its BIP370 domain",
+        );
+    }
+    let Some(psbt) = parsed_construct_psbt(encoded) else {
+        return construct_parse_failure(request, digest);
+    };
+    if psbt.global.tx_modifiable_flags & 0x01 == 0 {
+        return reject_not_modifiable(request, digest, "inputs");
+    }
+    if psbt.global.tx_modifiable_flags & 0x04 != 0 && psbt_has_signatures(&psbt) {
+        return reject_sighash_single_pairing(request, digest);
+    }
+    let before_locktime = psbt.determine_lock_time().ok();
+    let signed = psbt_has_signatures(&psbt);
+    let outputs_modifiable = psbt.global.tx_modifiable_flags & 0x02 != 0;
+    let Ok(txid) = Txid::from_str(previous_txid) else {
+        return failure(
+            &request.id,
+            digest,
+            "rejected",
+            "protocol.invalid_payload",
+            "previousTxid is not a valid transaction id",
+        );
+    };
+    let mut input = Input::new(&OutPoint {
+        txid,
+        vout: output_index,
+    });
+    input.sequence = sequence.map(Sequence);
+    input.min_height =
+        required_height_locktime.and_then(|value| absolute::Height::from_consensus(value).ok());
+    input.min_time =
+        required_time_locktime.and_then(|value| absolute::Time::from_consensus(value).ok());
+
+    let constructed = if outputs_modifiable {
+        Constructor::<Modifiable>::new(psbt)
+            .ok()
+            .and_then(|constructor| constructor.input(input).psbt().ok())
+    } else {
+        Constructor::<InputsOnlyModifiable>::new(psbt)
+            .ok()
+            .and_then(|constructor| constructor.input(input).psbt().ok())
+    };
+    let Some(constructed) = constructed else {
+        return failure(
+            &request.id,
+            digest,
+            "rejected",
+            "psbt.locktime_conflict",
+            "Input locktime requirements conflict with the existing PSBTv2",
+        );
+    };
+    if signed && before_locktime != constructed.determine_lock_time().ok() {
+        return failure(
+            &request.id,
+            digest,
+            "rejected",
+            "psbt.locktime_change_after_signature",
+            "A signed PSBTv2 cannot change its selected locktime",
+        );
+    }
+    construct_success(request, digest, constructed)
+}
+
+fn add_construct_output(
+    request: &Request,
+    digest: &str,
+    encoded: &str,
+    amount_sats: u64,
+    script_hex: &str,
+) -> Value {
+    if amount_sats == 0
+        || amount_sats > 2_100_000_000_000_000
+        || !canonical_lower_hex(script_hex, 10_000)
+    {
+        return failure(
+            &request.id,
+            digest,
+            "rejected",
+            "protocol.invalid_payload",
+            "Output amount or script is outside the bounded constructor format",
+        );
+    }
+    let Some(psbt) = parsed_construct_psbt(encoded) else {
+        return construct_parse_failure(request, digest);
+    };
+    if psbt.global.tx_modifiable_flags & 0x02 == 0 {
+        return reject_not_modifiable(request, digest, "outputs");
+    }
+    if psbt.global.tx_modifiable_flags & 0x04 != 0 && psbt_has_signatures(&psbt) {
+        return reject_sighash_single_pairing(request, digest);
+    }
+    let inputs_modifiable = psbt.global.tx_modifiable_flags & 0x01 != 0;
+    let script = ScriptBuf::from_bytes(
+        Vec::<u8>::from_hex(script_hex).expect("canonical hex was validated"),
+    );
+    let output = Output::new(TxOut {
+        value: Amount::from_sat(amount_sats),
+        script_pubkey: script,
+    });
+    let constructed = if inputs_modifiable {
+        Constructor::<Modifiable>::new(psbt)
+            .ok()
+            .and_then(|constructor| constructor.output(output).psbt().ok())
+    } else {
+        Constructor::<OutputsOnlyModifiable>::new(psbt)
+            .ok()
+            .and_then(|constructor| constructor.output(output).psbt().ok())
+    };
+    match constructed {
+        Some(psbt) => construct_success(request, digest, psbt),
+        None => reject_not_modifiable(request, digest, "outputs"),
+    }
+}
+
+fn construct(request: &Request, digest: &str) -> Value {
+    let Some(payload) = construct_payload(request) else {
+        return failure(
+            &request.id,
+            digest,
+            "rejected",
+            "protocol.invalid_payload",
+            "construct payload does not match a supported action",
+        );
+    };
+
+    match payload {
+        ConstructPayload::Create {
+            inputs_modifiable,
+            outputs_modifiable,
+            sighash_single,
+            transaction_version,
+            fallback_locktime,
+        } => {
+            if transaction_version < 2 {
+                return failure(
+                    &request.id,
+                    digest,
+                    "rejected",
+                    "protocol.invalid_payload",
+                    "transactionVersion must be at least 2",
+                );
+            }
+            let mut creator = Creator::new()
+                .transaction_version(transaction::Version(transaction_version))
+                .fallback_lock_time(absolute::LockTime::from_consensus(fallback_locktime));
+            if inputs_modifiable {
+                creator = creator.inputs_modifiable();
+            }
+            if outputs_modifiable {
+                creator = creator.outputs_modifiable();
+            }
+            if sighash_single {
+                creator = creator.sighash_single();
+            }
+            construct_success(request, digest, creator.psbt())
+        }
+        ConstructPayload::AddInput {
+            psbt,
+            previous_txid,
+            output_index,
+            sequence,
+            required_height_locktime,
+            required_time_locktime,
+        } => add_construct_input(
+            request,
+            digest,
+            &psbt,
+            &previous_txid,
+            output_index,
+            sequence,
+            required_height_locktime,
+            required_time_locktime,
+        ),
+        ConstructPayload::AddOutput {
+            psbt,
+            amount_sats,
+            script_hex,
+        } => add_construct_output(request, digest, &psbt, amount_sats, &script_hex),
+        ConstructPayload::RemoveInput { psbt, index } => {
+            let Some(mut psbt) = parsed_construct_psbt(&psbt) else {
+                return construct_parse_failure(request, digest);
+            };
+            if psbt.global.tx_modifiable_flags & 0x01 == 0 {
+                return reject_not_modifiable(request, digest, "inputs");
+            }
+            if psbt.global.tx_modifiable_flags & 0x04 != 0 && psbt_has_signatures(&psbt) {
+                return reject_sighash_single_pairing(request, digest);
+            }
+            if index >= psbt.inputs.len() {
+                return failure(
+                    &request.id,
+                    digest,
+                    "rejected",
+                    "psbt.index_out_of_bounds",
+                    "Input index is outside the PSBTv2",
+                );
+            }
+            let before_locktime = psbt.determine_lock_time().ok();
+            let signed = psbt_has_signatures(&psbt);
+            psbt.inputs.remove(index);
+            psbt.global.input_count -= 1;
+            if psbt.determine_lock_time().is_err() {
+                return failure(
+                    &request.id,
+                    digest,
+                    "rejected",
+                    "psbt.locktime_conflict",
+                    "Removing the input left incompatible locktime requirements",
+                );
+            }
+            if signed && before_locktime != psbt.determine_lock_time().ok() {
+                return failure(
+                    &request.id,
+                    digest,
+                    "rejected",
+                    "psbt.locktime_change_after_signature",
+                    "A signed PSBTv2 cannot change its selected locktime",
+                );
+            }
+            construct_success(request, digest, psbt)
+        }
+        ConstructPayload::RemoveOutput { psbt, index } => {
+            let Some(mut psbt) = parsed_construct_psbt(&psbt) else {
+                return construct_parse_failure(request, digest);
+            };
+            if psbt.global.tx_modifiable_flags & 0x02 == 0 {
+                return reject_not_modifiable(request, digest, "outputs");
+            }
+            if psbt.global.tx_modifiable_flags & 0x04 != 0 && psbt_has_signatures(&psbt) {
+                return reject_sighash_single_pairing(request, digest);
+            }
+            if index >= psbt.outputs.len() {
+                return failure(
+                    &request.id,
+                    digest,
+                    "rejected",
+                    "psbt.index_out_of_bounds",
+                    "Output index is outside the PSBTv2",
+                );
+            }
+            psbt.outputs.remove(index);
+            psbt.global.output_count -= 1;
+            construct_success(request, digest, psbt)
+        }
+        ConstructPayload::SetSequence {
+            psbt,
+            index,
+            sequence,
+        } => {
+            let Some(psbt) = parsed_construct_psbt(&psbt) else {
+                return construct_parse_failure(request, digest);
+            };
+            let updater = match Updater::new(psbt) {
+                Ok(updater) => updater,
+                Err(_) => {
+                    return failure(
+                        &request.id,
+                        digest,
+                        "rejected",
+                        "psbt.locktime_conflict",
+                        "PSBTv2 locktime cannot be determined",
+                    );
+                }
+            };
+            match updater.set_sequence(Sequence(sequence), index) {
+                Ok(updater) => construct_success(request, digest, updater.psbt()),
+                Err(_) => failure(
+                    &request.id,
+                    digest,
+                    "rejected",
+                    "psbt.index_out_of_bounds",
+                    "Input index is outside the PSBTv2",
+                ),
+            }
+        }
+        ConstructPayload::Seal { psbt, scope } => {
+            let Some(mut psbt) = parsed_construct_psbt(&psbt) else {
+                return construct_parse_failure(request, digest);
+            };
+            match scope {
+                SealScope::Inputs => psbt.global.tx_modifiable_flags &= !0x01,
+                SealScope::Outputs => psbt.global.tx_modifiable_flags &= !0x02,
+                SealScope::All => psbt.global.tx_modifiable_flags &= !0x03,
+            }
+            construct_success(request, digest, psbt)
+        }
+    }
+}
+
 fn roundtrip(request: &Request, digest: &str) -> Value {
     let encoded = match psbt_payload(request) {
         Some(encoded) => encoded,
@@ -1072,8 +1561,8 @@ pub fn handle_value_with_commitments(
             &request.id,
             digest,
             json!({
-                "operations": ["hello", "native-parse", "inspect", "roundtrip", "sign", "combine", "finalize", "extract"],
-                "roles": ["parser", "signer", "combiner", "finalizer", "extractor"],
+                "operations": ["hello", "native-parse", "inspect", "roundtrip", "sign", "combine", "finalize", "extract", "construct"],
+                "roles": ["parser", "updater", "signer", "combiner", "finalizer", "extractor", "constructor"],
                 "psbtVersions": [2],
                 "scriptTypes": ["p2wpkh", "p2wsh"],
                 "operationScriptTypes": {
@@ -1082,14 +1571,17 @@ pub fn handle_value_with_commitments(
                     "sign": ["p2wpkh", "p2wsh"],
                     "combine": ["p2wpkh", "p2wsh"],
                     "finalize": ["p2wpkh", "p2wsh"],
-                    "extract": ["p2wpkh", "p2wsh"]
+                    "extract": ["p2wpkh", "p2wsh"],
+                    "construct": ["p2wpkh", "p2wsh"]
                 },
                 "features": [
                     "bip370-official-vectors",
                     "bounded-map-counts",
                     "fixture-commitment-sha256",
                     "bip370-unique-id",
-                    "unsigned-tx-sha256"
+                    "unsigned-tx-sha256",
+                    "bip370-constructor",
+                    "bip370-locktime"
                 ]
             }),
         ),
@@ -1107,6 +1599,7 @@ pub fn handle_value_with_commitments(
         "combine" => combine(&request, digest),
         "finalize" => finalize(&request, digest, commitments),
         "extract" => extract(&request, digest),
+        "construct" => construct(&request, digest),
         "convert" => failure(
             &request.id,
             digest,

@@ -88,8 +88,9 @@ describe("adapter contracts", () => {
         "combine",
         "finalize",
         "extract",
+        "construct",
       ],
-      roles: ["parser", "signer", "combiner", "finalizer", "extractor"],
+      roles: ["parser", "updater", "signer", "combiner", "finalizer", "extractor", "constructor"],
       scriptTypes: ["p2wpkh", "p2wsh"],
     });
     expect(PSBTV2_ADAPTER_CONTRACT.operations).not.toContain("convert");

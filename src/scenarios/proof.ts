@@ -51,6 +51,10 @@ import {
   createMultisigPsbtv2InteropScenario,
   createP2wpkhPsbtv2InteropScenarios,
 } from "./psbtv2-interop.js";
+import {
+  createPsbtv2ConstructorScenario,
+  createPsbtv2LocktimeScenario,
+} from "./psbtv2-constructor.js";
 import { createScriptProfileRoundtripScenario } from "./script-profile-roundtrip.js";
 import {
   createTaprootScriptPathCanaryScenario,
@@ -281,6 +285,16 @@ export const PROOF_SCENARIOS: readonly ProofScenarioSummary[] = [
     id: "psbtv2-2-of-3-cross-library",
     title: "PSBTv2 2-of-3 cross-library signing and finalization",
     category: "psbtv2-interop",
+  },
+  {
+    id: "psbtv2-constructor-workflow",
+    title: "PSBTv2 constructor add, remove, update, and seal workflow",
+    category: "psbtv2-constructor",
+  },
+  {
+    id: "psbtv2-locktime-workflow",
+    title: "PSBTv2 BIP370 locktime selection workflow",
+    category: "psbtv2-constructor",
   },
 ];
 
@@ -642,6 +656,16 @@ export const PROOF_SCENARIO_REGISTRATIONS: readonly ProofScenarioRegistration[] 
       adapters: ["rust-psbt-v2", "libwally"],
     },
     (fixtures) => createMultisigPsbtv2InteropScenario(requiredFixture(fixtures, "p2wsh-2-of-3")),
+  ),
+  registerScenario(
+    "psbtv2-constructor-workflow",
+    { core: false, fixtures: [], adapters: ["rust-psbt-v2"] },
+    () => createPsbtv2ConstructorScenario(),
+  ),
+  registerScenario(
+    "psbtv2-locktime-workflow",
+    { core: false, fixtures: [], adapters: ["rust-psbt-v2"] },
+    () => createPsbtv2LocktimeScenario(),
   ),
 ];
 

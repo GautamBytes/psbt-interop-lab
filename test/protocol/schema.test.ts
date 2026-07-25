@@ -33,6 +33,14 @@ describe("adapter protocol schemas", () => {
   test.each([
     ["extract", { psbt: "cHNidP8=" }],
     ["convert", { psbt: "cHNidP8=", targetVersion: 2 }],
+    [
+      "construct",
+      {
+        action: "create",
+        inputsModifiable: true,
+        outputsModifiable: true,
+      },
+    ],
   ])("accepts the PSBTv2 workflow operation %s", (operation, payload) => {
     expect(
       validateAdapterRequest({
@@ -149,6 +157,24 @@ describe("adapter protocol schemas", () => {
         roundtrip: ["p2wsh", "p2tr-keypath"],
       },
       features: ["historical-regression.bdk-wallet-488"],
+    });
+  });
+
+  test("accepts additive constructor and updater capabilities", () => {
+    expect(
+      parseAdapterHelloCapabilities({
+        operations: ["hello", "construct"],
+        roles: ["constructor", "updater"],
+        psbtVersions: [2],
+        scriptTypes: ["p2wpkh"],
+        operationScriptTypes: {
+          construct: ["p2wpkh"],
+        },
+      }),
+    ).toMatchObject({
+      operations: ["hello", "construct"],
+      roles: ["constructor", "updater"],
+      psbtVersions: [2],
     });
   });
 

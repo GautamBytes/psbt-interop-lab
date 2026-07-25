@@ -124,8 +124,9 @@ export const PSBTV2_ADAPTER_CONTRACT = {
     "combine",
     "finalize",
     "extract",
+    "construct",
   ],
-  roles: ["parser", "signer", "combiner", "finalizer", "extractor"],
+  roles: ["parser", "updater", "signer", "combiner", "finalizer", "extractor", "constructor"],
   psbtVersions: [2],
   scriptTypes: ["p2wpkh", "p2wsh"],
   operationScriptTypes: {
@@ -135,6 +136,7 @@ export const PSBTV2_ADAPTER_CONTRACT = {
     combine: ["p2wpkh", "p2wsh"],
     finalize: ["p2wpkh", "p2wsh"],
     extract: ["p2wpkh", "p2wsh"],
+    construct: ["p2wpkh", "p2wsh"],
   },
   features: [
     "bip370-official-vectors",
@@ -142,6 +144,8 @@ export const PSBTV2_ADAPTER_CONTRACT = {
     "fixture-commitment-sha256",
     "bip370-unique-id",
     "unsigned-tx-sha256",
+    "bip370-constructor",
+    "bip370-locktime",
   ],
 } as const satisfies ExpectedAdapterContract;
 

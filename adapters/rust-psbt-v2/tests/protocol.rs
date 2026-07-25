@@ -32,12 +32,21 @@ fn advertises_native_psbt_v2_workflow_capabilities() {
             "sign",
             "combine",
             "finalize",
-            "extract"
+            "extract",
+            "construct"
         ])
     );
     assert_eq!(
         response["output"]["roles"],
-        json!(["parser", "signer", "combiner", "finalizer", "extractor"])
+        json!([
+            "parser",
+            "updater",
+            "signer",
+            "combiner",
+            "finalizer",
+            "extractor",
+            "constructor"
+        ])
     );
     assert_eq!(response["output"]["psbtVersions"], json!([2]));
     assert_eq!(
@@ -50,6 +59,43 @@ fn advertises_native_psbt_v2_workflow_capabilities() {
             .expect("operations array")
             .contains(&json!("convert"))
     );
+}
+
+#[test]
+fn creates_a_strict_modifiable_psbt_v2() {
+    let response = handle_value(
+        request(
+            "construct",
+            json!({
+                "action": "create",
+                "inputsModifiable": true,
+                "outputsModifiable": false,
+                "fallbackLocktime": 42
+            }),
+        ),
+        DIGEST,
+    );
+
+    assert_eq!(response["status"], "ok", "{response:#}");
+    assert_eq!(response["output"]["psbtVersion"], 2);
+    assert_eq!(response["output"]["inputs"], 0);
+    assert_eq!(response["output"]["outputs"], 0);
+    assert_eq!(response["output"]["transactionModifiableFlags"], 1);
+    assert_eq!(response["output"]["locktime"], 42);
+    assert_eq!(response["output"]["locktimeType"], "height");
+    Psbt::from_str(
+        response["output"]["psbt"]
+            .as_str()
+            .expect("constructor returns PSBT"),
+    )
+    .expect("constructor PSBT parses");
+
+    let extra = handle_value(
+        request("construct", json!({ "action": "create", "unknown": true })),
+        DIGEST,
+    );
+    assert_eq!(extra["status"], "rejected");
+    assert_eq!(extra["error"]["class"], "protocol.invalid_payload");
 }
 
 #[test]
