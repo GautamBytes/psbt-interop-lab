@@ -110,6 +110,7 @@ export interface ProofScenarioSummary {
 export interface ProofSelectors {
   readonly scenarios?: readonly string[];
   readonly category?: string;
+  readonly externalOnly?: boolean;
 }
 
 export interface ProofScenarioResources {
@@ -122,6 +123,7 @@ export interface ResolvedProofSelection {
   readonly scenarioIds: readonly string[];
   readonly resources: ProofScenarioResources;
   readonly filtered: boolean;
+  readonly externalOnly?: boolean;
 }
 
 export const PROOF_SCENARIOS: readonly ProofScenarioSummary[] = [
@@ -324,6 +326,7 @@ export interface ProofDependencies {
     fixtures: PreparedFixtureSet | undefined,
     externalAdapters?: ReadonlyMap<string, NegotiatedAdapter>,
     selectedIds?: readonly string[],
+    externalOnly?: boolean,
   ): readonly ScenarioDefinition<ScenarioExecutionContext>[];
 }
 
@@ -643,6 +646,21 @@ export const PROOF_SCENARIO_REGISTRATIONS: readonly ProofScenarioRegistration[] 
 ];
 
 export function resolveProofSelection(selectors: ProofSelectors = {}): ResolvedProofSelection {
+  if (selectors.externalOnly) {
+    if ((selectors.scenarios?.length ?? 0) > 0 || selectors.category !== undefined) {
+      throw new TypeError("External-only execution cannot be combined with scenario selectors");
+    }
+    return {
+      scenarioIds: [],
+      resources: {
+        core: true,
+        fixtures: ["happy-path", "p2wpkh", "p2sh-p2wpkh", "p2tr-keypath", "p2tr-scriptpath"],
+        adapters: [],
+      },
+      filtered: true,
+      externalOnly: true,
+    };
+  }
   const requestedIds = [...new Set(selectors.scenarios ?? [])];
   const byId = new Map(
     PROOF_SCENARIO_REGISTRATIONS.map((registration) => [registration.id, registration]),
@@ -690,12 +708,18 @@ export function assertProofSelectionCompatibility(
   selection: ResolvedProofSelection,
   manifests: { readonly adapter: boolean; readonly suite: boolean },
 ): void {
+  if (selection.externalOnly && !manifests.adapter) {
+    throw new Error("External-only execution requires an adapter manifest");
+  }
+  if (selection.externalOnly && manifests.suite) {
+    throw new Error("External-only execution cannot be combined with a suite manifest");
+  }
   if (selection.filtered && manifests.suite) {
     throw new Error(
       "Scenario selection cannot be combined with a suite manifest because custom scenarios are not statically registered",
     );
   }
-  if (selection.filtered && manifests.adapter) {
+  if (selection.filtered && manifests.adapter && !selection.externalOnly) {
     throw new Error(
       "Scenario selection cannot be combined with an adapter manifest because external scenarios require capability negotiation",
     );
@@ -787,7 +811,12 @@ export function createProofCatalog(
   fixtures: PreparedFixtureSet | undefined,
   externalAdapters: ReadonlyMap<string, NegotiatedAdapter> = new Map(),
   selectedIds?: readonly string[],
+  externalOnly = false,
 ): readonly ScenarioDefinition<ScenarioExecutionContext>[] {
+  if (externalOnly) {
+    if (!fixtures) throw new Error("External adapter scenarios require prepared fixtures");
+    return createExternalAdapterScenarios(fixtures as PreparedFixtures, externalAdapters);
+  }
   const selected = selectedIds
     ? selectedIds.map((id) => {
         const registration = PROOF_SCENARIO_REGISTRATIONS.find((candidate) => candidate.id === id);
@@ -958,7 +987,7 @@ export async function runProofWithDependencies(
     );
   }
   const externalCommitmentConfiguration =
-    !selection.filtered && options.adapterManifest && fixtures
+    (!selection.filtered || selection.externalOnly) && options.adapterManifest && fixtures
       ? serializeFixtureCommitments([
           requiredFixture(fixtures, "happy-path"),
           requiredFixture(fixtures, "p2wpkh"),
@@ -969,7 +998,7 @@ export async function runProofWithDependencies(
         ] satisfies readonly PsbtFixture[])
       : undefined;
   const externalRuntime =
-    !selection.filtered && options.adapterManifest
+    (!selection.filtered || selection.externalOnly) && options.adapterManifest
       ? createExternalAdapterRegistry(
           options.adapterManifest,
           externalCommitmentConfiguration as string,
@@ -1012,9 +1041,12 @@ export async function runProofWithDependencies(
             new Map(Object.entries(fixtures.custom)),
           )
         : [];
-    const builtInCatalog = selection.filtered
-      ? dependencies.createCatalog(fixtures, externalNegotiated, selection.scenarioIds)
-      : dependencies.createCatalog(fixtures, externalNegotiated);
+    const builtInCatalog = dependencies.createCatalog(
+      fixtures,
+      externalNegotiated,
+      selection.filtered && !selection.externalOnly ? selection.scenarioIds : undefined,
+      selection.externalOnly,
+    );
     const scenarios = await runScenarioCatalog(
       [...builtInCatalog, ...customScenarios],
       context,
@@ -1039,6 +1071,7 @@ export async function runProofWithDependencies(
           ...(options.selectors?.category !== undefined
             ? { category: options.selectors.category }
             : {}),
+          ...(options.selectors?.externalOnly ? { externalOnly: true } : {}),
         },
         executed: {
           scenarios: scenarios.map(({ id }) => id),

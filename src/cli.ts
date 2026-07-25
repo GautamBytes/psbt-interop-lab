@@ -22,8 +22,8 @@ import { CoreRpc } from "./core/rpc.js";
 import { loadCustomSuiteManifest } from "./custom/manifest.js";
 import { formatParseMatrix, runParseMatrix } from "./local/parse-matrix.js";
 import { createLocalRuntimeProvider } from "./local/provider.js";
-import { compareRuns } from "./runner/compare.js";
 import { writeCiReports } from "./runner/ci-reports.js";
+import { compareRuns } from "./runner/compare.js";
 import { verifyReplay } from "./runner/replay.js";
 import {
   assertProofSelectionCompatibility,
@@ -66,6 +66,7 @@ interface RunOptions {
   startCore: boolean;
   scenario: string[];
   category?: string;
+  externalOnly?: boolean;
   junit?: string;
   sarif?: string;
 }
@@ -205,6 +206,7 @@ function addRuntimeOptions(command: Command): Command {
       [],
     )
     .option("--category <name>", "Run scenarios in one category")
+    .option("--external-only", "Run only scenarios generated for external adapters")
     .option("--junit <path>", "Write a JUnit XML report")
     .option("--sarif <path>", "Write a SARIF 2.1.0 report")
     .option("--no-build", "Use existing Docker images without rebuilding")
@@ -218,6 +220,7 @@ async function executeProof(options: RunOptions): Promise<void> {
   const selectors = {
     ...(options.scenario.length > 0 ? { scenarios: options.scenario } : {}),
     ...(options.category !== undefined ? { category: options.category } : {}),
+    ...(options.externalOnly ? { externalOnly: true } : {}),
   };
   const selection = resolveProofSelection(selectors);
   assertProofSelectionCompatibility(selection, {

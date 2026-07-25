@@ -25,6 +25,7 @@ import {
 import type { ScenarioDefinition } from "../../src/scenarios/definition.js";
 import { runScenarioCatalog } from "../../src/scenarios/engine.js";
 import {
+  assertProofSelectionCompatibility,
   classifyHappyPath,
   classifyRegression,
   createProofCatalog,
@@ -34,6 +35,7 @@ import {
   type ProofDependencies,
   type ProofRuntimeAdapter,
   type ProofRuntimeArtifacts,
+  resolveProofSelection,
   runProofWithDependencies,
   serializeFixtureCommitments,
 } from "../../src/scenarios/proof.js";
@@ -297,6 +299,27 @@ function proofHarness(
 }
 
 describe("proof runtime", () => {
+  test("resolves an external-only matrix without bundled adapter resources", () => {
+    const selection = resolveProofSelection({ externalOnly: true });
+
+    expect(selection).toEqual({
+      scenarioIds: [],
+      resources: {
+        core: true,
+        fixtures: ["happy-path", "p2wpkh", "p2sh-p2wpkh", "p2tr-keypath", "p2tr-scriptpath"],
+        adapters: [],
+      },
+      filtered: true,
+      externalOnly: true,
+    });
+    expect(() =>
+      assertProofSelectionCompatibility(selection, { adapter: true, suite: false }),
+    ).not.toThrow();
+    expect(() =>
+      assertProofSelectionCompatibility(selection, { adapter: false, suite: false }),
+    ).toThrow(/external-only.*adapter manifest/i);
+  });
+
   test.each(["valid-08", "valid-13"])(
     "does not allowlist libwally rejection of BIP370 %s",
     async (rejectedVectorId) => {

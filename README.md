@@ -119,6 +119,7 @@ the built-in matrix:
 psbt-lab adapter check ./adapters.json
 psbt-lab adapter check ./adapters.json --json
 psbt-lab matrix --adapter-manifest ./adapters.json
+psbt-lab matrix --external-only --adapter-manifest ./adapters.json
 ```
 
 The command validates the strict manifest, process transport, self-reported implementation
@@ -131,6 +132,25 @@ The matrix keeps all 31 bundled scenarios and appends native-parse and semantic-
 each external adapter across P2WPKH, nested P2SH-P2WPKH, P2WSH, Taproot key-path, and Taproot
 script-path fixtures. It also appends signing handoffs when the adapter declares the matching
 signer capabilities and the `fixture-commitment-sha256` safety feature.
+
+`--external-only` prepares the same deterministic Core-backed fixtures but skips every bundled
+adapter and scenario. This is the focused path for wallet CI. The repository includes an
+independently installed [bitcoinjs-lib consumer example](examples/wallet-ci-adapter) and a reusable
+GitHub Action:
+
+```yaml
+- uses: GautamBytes/psbt-interop-lab@v0.7.0
+  with:
+    adapter-manifest: ./adapters.json
+```
+
+The action checks the adapter, runs its generated matrix, and uploads replayable artifacts plus
+JUnit and SARIF reports. The same outputs are available directly:
+
+```bash
+psbt-lab matrix --external-only --adapter-manifest ./adapters.json \
+  --junit psbt-interop.xml --sarif psbt-interop.sarif
+```
 
 ## Custom Suites
 
@@ -208,6 +228,7 @@ Each run creates a private directory under `artifacts/<run-id>/` containing:
 - `report.json`: redacted machine-readable compatibility results
 - `report.md`: readable scenario and assertion summary
 - `report.html`: self-contained static compatibility report with no scripts or network requests
+- Optional JUnit XML and SARIF 2.1.0 files selected with `--junit` and `--sarif`
 - Compatibility findings: implementation-specific behavior that completed safely but diverged from
   the expected PSBT rules
 - `checkpoints/**/*.psbt`: canonical PSBT states at important handoffs

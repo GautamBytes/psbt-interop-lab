@@ -39,6 +39,9 @@ jobs:
       - run: pnpm test
       - run: pnpm build
       - run: node dist/cli.js self-test
+      - run: npm ci --prefix examples/wallet-ci-adapter --ignore-scripts
+      - run: npm test --prefix examples/wallet-ci-adapter
+      - run: node dist/cli.js adapter check examples/wallet-ci-adapter/adapter-manifest.json
 
   website:
     name: Website / Node 24
@@ -209,7 +212,7 @@ jobs:
       - run: python -m unittest -v test_adapter.py
 
   feature-docker-proof:
-    name: v0.5 feature Docker proof
+    name: v0.7 feature Docker proof
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -224,6 +227,17 @@ jobs:
           package-manager-cache: false
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
+      - run: npm ci --prefix examples/wallet-ci-adapter --ignore-scripts
+      - run: mkdir -p /tmp/psbt-package
+      - run: npm pack --ignore-scripts --pack-destination /tmp/psbt-package
+      - name: Exercise wallet CI action from the release tarball
+        uses: ./
+        with:
+          adapter-manifest: examples/wallet-ci-adapter/adapter-manifest.json
+          package-spec: /tmp/psbt-package/psbt-interop-lab-0.7.0.tgz
+          artifacts: artifacts/external-wallet
+          junit: artifacts/external-wallet.xml
+          sarif: artifacts/external-wallet.sarif
       - run: node dist/cli.js run --category taproot-scriptpath
       - run: node dist/cli.js run --category psbtv2-interop
       - if: always()

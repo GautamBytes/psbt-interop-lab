@@ -1,7 +1,6 @@
-import { readFile, stat } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
-import { mkdtemp, rm } from "node:fs/promises";
 import { describe, expect, test } from "vitest";
 import type { RunManifest } from "../../src/runner/artifacts.js";
 import {
