@@ -92,7 +92,7 @@ node dist/cli.js run \
   --scenario hwi-simulator-p2wpkh
 ```
 
-![v0.8.0 release proof terminal output](https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/9820664a69c9dab452aee31b5236dfd78b9a429d/docs/assets/walkthrough/cli-finding-and-replay.png)
+![v0.8.0 release proof terminal output](https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/1d744f90b0d4facfb6846a83d665af3329fadd0e/docs/assets/walkthrough/cli-finding-and-replay.png)
 
 The captured repeated run uses `--no-build` because its required pinned Docker images were already
 present. Omit that flag on the first run so the CLI builds them before executing the same proof.
@@ -111,7 +111,7 @@ evidence still matches its manifest:
 psbt-lab replay artifacts/<run-id>
 ```
 
-![v0.8.0 generated protocol report](https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/9820664a69c9dab452aee31b5236dfd78b9a429d/docs/assets/walkthrough/compatibility-report.png)
+![v0.8.0 generated protocol report](https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/1d744f90b0d4facfb6846a83d665af3329fadd0e/docs/assets/walkthrough/compatibility-report.png)
 
 The report screenshot above comes directly from the generated, self-contained HTML artifact. The
 CLI screenshot is a typeset summary of the same real run, with the installed binary name used and
