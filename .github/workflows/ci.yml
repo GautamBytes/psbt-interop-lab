@@ -252,7 +252,7 @@ jobs:
       - run: python -m unittest -v test_adapter.py
 
   feature-docker-proof:
-    name: v0.7 feature Docker proof
+    name: v0.8 feature Docker proof
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -274,7 +274,7 @@ jobs:
         uses: ./
         with:
           adapter-manifest: examples/wallet-ci-adapter/adapter-manifest.json
-          package-spec: /tmp/psbt-package/psbt-interop-lab-0.7.0.tgz
+          package-spec: /tmp/psbt-package/psbt-interop-lab-0.8.0.tgz
           artifacts: artifacts/external-wallet
           junit: artifacts/external-wallet.xml
           sarif: artifacts/external-wallet.sarif

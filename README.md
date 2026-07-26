@@ -20,7 +20,7 @@ Requirements:
 - Node.js 22 or 24
 
 ```bash
-npx --yes psbt-interop-lab@0.7.0 quickstart
+npx --yes psbt-interop-lab@0.8.0 quickstart
 ```
 
 `quickstart` is the bounded first-run proof. It checks Node.js, Docker, and Compose, runs five
@@ -31,7 +31,7 @@ the local regtest node automatically.
 For exhaustive compatibility testing, install the CLI once and run the complete 47-scenario matrix:
 
 ```bash
-npm install --global psbt-interop-lab@0.7.0
+npm install --global psbt-interop-lab@0.8.0
 psbt-lab matrix
 ```
 
@@ -80,7 +80,7 @@ To work from a source checkout instead, install pnpm 10.30.2, run
 
 ## Walkthrough: Verify the P2 Protocol Frontier
 
-This real v0.7.0 branch run exercises the two P2 protocol workflows added in this change. The first
+This real v0.8.0 release-candidate run exercises the two P2 protocol workflows added in this release. The first
 preserves BIP373 fields through rust-bitcoin and bitcoinjs-lib before two isolated Rust signer
 processes exchange CSPRNG-generated, session-bound nonces, produce partial signatures, aggregate a
 MuSig2 signature, and hand the spend to Bitcoin Core. The second drives a separate HWI-compatible
@@ -92,7 +92,7 @@ node dist/cli.js run \
   --scenario hwi-simulator-p2wpkh
 ```
 
-![v0.7.0 P2 protocol proof terminal output](https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/9820664a69c9dab452aee31b5236dfd78b9a429d/docs/assets/walkthrough/cli-finding-and-replay.png)
+![v0.8.0 P2 protocol proof terminal output](https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/9820664a69c9dab452aee31b5236dfd78b9a429d/docs/assets/walkthrough/cli-finding-and-replay.png)
 
 The captured repeated run uses `--no-build` because its required pinned Docker images were already
 present. Omit that flag on the first run so the CLI builds them before executing the same proof.
@@ -111,12 +111,12 @@ evidence still matches its manifest:
 psbt-lab replay artifacts/<run-id>
 ```
 
-![v0.7.0 generated P2 protocol report](https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/9820664a69c9dab452aee31b5236dfd78b9a429d/docs/assets/walkthrough/compatibility-report.png)
+![v0.8.0 generated P2 protocol report](https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/9820664a69c9dab452aee31b5236dfd78b9a429d/docs/assets/walkthrough/compatibility-report.png)
 
 The report screenshot above comes directly from the generated, self-contained HTML artifact. The
 CLI screenshot is a typeset summary of the same real run, with the installed binary name used and
 long descriptions plus the absolute artifact path condensed. It preserves the selected scenarios,
-outcomes, Core height, run ID, and six-checkpoint replay result. The v0.7.0 report includes
+outcomes, Core height, run ID, and six-checkpoint replay result. The v0.8.0 report includes
 per-request adapter cells; full matrix reports also include stable conformance rule IDs, normative
 levels, authoritative sources, expected-versus-observed behavior, severity, repairability,
 confidence, exact evidence, adapter failure cells, and replay-verified artifact comparison. Run
@@ -151,7 +151,7 @@ independently installed [bitcoinjs-lib consumer example](examples/wallet-ci-adap
 GitHub Action:
 
 ```yaml
-- uses: GautamBytes/psbt-interop-lab@v0.7.0
+- uses: GautamBytes/psbt-interop-lab@v0.8.0
   with:
     adapter-manifest: ./adapters.json
 ```

@@ -24,7 +24,7 @@ export function ProofWalkthrough() {
       <div className="page-shell">
         <header className="proof-heading">
           <div>
-            <span className="eyebrow">Evidence from the real v0.7.0 P2 proof</span>
+            <span className="eyebrow">Evidence from the real v0.8.0 P2 proof</span>
             <h2 id="proof-title">Two protocol frontiers, one replayable artifact.</h2>
           </div>
           <div>
@@ -48,7 +48,7 @@ export function ProofWalkthrough() {
             <a href={cliProof} aria-label="Open full-size CLI proof">
               <img
                 src={cliProof}
-                alt="v0.7.0 P2 protocol proof terminal output"
+                alt="v0.8.0 P2 protocol proof terminal output"
                 loading="lazy"
                 decoding="async"
               />
@@ -64,7 +64,7 @@ export function ProofWalkthrough() {
             <a href={reportProof} aria-label="Open full-size generated report">
               <img
                 src={reportProof}
-                alt="v0.7.0 generated P2 protocol report"
+                alt="v0.8.0 generated P2 protocol report"
                 loading="lazy"
                 decoding="async"
               />

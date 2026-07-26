@@ -225,10 +225,10 @@ describe("website documentation routes", () => {
     render(<App />);
 
     const cliProof = screen.getByRole("img", {
-      name: /v0\.7\.0 P2 protocol proof terminal output/i,
+      name: /v0\.8\.0 P2 protocol proof terminal output/i,
     });
     const reportProof = screen.getByRole("img", {
-      name: /v0\.7\.0 generated P2 protocol report/i,
+      name: /v0\.8\.0 generated P2 protocol report/i,
     });
 
     expect(cliProof).toHaveAttribute("src", expect.stringMatching(/cli-finding-and-replay/));
