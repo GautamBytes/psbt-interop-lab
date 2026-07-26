@@ -7,7 +7,7 @@ writes replayable compatibility reports.
 
 The current suite integrates Bitcoin Core 31.1, rust-bitcoin 0.32.102, btcsuite PSBT 1.2.0,
 bitcoinjs-lib 7.0.1, BDK Wallet 3.1.0, rust-psbt's PSBTv2 0.3.0 implementation, and libwally
-1.5.4. P2 coverage adds two isolated MuSig2 0.4.1 signer processes and an HWI-compatible JSON
+1.5.4. Version 0.8.0 adds two isolated MuSig2 0.4.1 signer processes and an HWI-compatible JSON
 process simulator backed by bitcoinjs-lib. A frozen bdkpython
 2.3.1 adapter remains as a real regression specimen. Everything runs on regtest; the tool never
 broadcasts and has no mainnet mode.
@@ -78,9 +78,9 @@ To work from a source checkout instead, install pnpm 10.30.2, run
 `pnpm install --frozen-lockfile`, and replace `psbt-lab` above with `node dist/cli.js` after
 `pnpm build`.
 
-## Walkthrough: Verify the P2 Protocol Frontier
+## Walkthrough: Verify the Release Proof
 
-This real v0.8.0 release-candidate run exercises the two P2 protocol workflows added in this release. The first
+This real v0.8.0 release run exercises the two protocol workflows introduced in v0.8.0. The first
 preserves BIP373 fields through rust-bitcoin and bitcoinjs-lib before two isolated Rust signer
 processes exchange CSPRNG-generated, session-bound nonces, produce partial signatures, aggregate a
 MuSig2 signature, and hand the spend to Bitcoin Core. The second drives a separate HWI-compatible
@@ -92,12 +92,12 @@ node dist/cli.js run \
   --scenario hwi-simulator-p2wpkh
 ```
 
-![v0.8.0 P2 protocol proof terminal output](https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/9820664a69c9dab452aee31b5236dfd78b9a429d/docs/assets/walkthrough/cli-finding-and-replay.png)
+![v0.8.0 release proof terminal output](https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/1d744f90b0d4facfb6846a83d665af3329fadd0e/docs/assets/walkthrough/cli-finding-and-replay.png)
 
 The captured repeated run uses `--no-build` because its required pinned Docker images were already
 present. Omit that flag on the first run so the CLI builds them before executing the same proof.
 
-The filtered command is the focused P2 proof, not the complete compatibility matrix. It proves the
+The filtered command is the focused v0.8.0 release proof, not the complete compatibility matrix. It proves the
 new BIP373 preservation, nonce-reuse refusal, partial-signature verification, aggregate signing,
 simulated confirmation, key-origin enforcement, Bitcoin Core oracle, artifact, and replay paths.
 It does not claim physical-device security, vendor firmware coverage, or independent MuSig2
@@ -111,7 +111,7 @@ evidence still matches its manifest:
 psbt-lab replay artifacts/<run-id>
 ```
 
-![v0.8.0 generated P2 protocol report](https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/9820664a69c9dab452aee31b5236dfd78b9a429d/docs/assets/walkthrough/compatibility-report.png)
+![v0.8.0 generated protocol report](https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/1d744f90b0d4facfb6846a83d665af3329fadd0e/docs/assets/walkthrough/compatibility-report.png)
 
 The report screenshot above comes directly from the generated, self-contained HTML artifact. The
 CLI screenshot is a typeset summary of the same real run, with the installed binary name used and

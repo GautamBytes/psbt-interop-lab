@@ -55,16 +55,16 @@ describe("PSBT Interop Lab website", () => {
     expect(
       screen.getByRole("heading", { name: /two protocol frontiers, one replayable artifact/i }),
     ).toBeInTheDocument();
-    expect(screen.getByText(/evidence from the real v0\.8\.0 P2 proof/i)).toBeInTheDocument();
+    expect(screen.getByText(/evidence from the v0\.8\.0 release proof/i)).toBeInTheDocument();
     expect(
-      screen.getByRole("img", { name: /v0\.8\.0 P2 protocol proof terminal output/i }),
+      screen.getByRole("img", { name: /v0\.8\.0 release proof terminal output/i }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("img", { name: /v0\.8\.0 generated P2 protocol report/i }),
+      screen.getByRole("img", { name: /v0\.8\.0 generated protocol report/i }),
     ).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /open the complete walkthrough/i })).toHaveAttribute(
       "href",
-      "/docs#walkthrough-verify-the-p2-protocol-frontier",
+      "/docs#walkthrough-verify-the-release-proof",
     );
   });
 
