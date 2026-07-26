@@ -7,7 +7,8 @@ writes replayable compatibility reports.
 
 The current suite integrates Bitcoin Core 31.1, rust-bitcoin 0.32.102, btcsuite PSBT 1.2.0,
 bitcoinjs-lib 7.0.1, BDK Wallet 3.1.0, rust-psbt's PSBTv2 0.3.0 implementation, and libwally
-1.5.4. A frozen bdkpython
+1.5.4. P2 coverage adds two isolated MuSig2 0.4.1 signer processes and an HWI-compatible JSON
+process simulator backed by bitcoinjs-lib. A frozen bdkpython
 2.3.1 adapter remains as a real regression specimen. Everything runs on regtest; the tool never
 broadcasts and has no mainnet mode.
 
@@ -27,7 +28,7 @@ semantic detector canaries, then completes one real Bitcoin Core -> rust-bitcoin
 signing and finalization handoff. It writes the same replayable reports as the full suite and stops
 the local regtest node automatically.
 
-For exhaustive compatibility testing, install the CLI once and run the complete 45-scenario matrix:
+For exhaustive compatibility testing, install the CLI once and run the complete 47-scenario matrix:
 
 ```bash
 npm install --global psbt-interop-lab@0.7.0
@@ -74,31 +75,31 @@ To work from a source checkout instead, install pnpm 10.30.2, run
 `pnpm install --frozen-lockfile`, and replace `psbt-lab` above with `node dist/cli.js` after
 `pnpm build`.
 
-## Walkthrough: Verify the P1 Safety Gate
+## Walkthrough: Verify the P2 Protocol Frontier
 
-This real v0.7.0 branch run exercises the six P1 review gates added in this change: legacy P2PKH
-signing, nested P2SH-P2WSH multisig, ECDSA and Taproot sighash matrices, adversarial signer inputs,
-and deterministic combiner conflicts. Build the source checkout first, then select the exact gate:
+This real v0.7.0 branch run exercises the two P2 protocol workflows added in this change. The first
+preserves BIP373 fields through rust-bitcoin and bitcoinjs-lib before two isolated Rust signer
+processes exchange CSPRNG-generated, session-bound nonces, produce partial signatures, aggregate a
+MuSig2 signature, and hand the spend to Bitcoin Core. The second drives a separate HWI-compatible
+simulator process through rejection and approval paths while enforcing its key-origin policy:
 
 ```bash
 node dist/cli.js run \
-  --scenario p2pkh-sign-rust-bitcoin \
-  --scenario nested-p2sh-p2wsh-2-of-3-multisig \
-  --scenario ecdsa-sighash-matrix-rust-bitcoin \
-  --scenario taproot-sighash-matrix-rust-bitcoin \
-  --scenario adversarial-signer-inputs-rust-bitcoin \
-  --scenario combiner-conflicts-bitcoinjs-lib
+  --scenario bip373-musig2-keypath \
+  --scenario hwi-simulator-p2wpkh
 ```
 
-![v0.7.0 P1 safety proof terminal output](https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/19d6f874b2efd66fba6aa5d142a5d7d0280816c0/docs/assets/walkthrough/cli-finding-and-replay.png)
+![v0.7.0 P2 protocol proof terminal output](https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/19d6f874b2efd66fba6aa5d142a5d7d0280816c0/docs/assets/walkthrough/cli-finding-and-replay.png)
 
 The captured repeated run uses `--no-build` because its required pinned Docker images were already
 present. Omit that flag on the first run so the CLI builds them before executing the same proof.
 
-The filtered command is the focused P1 review gate, not the complete compatibility matrix. It
-proves the new signing, mutation, refusal, conflict-classification, Bitcoin Core oracle, artifact,
-and replay paths without implying that all 45 scenarios or all seven implementations are
-compatible.
+The filtered command is the focused P2 proof, not the complete compatibility matrix. It proves the
+new BIP373 preservation, nonce-reuse refusal, partial-signature verification, aggregate signing,
+simulated confirmation, key-origin enforcement, Bitcoin Core oracle, artifact, and replay paths.
+It does not claim physical-device security, vendor firmware coverage, or independent MuSig2
+implementations; the two signers intentionally run as separate processes backed by the same pinned
+Rust crate.
 
 Open `artifacts/<run-id>/report.html` for the complete result, or verify later that the recorded
 evidence still matches its manifest:
@@ -107,12 +108,12 @@ evidence still matches its manifest:
 psbt-lab replay artifacts/<run-id>
 ```
 
-![v0.7.0 generated P1 safety report](https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/19d6f874b2efd66fba6aa5d142a5d7d0280816c0/docs/assets/walkthrough/compatibility-report.png)
+![v0.7.0 generated P2 protocol report](https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/19d6f874b2efd66fba6aa5d142a5d7d0280816c0/docs/assets/walkthrough/compatibility-report.png)
 
 The report screenshot above comes directly from the generated, self-contained HTML artifact. The
 CLI screenshot is a typeset summary of the same real run, with the installed binary name used and
 long descriptions plus the absolute artifact path condensed. It preserves the selected scenarios,
-outcomes, Core height, run ID, and 17-checkpoint replay result. The v0.7.0 report includes
+outcomes, Core height, run ID, and six-checkpoint replay result. The v0.7.0 report includes
 per-request adapter cells; full matrix reports also include stable conformance rule IDs, normative
 levels, authoritative sources, expected-versus-observed behavior, severity, repairability,
 confidence, exact evidence, adapter failure cells, and replay-verified artifact comparison. Run
@@ -136,7 +137,7 @@ preservation. It executes the configured command directly with `shell: false`; t
 manifest must therefore be treated as trusted local code. See [the adapter guide](docs/adapters.md)
 and the bundled [manifest schema](src/conformance/adapter-manifest.schema.json).
 
-The matrix keeps all 45 bundled scenarios and appends native-parse and semantic-roundtrip cells for
+The matrix keeps all 47 bundled scenarios and appends native-parse and semantic-roundtrip cells for
 each external adapter across P2WPKH, nested P2SH-P2WPKH, P2WSH, Taproot key-path, and Taproot
 script-path fixtures. It also appends signing handoffs when the adapter declares the matching
 signer capabilities and the `fixture-commitment-sha256` safety feature.
@@ -209,7 +210,7 @@ fixtures. Custom signing is capability-gated and runs only when an adapter expli
 
 ## Current Coverage
 
-The suite currently runs 45 scenarios:
+The suite currently runs 47 scenarios:
 
 - Core-created P2PKH, P2WPKH, P2WSH, nested P2SH-P2WSH, and Taproot key-path signing handoffs
   through rust-bitcoin, btcsuite, bitcoinjs-lib, and current BDK Wallet
@@ -222,6 +223,13 @@ The suite currently runs 45 scenarios:
   internal keys, and Merkle roots
 - Seven deterministic bitcoinjs-lib combiner-conflict probes across UTXOs, scripts, sighash types,
   derivations, ECDSA signatures, and Taproot signatures
+- A BIP373 MuSig2 key-path workflow that preserves ordered participant fields through rust-bitcoin
+  and bitcoinjs-lib, exchanges CSPRNG-generated session-bound public nonces between two isolated
+  signer processes, refuses nonce reuse, verifies both partial signatures, aggregates the BIP340
+  signature, and requires Bitcoin Core policy acceptance
+- An HWI-compatible simulator workflow that enumerates a separate JSON-speaking device process,
+  checks a fixed regtest BIP84 key origin, proves simulated user cancellation, permits only the
+  expected signature mutation, and requires Bitcoin Core finalization and policy acceptance
 - All 14 valid and 21 invalid official BIP370 vectors through rust-psbt-v2 and libwally
 - Native PSBTv2 construction, input/output removal, sequence updates, scope sealing, and BIP370
   fallback/height/time locktime selection and conflict rejection

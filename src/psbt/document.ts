@@ -3,6 +3,9 @@ import { CompactSizeError, readCompactSize } from "./compact-size.js";
 
 const PSBT_MAGIC = Buffer.from("70736274ff", "hex");
 const TAPROOT_EXPLICIT_SIGHASH_TYPES = new Set([0x01, 0x02, 0x03, 0x81, 0x82, 0x83]);
+const SECP256K1_ORDER = BigInt(
+  "0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141",
+);
 
 export type PsbtDocumentErrorCode =
   | "INVALID_PSBT"
@@ -192,6 +195,82 @@ function isValidSecp256k1PublicKey(publicKey: Buffer): boolean {
     return true;
   } catch {
     return false;
+  }
+}
+
+function assertCompressedPublicKeyBytes(
+  publicKey: Buffer,
+  entry: InternalEntry,
+  location: PsbtMapLocation,
+  label: string,
+): void {
+  if (
+    publicKey.byteLength !== 33 ||
+    (publicKey[0] !== 0x02 && publicKey[0] !== 0x03) ||
+    !isValidSecp256k1PublicKey(publicKey)
+  ) {
+    invalidField(location, entry, label, "must contain a compressed secp256k1 public key");
+  }
+}
+
+function assertMusig2Participants(
+  entry: InternalEntry,
+  location: PsbtMapLocation,
+  label: string,
+): void {
+  assertCompressedPublicKeyBytes(entry.keyData, entry, location, label);
+  if (entry.value.byteLength === 0 || entry.value.byteLength % 33 !== 0) {
+    invalidField(
+      location,
+      entry,
+      label,
+      "value must contain a non-empty ordered list of compressed public keys",
+    );
+  }
+  for (let offset = 0; offset < entry.value.byteLength; offset += 33) {
+    const participant = entry.value.subarray(offset, offset + 33);
+    assertCompressedPublicKeyBytes(participant, entry, location, label);
+  }
+}
+
+function assertMusig2ParticipantAndAggregateKeyData(
+  entry: InternalEntry,
+  location: PsbtMapLocation,
+  label: string,
+): void {
+  if (entry.keyData.byteLength !== 66 && entry.keyData.byteLength !== 98) {
+    invalidField(
+      location,
+      entry,
+      label,
+      "key data must contain participant and aggregate public keys with an optional tapleaf hash",
+    );
+  }
+  assertCompressedPublicKeyBytes(entry.keyData.subarray(0, 33), entry, location, label);
+  assertCompressedPublicKeyBytes(entry.keyData.subarray(33, 66), entry, location, label);
+}
+
+function assertMusig2PublicNonce(
+  entry: InternalEntry,
+  location: PsbtMapLocation,
+  label: string,
+): void {
+  assertMusig2ParticipantAndAggregateKeyData(entry, location, label);
+  assertValueLength(entry, location, label, 66);
+  assertCompressedPublicKeyBytes(entry.value.subarray(0, 33), entry, location, label);
+  assertCompressedPublicKeyBytes(entry.value.subarray(33, 66), entry, location, label);
+}
+
+function assertMusig2PartialSignature(
+  entry: InternalEntry,
+  location: PsbtMapLocation,
+  label: string,
+): void {
+  assertMusig2ParticipantAndAggregateKeyData(entry, location, label);
+  assertValueLength(entry, location, label, 32);
+  const scalar = BigInt(`0x${entry.value.toString("hex")}`);
+  if (scalar >= SECP256K1_ORDER) {
+    invalidField(location, entry, label, "value is outside the secp256k1 scalar range");
   }
 }
 
@@ -727,6 +806,15 @@ function validateInputMap(map: InternalMap, version: number): void {
         assertNoKeyData(entry, location, "PSBT_IN_TAP_MERKLE_ROOT");
         assertValueLength(entry, location, "PSBT_IN_TAP_MERKLE_ROOT", 32);
         break;
+      case 0x1a:
+        assertMusig2Participants(entry, location, "PSBT_IN_MUSIG2_PARTICIPANT_PUBKEYS");
+        break;
+      case 0x1b:
+        assertMusig2PublicNonce(entry, location, "PSBT_IN_MUSIG2_PUB_NONCE");
+        break;
+      case 0x1c:
+        assertMusig2PartialSignature(entry, location, "PSBT_IN_MUSIG2_PARTIAL_SIG");
+        break;
       case 0xfc:
         assertProprietaryKey(entry, location, "PSBT_IN_PROPRIETARY");
         break;
@@ -774,6 +862,9 @@ function validateOutputMap(map: InternalMap, version: number): void {
         break;
       case 0x07:
         assertTaprootDerivation(entry, location, "PSBT_OUT_TAP_BIP32_DERIVATION");
+        break;
+      case 0x08:
+        assertMusig2Participants(entry, location, "PSBT_OUT_MUSIG2_PARTICIPANT_PUBKEYS");
         break;
       case 0xfc:
         assertProprietaryKey(entry, location, "PSBT_OUT_PROPRIETARY");

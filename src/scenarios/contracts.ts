@@ -224,6 +224,61 @@ export const BDK_CURRENT_ADAPTER_CONTRACT = {
   ],
 } as const satisfies ExpectedAdapterContract;
 
+function musig2AdapterContract(name: "musig2-rust-signer-1" | "musig2-rust-signer-2") {
+  return {
+    name,
+    version: "0.1.0",
+    sourceRevision: "musig2-crate-0.4.1+bitcoin-0.32.102",
+    operations: [
+      "hello",
+      "native-parse",
+      "roundtrip",
+      "musig2-nonce",
+      "musig2-partial-sign",
+      "musig2-aggregate",
+    ],
+    roles: ["parser", "updater", "signer", "combiner", "finalizer"],
+    psbtVersions: [0],
+    scriptTypes: ["p2tr-keypath"],
+    operationScriptTypes: {
+      roundtrip: ["p2tr-keypath"],
+      "musig2-nonce": ["p2tr-keypath"],
+      "musig2-partial-sign": ["p2tr-keypath"],
+      "musig2-aggregate": ["p2tr-keypath"],
+    },
+    features: [
+      "bip373-musig2-v1",
+      "bip327-csprng-nonce-v1",
+      "fixture-commitment-sha256",
+      "network-free",
+    ],
+  } as const satisfies ExpectedAdapterContract;
+}
+
+export const MUSIG2_SIGNER_ONE_ADAPTER_CONTRACT = musig2AdapterContract("musig2-rust-signer-1");
+export const MUSIG2_SIGNER_TWO_ADAPTER_CONTRACT = musig2AdapterContract("musig2-rust-signer-2");
+
+export const HWI_SIMULATOR_ADAPTER_CONTRACT = {
+  name: "hwi-simulator",
+  version: "0.1.0",
+  sourceRevision: "hwi-json-contract-v1+bitcoinjs-lib-7.0.1+tiny-secp256k1-2.2.4",
+  operations: ["hello", "native-parse", "roundtrip", "sign"],
+  roles: ["parser", "signer"],
+  psbtVersions: [0],
+  scriptTypes: ["p2wpkh"],
+  operationScriptTypes: {
+    roundtrip: ["p2wpkh"],
+    sign: ["p2wpkh"],
+  },
+  features: [
+    "fixture-commitment-sha256",
+    "hwi-json-process-v1",
+    "hwi-simulator-v1",
+    "simulated-user-confirmation-v1",
+    "network-free",
+  ],
+} as const satisfies ExpectedAdapterContract;
+
 function requireSuccess(response: AdapterResponse, operation: string): AdapterSuccessResponse {
   if (response.status !== "ok") {
     throw new Error(

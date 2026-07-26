@@ -17,6 +17,10 @@ flowchart LR
   CLI -->|"bounded JSONL"| V2["rust-psbt PSBTv2 0.3.0 adapter"]
   CLI -->|"bounded JSONL"| Wally["libwally 1.5.4 PSBTv0/v2 adapter"]
   CLI -->|"bounded JSONL"| Frozen["bdkpython 2.3.1 regression specimen"]
+  CLI -->|"bounded JSONL"| MuSig1["MuSig2 signer process 1"]
+  CLI -->|"bounded JSONL"| MuSig2["MuSig2 signer process 2"]
+  CLI -->|"bounded JSONL"| HWI["HWI simulator adapter"]
+  HWI -->|"HWI-style JSON command"| Device["Simulated hardware device process"]
   CLI --> Facts["Lossless semantic PSBT parser and transition rules"]
   CLI --> Artifacts["Private checkpoints plus JSON, Markdown, and HTML reports"]
   Artifacts --> Replay["Offline PSBT-digest replay"]
@@ -44,7 +48,8 @@ Bitcoin Core numeric version `310100`.
 
 Core 31.1 mines a local regtest chain and funds deterministic public P2PKH, P2WPKH, nested
 P2SH-P2WPKH, nested P2SH-P2WSH, single-key and 2-of-3 P2WSH, P2TR key-path, and P2TR script-path
-descriptors. It creates PSBTv0 with `createpsbt` and fills UTXO/script metadata with
+descriptors, plus a `rawtr` output committed to the BIP327 aggregate key used by the MuSig2
+fixture. It creates PSBTv0 with `createpsbt` and fills UTXO/script metadata with
 `utxoupdatepsbt`. Intent fixtures add multiple outputs, RBF sequence, non-zero locktime, explicit
 sighash type, and derivation metadata. At the end of each signing path,
 `finalizepsbt` extracts the transaction and `testmempoolaccept` checks current consensus and mempool
@@ -84,6 +89,20 @@ The Rust, Go, JavaScript, current BDK, rust-psbt-v2, and libwally adapters sign 
 known run-committed fixture inputs. rust-psbt-v2 and libwally both exercise the official BIP370
 corpus and run bidirectional PSBTv2 signing/finalization workflows. The Python adapter freezes the affected `bdkpython` 2.3.1 wheel and exposes
 round-trip/finalize behavior. No adapter has network access at runtime.
+
+The MuSig2 adapter runs twice with an explicit process identity. Each process owns one deterministic
+regtest key and keeps its CSPRNG-seeded secret nonce only in memory. BIP373 participant,
+public-nonce, and partial-signature fields carry the two-round protocol; live nonces expire, recent
+session identifiers are held in a bounded replay cache, each partial is verified before
+aggregation, and the final BIP340 signature is written as the standard Taproot key signature before
+Core finalization. Both participants currently use the same pinned `musig2` 0.4.1 implementation,
+so this proves protocol/state isolation rather than cross-library MuSig2 agreement.
+
+The HWI adapter first enumerates a separate JSON-speaking simulator process, then invokes its
+`signtx` command with a fixed regtest BIP84 origin. The device process owns the deterministic key,
+enforces simulated user confirmation, and returns the signed PSBT. The adapter independently checks
+that the unsigned transaction and every non-signature field are unchanged. This validates the HWI
+process contract and refusal workflow, not USB transport, secure elements, or vendor firmware.
 
 ### Wire facts and artifacts
 
@@ -148,7 +167,7 @@ The detailed assumptions, abuse paths, and residual risks are recorded in the
 
 ## Proof Scenarios
 
-The executable catalog currently contains 45 scenarios. Twelve independent Core-to-library
+The executable catalog currently contains 47 scenarios. Twelve independent Core-to-library
 handoffs exercise rust-bitcoin, btcsuite, bitcoinjs, and current BDK signing for P2WSH, P2WPKH, and
 P2TR key-path inputs. Additional rust-bitcoin handoffs prove legacy P2PKH signing from an exact
 `non_witness_utxo` and nested P2SH-P2WSH 2-of-3 signing and finalization.
@@ -172,6 +191,13 @@ An adversarial signer matrix submits wrong witness amounts and scripts, incorrec
 Taproot internal-key or Merkle-root mismatches. A separate combiner matrix injects conflicting
 UTXOs, scripts, sighash types, derivations, ECDSA partial signatures, and Taproot key signatures.
 Every conflict has a deterministic classification and must be rejected before native combining.
+
+The BIP373 MuSig2 scenario preserves its participant set through two independent PSBT parsers,
+performs public-nonce exchange and partial signing in two isolated signer processes, rejects a
+reused nonce session, verifies both partial signatures, aggregates a BIP340 signature, and requires
+Core policy acceptance. The HWI scenario adds a fixed BIP84 key origin, proves an explicit
+simulated-user refusal, signs through the separate device process, and permits only the expected
+P2WPKH partial signature before Core finalization.
 
 The rejection matrix runs five malformed or undeclared PSBT cases through all four native parser
 paths. It currently records btcsuite 1.2.0 accepting a duplicate global unsigned-transaction key as
@@ -241,7 +267,7 @@ the expected identity and baseline parser capabilities, probes valid and malform
 and requires semantic roundtrip preservation.
 
 `psbt-lab matrix --adapter-manifest <manifest>` then registers each external process by its manifest
-ID while retaining the separately validated implementation identity. The runner preserves all 45
+ID while retaining the separately validated implementation identity. The runner preserves all 47
 bundled scenarios and appends capability-gated P2WPKH, nested P2SH-P2WPKH, P2WSH, Taproot key-path,
 and Taproot script-path parse and roundtrip scenarios, plus signing where declared. Run-scoped
 unsigned-transaction commitments authorize only deterministic regtest fixtures. See

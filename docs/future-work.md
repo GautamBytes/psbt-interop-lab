@@ -7,14 +7,16 @@ maintainers using those foundations.
 
 ## Broader Compatibility
 
-- Add adapters for more wallet projects, hardware-signing bridges, and implementation languages.
+- Add adapters for more wallet projects, physical-device HWI drivers, and implementation languages.
 - Expand PSBTv2 coverage beyond the current constructor, P2WPKH, Taproot roundtrip, and 2-of-3
   workflows.
 - Add Taproot script-path threshold leaves and carefully selected legacy profiles beyond the
   deterministic single-leaf signing and finalization paths.
-- Add executable workflows for MuSig2, Silent Payments, proof-of-reserves, generic signed message,
-  and DNSSEC proof PSBT fields. The diagnostic registry names these fields, but compatibility
-  scenarios still need fixtures and adapter support.
+- Add a second independent MuSig2 implementation so the current two-process state-machine proof
+  becomes a cross-library cryptographic interoperability proof.
+- Add executable workflows for Silent Payments, proof-of-reserves, generic signed message, and
+  DNSSEC proof PSBT fields. The diagnostic registry names these fields, but compatibility scenarios
+  still need fixtures and adapter support.
 - Let bundled signers authorize specific custom public fixture templates through the existing
   `user-fixture-template-v1` capability boundary.
 

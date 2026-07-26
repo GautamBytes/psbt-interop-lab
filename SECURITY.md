@@ -67,7 +67,7 @@ treating aggregate capability counts as runtime findings.
 
 ### Signing restrictions
 
-The Rust, Go, JavaScript, current BDK, rust-psbt-v2, and libwally adapters have no
+The Rust, Go, JavaScript, current BDK, rust-psbt-v2, libwally, MuSig2, and HWI simulator adapters have no
 generic private-key input. They recognize only `network=regtest`, declared suite fixture identifiers,
 run-scoped unsigned-transaction commitments,
 expected public keys and scripts, and internally consistent full/witness UTXO data. Each operation
@@ -88,6 +88,16 @@ accepted PSBT came from this particular CLI run. Its safety comes from using a p
 key on regtest, not from protecting that key. Do not place real funds on the fixture script.
 
 Bitcoin Core receives only public descriptors. It does not receive fixture private keys.
+
+The MuSig2 fixture uses two public deterministic scalars in separate processes. Secret nonces use
+operating-system CSPRNG entropy, stay in process memory, expire after 15 minutes, and are consumed
+on the first partial-sign attempt. A bounded replay cache rejects recent session reuse, and a
+process refuses to start without an explicit signer identity. This is test-only nonce discipline,
+not production key custody.
+
+The HWI simulator is a separate process that exercises enumeration, JSON command transport, fixed
+key-origin policy, user approval/refusal, and PSBT return validation. It is not physical hardware
+and provides no secure-element, USB, firmware, PIN, passphrase, or supply-chain assurance.
 
 ### Process isolation
 

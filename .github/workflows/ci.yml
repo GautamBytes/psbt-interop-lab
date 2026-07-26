@@ -116,6 +116,23 @@ jobs:
       - run: cargo clippy --locked --all-targets -- -D warnings
       - run: cargo test --locked
 
+  musig2-adapter:
+    name: MuSig2 adapter
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: adapters/musig2-rust
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+      - run: rustup toolchain install 1.97.0 --profile minimal --component rustfmt,clippy
+      - run: rustup default 1.97.0
+      - run: cargo fmt --check
+      - run: cargo clippy --locked --all-targets -- -D warnings
+      - run: cargo test --locked
+
   libwally-adapter:
     name: libwally 1.5.4 adapter
     runs-on: ubuntu-latest
@@ -151,6 +168,8 @@ jobs:
       - run: test -f /tmp/psbt-install/node_modules/psbt-interop-lab/compose.yaml
       - run: test -f /tmp/psbt-install/node_modules/psbt-interop-lab/adapters/rust-bitcoin/Dockerfile
       - run: test -f /tmp/psbt-install/node_modules/psbt-interop-lab/adapters/libwally-1.5.4/Dockerfile
+      - run: test -f /tmp/psbt-install/node_modules/psbt-interop-lab/adapters/musig2-rust/Dockerfile
+      - run: test -f /tmp/psbt-install/node_modules/psbt-interop-lab/adapters/hwi-simulator/Dockerfile
       - run: test -f /tmp/psbt-install/node_modules/psbt-interop-lab/dist/conformance/adapter-manifest.schema.json
 
   go-adapter:
@@ -188,6 +207,27 @@ jobs:
           node-version: 24
           cache: npm
           cache-dependency-path: adapters/bitcoinjs-lib/package-lock.json
+          package-manager-cache: false
+      - run: npm ci --ignore-scripts
+      - run: npm test
+      - run: npm run typecheck
+
+  hwi-simulator-adapter:
+    name: HWI simulator adapter
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: adapters/hwi-simulator
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: adapters/hwi-simulator/package-lock.json
           package-manager-cache: false
       - run: npm ci --ignore-scripts
       - run: npm test
@@ -243,6 +283,8 @@ jobs:
       - run: node dist/cli.js run --category psbtv2-interop
       - run: node dist/cli.js run --category psbtv2-constructor --no-build
       - run: node dist/cli.js run --category psbtv2-taproot --no-build
+      - run: node dist/cli.js run --category musig2
+      - run: node dist/cli.js run --category hardware-signing
       - if: always()
         run: docker compose stop core
 

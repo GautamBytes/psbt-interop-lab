@@ -39,13 +39,17 @@ import {
   BDK_CURRENT_ADAPTER_CONTRACT,
   BITCOINJS_ADAPTER_CONTRACT,
   GO_ADAPTER_CONTRACT,
+  HWI_SIMULATOR_ADAPTER_CONTRACT,
   LIBWALLY_ADAPTER_CONTRACT,
+  MUSIG2_SIGNER_ONE_ADAPTER_CONTRACT,
+  MUSIG2_SIGNER_TWO_ADAPTER_CONTRACT,
   PSBTV2_ADAPTER_CONTRACT,
   RUST_ADAPTER_CONTRACT,
 } from "./contracts.js";
 import type { ScenarioDefinition } from "./definition.js";
 import { runScenarioCatalog } from "./engine.js";
 import { classifyHappyPath, createHappyPathScenario } from "./happy-path.js";
+import { createHwiSimulatorScenario } from "./hwi-simulator.js";
 import {
   createParallelCombineScenario,
   createRoundtripChainScenario,
@@ -54,6 +58,7 @@ import {
 } from "./interop-matrix.js";
 import { createInvalidInputScenario } from "./invalid-inputs.js";
 import { createMetadataPreservationScenario } from "./metadata-preservation.js";
+import { createMusig2Scenario } from "./musig2.js";
 import {
   createPsbtv2ConstructorScenario,
   createPsbtv2LocktimeScenario,
@@ -80,6 +85,8 @@ const BDK_IMAGE = "psbt-interop-lab/bdkpython:2.3.1";
 const BDK_CURRENT_IMAGE = "psbt-interop-lab/bdk-wallet-current:3.1.0";
 const PSBTV2_IMAGE = "psbt-interop-lab/rust-psbt-v2:0.1.0";
 const LIBWALLY_IMAGE = "psbt-interop-lab/libwally:1.5.4";
+const MUSIG2_IMAGE = "psbt-interop-lab/musig2-rust:0.1.0";
+const HWI_SIMULATOR_IMAGE = "psbt-interop-lab/hwi-simulator:0.1.0";
 const MAX_COMMITMENT_ENV_BYTES = 4 * 1024;
 const SAFE_FIXTURE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const BUILT_IN_ADAPTER_IDS = [
@@ -90,6 +97,9 @@ const BUILT_IN_ADAPTER_IDS = [
   "bdk-wallet-current",
   "rust-psbt-v2",
   "libwally",
+  "musig2-rust-signer-1",
+  "musig2-rust-signer-2",
+  "hwi-simulator",
 ] as const;
 export type BuiltInAdapterId = (typeof BUILT_IN_ADAPTER_IDS)[number];
 const MODERN_ROUNDTRIP_ADAPTERS = [
@@ -189,6 +199,16 @@ export const PROOF_SCENARIOS: readonly ProofScenarioSummary[] = [
     id: "p2tr-keypath-sign-bitcoinjs-lib",
     title: "Taproot key-path signing through bitcoinjs-lib",
     category: "taproot-key-path",
+  },
+  {
+    id: "bip373-musig2-keypath",
+    title: "BIP373 MuSig2 nonce exchange and Taproot finalization",
+    category: "musig2",
+  },
+  {
+    id: "hwi-simulator-p2wpkh",
+    title: "Simulator-backed HWI signing handoff",
+    category: "hardware-signing",
   },
   {
     id: "same-input-2-of-3-multisig",
@@ -545,6 +565,24 @@ export const PROOF_SCENARIO_REGISTRATIONS: readonly ProofScenarioRegistration[] 
           signatureKeyTypes: [0x13],
         }),
     ),
+  ),
+  registerScenario(
+    "bip373-musig2-keypath",
+    {
+      core: true,
+      fixtures: ["p2tr-musig2"],
+      adapters: ["rust-bitcoin", "bitcoinjs-lib", "musig2-rust-signer-1", "musig2-rust-signer-2"],
+    },
+    (fixtures) => createMusig2Scenario(requiredFixture(fixtures, "p2tr-musig2")),
+  ),
+  registerScenario(
+    "hwi-simulator-p2wpkh",
+    {
+      core: true,
+      fixtures: ["p2wpkh"],
+      adapters: ["hwi-simulator"],
+    },
+    (fixtures) => createHwiSimulatorScenario(requiredFixture(fixtures, "p2wpkh")),
   ),
   registerScenario(
     "same-input-2-of-3-multisig",
@@ -1082,6 +1120,8 @@ const PSBTV2_COMMITMENT_FIXTURES: readonly BuiltInFixtureId[] = [
   "intent-rich-p2wpkh",
   "p2wsh-2-of-3",
 ];
+const MUSIG2_COMMITMENT_FIXTURES: readonly BuiltInFixtureId[] = ["p2tr-musig2"];
+const HWI_COMMITMENT_FIXTURES: readonly BuiltInFixtureId[] = ["p2wpkh"];
 
 function preparedFixture(
   fixtures: PreparedFixtureSet | undefined,
@@ -1110,6 +1150,11 @@ function adapterImage(id: BuiltInAdapterId): string {
       return PSBTV2_IMAGE;
     case "libwally":
       return LIBWALLY_IMAGE;
+    case "musig2-rust-signer-1":
+    case "musig2-rust-signer-2":
+      return MUSIG2_IMAGE;
+    case "hwi-simulator":
+      return HWI_SIMULATOR_IMAGE;
   }
 }
 
@@ -1127,14 +1172,25 @@ function adapterOptions(
           ? BDK_CURRENT_COMMITMENT_FIXTURES
           : id === "rust-psbt-v2" || id === "libwally"
             ? PSBTV2_COMMITMENT_FIXTURES
-            : COMMON_COMMITMENT_FIXTURES;
+            : id === "musig2-rust-signer-1" || id === "musig2-rust-signer-2"
+              ? MUSIG2_COMMITMENT_FIXTURES
+              : id === "hwi-simulator"
+                ? HWI_COMMITMENT_FIXTURES
+                : COMMON_COMMITMENT_FIXTURES;
   const commitments = commitmentIds.flatMap((fixtureId) => {
     const fixture = preparedFixture(fixtures, fixtureId);
     return fixture ? [fixture] : [];
   });
-  if (commitments.length === 0) return {};
+  const signerSelector =
+    id === "musig2-rust-signer-1" ? "1" : id === "musig2-rust-signer-2" ? "2" : undefined;
+  if (commitments.length === 0) {
+    return signerSelector ? { env: { PSBT_LAB_MUSIG2_SIGNER: signerSelector } } : {};
+  }
   return {
-    env: { [FIXTURE_COMMITMENTS_ENV]: serializeFixtureCommitments(commitments) },
+    env: {
+      [FIXTURE_COMMITMENTS_ENV]: serializeFixtureCommitments(commitments),
+      ...(signerSelector ? { PSBT_LAB_MUSIG2_SIGNER: signerSelector } : {}),
+    },
   };
 }
 
@@ -1158,6 +1214,12 @@ async function negotiateBuiltInAdapter(
       return assertAdapterHello(response, PSBTV2_ADAPTER_CONTRACT);
     case "libwally":
       return assertAdapterHello(response, LIBWALLY_ADAPTER_CONTRACT);
+    case "musig2-rust-signer-1":
+      return assertAdapterHello(response, MUSIG2_SIGNER_ONE_ADAPTER_CONTRACT);
+    case "musig2-rust-signer-2":
+      return assertAdapterHello(response, MUSIG2_SIGNER_TWO_ADAPTER_CONTRACT);
+    case "hwi-simulator":
+      return assertAdapterHello(response, HWI_SIMULATOR_ADAPTER_CONTRACT);
   }
 }
 

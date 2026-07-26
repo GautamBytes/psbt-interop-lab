@@ -12,6 +12,10 @@ const secp256k1Generator = Buffer.from(
   "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
   "hex",
 );
+const secp256k1Scalar2 = Buffer.from(
+  "02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+  "hex",
+);
 const secp256k1GeneratorX = secp256k1Generator.subarray(1);
 const invalidSecp256k1X = Buffer.concat([Buffer.alloc(31), Buffer.from([0x07])]);
 
@@ -751,6 +755,99 @@ describe("parsePsbtDocument", () => {
       "INVALID_FIELD",
       { kind: "input", index: 0 },
       keyType,
+    );
+  });
+
+  test("accepts structurally valid BIP373 input and output fields", () => {
+    const aggregate = secp256k1Generator;
+    const participant = secp256k1Scalar2;
+    const keyData = Buffer.concat([participant, aggregate]);
+    const publicNonce = Buffer.concat([secp256k1Generator, participant]);
+
+    const document = parsePsbtDocument(
+      psbtV0(
+        [],
+        [
+          entry(0x1a, participant, aggregate),
+          entry(0x1b, publicNonce, keyData),
+          entry(0x1c, Buffer.alloc(32, 0x01), keyData),
+        ],
+        [entry(0x08, participant, aggregate)],
+      ).toString("base64"),
+    );
+
+    expect(document.maps[1]?.entries.map(({ keyType }) => keyType)).toEqual([0x1a, 0x1b, 0x1c]);
+    expect(document.maps[2]?.entries[0]?.keyType).toBe(0x08);
+  });
+
+  test.each([
+    ["participant aggregate key", entry(0x1a, secp256k1Generator, Buffer.alloc(32)), 0x1a],
+    ["participant list", entry(0x1a, Buffer.alloc(34), secp256k1Generator), 0x1a],
+    [
+      "public nonce key data",
+      entry(0x1b, Buffer.alloc(66), Buffer.concat([secp256k1Generator, Buffer.alloc(32)])),
+      0x1b,
+    ],
+    [
+      "public nonce value",
+      entry(0x1b, Buffer.alloc(65), Buffer.concat([secp256k1Generator, secp256k1Generator])),
+      0x1b,
+    ],
+    [
+      "partial signature key data",
+      entry(0x1c, Buffer.alloc(32), Buffer.concat([secp256k1Generator, Buffer.alloc(34)])),
+      0x1c,
+    ],
+    [
+      "partial signature value",
+      entry(0x1c, Buffer.alloc(31), Buffer.concat([secp256k1Generator, secp256k1Generator])),
+      0x1c,
+    ],
+  ] as const)("rejects malformed BIP373 %s", (_name, malformed, keyType) => {
+    expectDocumentError(
+      psbtV0([], [malformed]),
+      "INVALID_FIELD",
+      { kind: "input", index: 0 },
+      keyType,
+    );
+  });
+
+  test("accepts duplicate BIP373 participants for application-level policy", () => {
+    const document = parsePsbtDocument(
+      psbtV0(
+        [],
+        [entry(0x1a, Buffer.concat([secp256k1Generator, secp256k1Generator]), secp256k1Generator)],
+      ).toString("base64"),
+    );
+
+    expect(document.maps[1]?.entries[0]?.keyType).toBe(0x1a);
+  });
+
+  test("accepts structurally valid nonce and partial fields without a participant-set field", () => {
+    const participant = secp256k1Scalar2;
+    const document = parsePsbtDocument(
+      psbtV0(
+        [],
+        [
+          entry(
+            0x1b,
+            Buffer.concat([secp256k1Generator, participant]),
+            Buffer.concat([participant, secp256k1Generator]),
+          ),
+          entry(0x1c, Buffer.alloc(32, 0x01), Buffer.concat([participant, secp256k1Generator])),
+        ],
+      ).toString("base64"),
+    );
+
+    expect(document.maps[1]?.entries.map(({ keyType }) => keyType)).toEqual([0x1b, 0x1c]);
+  });
+
+  test("validates BIP373 participant fields on outputs", () => {
+    expectDocumentError(
+      psbtV0([], [], [entry(0x08, Buffer.alloc(0), secp256k1Generator)]),
+      "INVALID_FIELD",
+      { kind: "output", index: 0 },
+      0x08,
     );
   });
 });

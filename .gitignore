@@ -4,12 +4,14 @@ artifacts/
 coverage/
 .DS_Store
 adapters/rust-bitcoin/target/
+adapters/musig2-rust/target/
 adapters/rust-psbt-v2/target/
 __pycache__/
 *.py[cod]
 *.log
 website/.npm-cache/
 website/.playwright-cli/
+.playwright-cli/
 website/*.tsbuildinfo
 website/vite.config.js
 website/vite.config.d.ts

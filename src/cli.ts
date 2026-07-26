@@ -57,6 +57,7 @@ const DOCTOR_IMAGES = [
   "psbt-interop-lab/rust-psbt-v2:0.1.0",
   "psbt-interop-lab/bdk-wallet-current:3.1.0",
   "psbt-interop-lab/libwally:1.5.4",
+  "psbt-interop-lab/musig2-rust:0.1.0",
 ] as const;
 
 const QUICKSTART_IMAGES = DOCTOR_IMAGES.slice(0, 2);
@@ -135,6 +136,9 @@ const ADAPTER_COMPOSE_SERVICES: Readonly<Record<BuiltInAdapterId, string>> = {
   "rust-psbt-v2": "psbt-v2-adapter",
   "bdk-wallet-current": "bdk-wallet-current-adapter",
   libwally: "libwally-adapter",
+  "musig2-rust-signer-1": "musig2-signer-1",
+  "musig2-rust-signer-2": "musig2-signer-2",
+  "hwi-simulator": "hwi-simulator",
 };
 
 function nodeMajorVersion(): number {

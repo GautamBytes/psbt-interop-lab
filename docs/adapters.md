@@ -2,7 +2,7 @@
 
 `psbt-lab adapter check` lets a wallet or library maintainer validate a local adapter without
 changing PSBT Interop Lab source. The same manifest can enroll conforming adapters in the full
-matrix while preserving the 45 bundled scenarios.
+matrix while preserving the 47 bundled scenarios.
 
 ## Adapter Manifest
 
@@ -74,7 +74,7 @@ psbt-lab matrix --external-only --adapter-manifest ./adapters.json \
 ```
 
 `--external-only` starts only the isolated Bitcoin Core fixture service. It does not build or run
-the seven bundled library adapters. It cannot be combined with `--scenario`, `--category`, or a
+the ten bundled adapter process identities. It cannot be combined with `--scenario`, `--category`, or a
 custom suite, and requires an adapter manifest.
 
 The root composite action wraps this focused path:
@@ -94,7 +94,8 @@ consumer.
 
 The manifest `id` is the stable registry and report identity. It may differ from `expected.name`.
 It must not collide with `rust-bitcoin`, `btcsuite-go`, `bitcoinjs-lib`, `bdkpython`,
-`bdk-wallet-current`, `rust-psbt-v2`, `libwally`, or another ID in the same manifest. Every response must
+`bdk-wallet-current`, `rust-psbt-v2`, `libwally`, `musig2-rust-signer-1`,
+`musig2-rust-signer-2`, `hwi-simulator`, or another ID in the same manifest. Every response must
 continue reporting the expected name, version, source revision, and optional pinned artifact
 digest. The configured timeout caps every request.
 

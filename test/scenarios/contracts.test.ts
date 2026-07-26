@@ -12,6 +12,9 @@ import {
   BITCOINJS_ADAPTER_CONTRACT,
   type ExpectedAdapterContract,
   GO_ADAPTER_CONTRACT,
+  HWI_SIMULATOR_ADAPTER_CONTRACT,
+  MUSIG2_SIGNER_ONE_ADAPTER_CONTRACT,
+  MUSIG2_SIGNER_TWO_ADAPTER_CONTRACT,
   PSBTV2_ADAPTER_CONTRACT,
   RUST_ADAPTER_CONTRACT,
 } from "../../src/scenarios/contracts.js";
@@ -146,6 +149,50 @@ describe("adapter contracts", () => {
       sign: ["p2pkh", "p2wpkh", "p2sh-p2wsh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
       "finalize-inputs": ["p2wsh", "p2tr-scriptpath"],
     });
+  });
+
+  test.each([MUSIG2_SIGNER_ONE_ADAPTER_CONTRACT, MUSIG2_SIGNER_TWO_ADAPTER_CONTRACT])(
+    "$name pins the explicit BIP373 signing phases",
+    (contract) => {
+      expect(contract).toMatchObject({
+        version: "0.1.0",
+        sourceRevision: "musig2-crate-0.4.1+bitcoin-0.32.102",
+        operations: [
+          "hello",
+          "native-parse",
+          "roundtrip",
+          "musig2-nonce",
+          "musig2-partial-sign",
+          "musig2-aggregate",
+        ],
+        roles: ["parser", "updater", "signer", "combiner", "finalizer"],
+        scriptTypes: ["p2tr-keypath"],
+      });
+      expect(contract.features).toContain("bip327-csprng-nonce-v1");
+    },
+  );
+
+  test("pins the HWI-compatible simulator without claiming physical hardware", () => {
+    expect(HWI_SIMULATOR_ADAPTER_CONTRACT).toMatchObject({
+      name: "hwi-simulator",
+      version: "0.1.0",
+      sourceRevision: "hwi-json-contract-v1+bitcoinjs-lib-7.0.1+tiny-secp256k1-2.2.4",
+      operations: ["hello", "native-parse", "roundtrip", "sign"],
+      roles: ["parser", "signer"],
+      psbtVersions: [0],
+      scriptTypes: ["p2wpkh"],
+      operationScriptTypes: {
+        roundtrip: ["p2wpkh"],
+        sign: ["p2wpkh"],
+      },
+    });
+    expect(HWI_SIMULATOR_ADAPTER_CONTRACT.features).toEqual(
+      expect.arrayContaining([
+        "hwi-json-process-v1",
+        "hwi-simulator-v1",
+        "simulated-user-confirmation-v1",
+      ]),
+    );
   });
 
   test("rejects a lying byte-identical response", () => {

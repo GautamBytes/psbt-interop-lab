@@ -18,7 +18,10 @@ import {
   BITCOINJS_ADAPTER_CONTRACT,
   type ExpectedAdapterContract,
   GO_ADAPTER_CONTRACT,
+  HWI_SIMULATOR_ADAPTER_CONTRACT,
   LIBWALLY_ADAPTER_CONTRACT,
+  MUSIG2_SIGNER_ONE_ADAPTER_CONTRACT,
+  MUSIG2_SIGNER_TWO_ADAPTER_CONTRACT,
   PSBTV2_ADAPTER_CONTRACT,
   RUST_ADAPTER_CONTRACT,
 } from "../../src/scenarios/contracts.js";
@@ -139,7 +142,7 @@ function fixture(id: PsbtFixture["id"]): PsbtFixture {
           ? (["p2sh-p2wpkh"] as const)
           : id === "p2sh-p2wsh-2-of-3"
             ? (["p2sh-p2wsh"] as const)
-            : id === "p2tr-keypath" || id === "sighash-p2tr-keypath"
+            : id === "p2tr-keypath" || id === "p2tr-musig2" || id === "sighash-p2tr-keypath"
               ? (["p2tr-keypath"] as const)
               : id === "p2tr-scriptpath"
                 ? (["p2tr-scriptpath"] as const)
@@ -185,6 +188,7 @@ function preparedFixtures(): PreparedFixtures {
       "p2wsh-single-key": fixture("p2wsh-single-key"),
       "p2wsh-2-of-3": fixture("p2wsh-2-of-3"),
       "p2tr-keypath": fixture("p2tr-keypath"),
+      "p2tr-musig2": fixture("p2tr-musig2"),
       "p2tr-scriptpath": fixture("p2tr-scriptpath"),
       "mixed-p2wpkh-p2tr": fixture("mixed-p2wpkh-p2tr"),
       "intent-rich-p2wpkh": fixture("intent-rich-p2wpkh"),
@@ -272,6 +276,7 @@ function proofHarness(
     ["psbt-interop-lab/bdk-wallet-current:3.1.0", BDK_CURRENT_ADAPTER_CONTRACT],
     ["psbt-interop-lab/rust-psbt-v2:0.1.0", PSBTV2_ADAPTER_CONTRACT],
     ["psbt-interop-lab/libwally:1.5.4", LIBWALLY_ADAPTER_CONTRACT],
+    ["psbt-interop-lab/hwi-simulator:0.1.0", HWI_SIMULATOR_ADAPTER_CONTRACT],
   ]);
   const scenario: ScenarioDefinition<ScenarioExecutionContext> = {
     id: "runtime-lifecycle",
@@ -296,7 +301,12 @@ function proofHarness(
       prepareFixtures: vi.fn(async () => preparedFixtures()),
       createAdapter: vi.fn((image, _projectDirectory, options = {}) => {
         created.push({ image, options });
-        const contract = contracts.get(image);
+        const contract =
+          image === "psbt-interop-lab/musig2-rust:0.1.0"
+            ? options.env?.["PSBT_LAB_MUSIG2_SIGNER"] === "2"
+              ? MUSIG2_SIGNER_TWO_ADAPTER_CONTRACT
+              : MUSIG2_SIGNER_ONE_ADAPTER_CONTRACT
+            : contracts.get(image);
         if (!contract) throw new Error(`Unexpected test adapter image ${image}`);
         const value = runtimeAdapter(contract);
         if (image === failHelloImage) {
@@ -652,6 +662,8 @@ describe("proof runtime", () => {
       "p2tr-keypath-sign-rust-bitcoin",
       "p2tr-keypath-sign-btcsuite-go",
       "p2tr-keypath-sign-bitcoinjs-lib",
+      "bip373-musig2-keypath",
+      "hwi-simulator-p2wpkh",
       "same-input-2-of-3-multisig",
       "nested-p2sh-p2wsh-2-of-3-multisig",
       "ecdsa-sighash-matrix-rust-bitcoin",
@@ -770,7 +782,7 @@ describe("proof runtime", () => {
     );
 
     expect(result.manifest.outcome).toBe("passed");
-    expect(harness.adapters).toHaveLength(7);
+    expect(harness.adapters).toHaveLength(10);
     for (const adapter of harness.adapters) expect(adapter.close).toHaveBeenCalledTimes(1);
     const commonCommitments = JSON.stringify({
       "happy-path": `sha256:${"c".repeat(64)}`,
@@ -815,6 +827,12 @@ describe("proof runtime", () => {
       "intent-rich-p2wpkh": `sha256:${"d".repeat(64)}`,
       "p2wsh-2-of-3": `sha256:${"d".repeat(64)}`,
     });
+    const musig2Commitments = JSON.stringify({
+      "p2tr-musig2": `sha256:${"d".repeat(64)}`,
+    });
+    const hwiCommitments = JSON.stringify({
+      p2wpkh: `sha256:${"d".repeat(64)}`,
+    });
     expect(harness.created).toEqual([
       {
         image: "psbt-interop-lab/rust-bitcoin:0.1.0",
@@ -843,6 +861,28 @@ describe("proof runtime", () => {
       {
         image: "psbt-interop-lab/libwally:1.5.4",
         options: { env: { PSBT_LAB_FIXTURE_COMMITMENTS: psbtv2Commitments } },
+      },
+      {
+        image: "psbt-interop-lab/musig2-rust:0.1.0",
+        options: {
+          env: {
+            PSBT_LAB_FIXTURE_COMMITMENTS: musig2Commitments,
+            PSBT_LAB_MUSIG2_SIGNER: "1",
+          },
+        },
+      },
+      {
+        image: "psbt-interop-lab/musig2-rust:0.1.0",
+        options: {
+          env: {
+            PSBT_LAB_FIXTURE_COMMITMENTS: musig2Commitments,
+            PSBT_LAB_MUSIG2_SIGNER: "2",
+          },
+        },
+      },
+      {
+        image: "psbt-interop-lab/hwi-simulator:0.1.0",
+        options: { env: { PSBT_LAB_FIXTURE_COMMITMENTS: hwiCommitments } },
       },
     ]);
     expect(rustCommitments).not.toContain("cHNidP8");
@@ -1008,9 +1048,9 @@ describe("proof runtime", () => {
     );
 
     expect(result.manifest.outcome).toBe("passed");
-    expect(result.manifest.adapters).toHaveLength(8);
-    expect(result.manifest.adapters[7]).toMatchObject({ name: "actual-wallet-library" });
-    expect(result.manifest.adapters[7]?.capabilities).toEqual({
+    expect(result.manifest.adapters).toHaveLength(11);
+    expect(result.manifest.adapters[10]).toMatchObject({ name: "actual-wallet-library" });
+    expect(result.manifest.adapters[10]?.capabilities).toEqual({
       operations: ["hello", "native-parse", "roundtrip", "sign"],
       roles: ["parser", "signer"],
       psbtVersions: [0],

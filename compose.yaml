@@ -128,6 +128,47 @@ services:
     security_opt:
       - no-new-privileges:true
 
+  musig2-signer-1:
+    image: psbt-interop-lab/musig2-rust:0.1.0
+    build:
+      context: adapters/musig2-rust
+    environment:
+      PSBT_LAB_MUSIG2_SIGNER: "1"
+    network_mode: none
+    read_only: true
+    cap_drop:
+      - ALL
+    pids_limit: 64
+    mem_limit: 256m
+    security_opt:
+      - no-new-privileges:true
+
+  musig2-signer-2:
+    image: psbt-interop-lab/musig2-rust:0.1.0
+    environment:
+      PSBT_LAB_MUSIG2_SIGNER: "2"
+    network_mode: none
+    read_only: true
+    cap_drop:
+      - ALL
+    pids_limit: 64
+    mem_limit: 256m
+    security_opt:
+      - no-new-privileges:true
+
+  hwi-simulator:
+    image: psbt-interop-lab/hwi-simulator:0.1.0
+    build:
+      context: adapters/hwi-simulator
+    network_mode: none
+    read_only: true
+    cap_drop:
+      - ALL
+    pids_limit: 64
+    mem_limit: 256m
+    security_opt:
+      - no-new-privileges:true
+
 networks:
   lab:
     driver: bridge

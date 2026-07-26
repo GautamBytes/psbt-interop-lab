@@ -5,16 +5,16 @@ import { SiteLink } from "./SiteLink";
 
 const facts = [
   {
-    label: "P1 gate",
-    value: "6 / 6 safety scenarios passed",
+    label: "P2 frontier",
+    value: "2 / 2 protocol scenarios passed",
   },
   {
     label: "Coverage",
-    value: "Legacy, nested multisig, sighash, signer, and combiner",
+    value: "BIP373 MuSig2 and HWI-compatible simulator",
   },
   {
     label: "Replay",
-    value: "17 checkpoints verified from the same artifact",
+    value: "6 checkpoints verified from the same artifact",
   },
 ] as const;
 
@@ -24,17 +24,20 @@ export function ProofWalkthrough() {
       <div className="page-shell">
         <header className="proof-heading">
           <div>
-            <span className="eyebrow">Evidence from the real v0.7.0 P1 gate</span>
-            <h2 id="proof-title">Six safety proofs, one replayable artifact.</h2>
+            <span className="eyebrow">Evidence from the real v0.7.0 P2 proof</span>
+            <h2 id="proof-title">Two protocol frontiers, one replayable artifact.</h2>
           </div>
           <div>
             <p>
-              This filtered branch run covers legacy and nested signing, cryptographically measured
-              sighash mutations, signer refusals, and deterministic combiner conflicts. The
-              generated report records per-request adapter cells, Core-backed outcomes, and 17
-              replay-verified checkpoints from the same run.
+              This filtered branch run preserves BIP373 fields through independent PSBT parsers,
+              completes a two-process MuSig2 signing session, and exercises an HWI-compatible
+              confirmation and key-origin policy. The generated report records every adapter cell,
+              Core-backed outcome, and six replay-verified checkpoints from the same run.
             </p>
-            <SiteLink className="inline-link" href="/docs#walkthrough-verify-the-p1-safety-gate">
+            <SiteLink
+              className="inline-link"
+              href="/docs#walkthrough-verify-the-p2-protocol-frontier"
+            >
               Open the complete walkthrough <ArrowSquareOut aria-hidden="true" />
             </SiteLink>
           </div>
@@ -45,17 +48,15 @@ export function ProofWalkthrough() {
             <a href={cliProof} aria-label="Open full-size CLI proof">
               <img
                 src={cliProof}
-                alt="v0.7.0 P1 safety proof terminal output"
+                alt="v0.7.0 P2 protocol proof terminal output"
                 loading="lazy"
                 decoding="async"
               />
             </a>
             <figcaption>
               <span>01</span>
-              <strong>Run the P1 gate</strong>
-              <small>
-                Six focused scenarios covering signing, sighashes, refusals, and conflicts.
-              </small>
+              <strong>Run the P2 proof</strong>
+              <small>Two focused scenarios covering MuSig2 and simulated hardware signing.</small>
             </figcaption>
           </figure>
 
@@ -63,7 +64,7 @@ export function ProofWalkthrough() {
             <a href={reportProof} aria-label="Open full-size generated report">
               <img
                 src={reportProof}
-                alt="v0.7.0 generated P1 safety report"
+                alt="v0.7.0 generated P2 protocol report"
                 loading="lazy"
                 decoding="async"
               />
@@ -71,7 +72,7 @@ export function ProofWalkthrough() {
             <figcaption>
               <span>02</span>
               <strong>Inspect the report</strong>
-              <small>Direct capture of the six-scenario, self-contained HTML artifact.</small>
+              <small>Direct capture of the two-scenario, self-contained HTML artifact.</small>
             </figcaption>
           </figure>
         </div>

@@ -37,7 +37,7 @@ The confirmed local assumptions are:
 
 The trusted developer chooses the checkout, Docker images, RPC endpoint, and artifact directory.
 The supported guarantee therefore excludes a malicious or compromised host account, Docker daemon,
-kernel, or base image. Production keys and PSBTs, mainnet/testnet/signet use, hardware devices,
+kernel, or base image. Production keys and PSBTs, mainnet/testnet/signet use, physical hardware devices,
 transaction broadcast, public services, and callers other than the one trusted developer are also
 out of scope.
 
@@ -215,6 +215,7 @@ a privileged environment. Those events violate the confirmed trust assumptions.
 | Replay | `src/runner/replay.ts`: `verifyReplay` | Rejects absolute and lexically escaping paths; bounds manifest/files and checkpoint count; reparses each PSBT and verifies its SHA256 against the manifest and stored facts JSON `sha256` | Intermediate symlinks remain trusted. Final-component `O_NOFOLLOW` applies only where Node exposes it. Other facts/outcomes are not recomputed, and mutable hashes are not authenticity. |
 | Artifact writes | `src/runner/artifacts.ts`: `ArtifactRun` | Safe identifiers, contained paths, exclusive temporary files, `fsync`, atomic rename, private modes | The trusted account can read or replace local artifacts; directory contents are not signed. |
 | Containers | `compose.yaml` and `src/scenarios/proof.ts`: `createDockerAdapter` | Read-only roots, dropped capabilities, PID/memory limits, `no-new-privileges`; adapters have no network; Core keeps only its named data volume writable | Docker daemon, kernel, images, and an intentionally attached bridge container are trusted. |
+| HWI simulator | `adapters/hwi-simulator`: adapter and device processes | Fixed public regtest key origin, explicit simulated confirmation, signature-only PSBT mutation check, bounded JSON child process | No physical transport, secure element, firmware, PIN, passphrase, or vendor implementation is tested. |
 | GitHub CI | `.github/workflows/ci.yml` | Read-only permission, no persisted checkout credential, pinned actions, ephemeral hosted jobs, timeouts, concurrency cancellation, Docker proof only on main/manual | Pull-request build code has job network/compute access; GitHub-host isolation and dependency services are external trust. |
 
 ## 7. Top Abuse Paths
@@ -294,7 +295,7 @@ tests and build scripts, green means those revision-controlled checks were self-
 not establish independent check integrity.
 
 Accepting arbitrary or adversarial PSBTs, production keys, mainnet funds, public requests, uploads,
-multiple tenants, or hardware devices would add assets and attackers absent here. Any such change
+multiple tenants, or physical hardware devices would add assets and attackers absent here. Any such change
 requires a new threat model and could raise integrity, confidentiality, availability, and fund-loss
 severity materially.
 
