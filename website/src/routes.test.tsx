@@ -242,7 +242,7 @@ describe("website documentation routes", () => {
 
   it("maps the public npm walkthrough image URL to the bundled website asset", () => {
     const publicSource =
-      "https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/3b254fe18113fc865d4974607bdfd1b3c74818f5/docs/assets/walkthrough/cli-finding-and-replay.png";
+      "https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/9820664a69c9dab452aee31b5236dfd78b9a429d/docs/assets/walkthrough/cli-finding-and-replay.png";
 
     const resolved = resolveDocumentImageSrc(publicSource, "");
 
