@@ -17,4 +17,3 @@ COPY --from=build /source/target/release/psbt-lab-musig2-adapter /usr/local/bin/
 
 USER adapter
 ENTRYPOINT ["/usr/local/bin/psbt-lab-musig2-adapter"]
-
