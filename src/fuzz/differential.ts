@@ -29,6 +29,13 @@ export interface ParserOutcome {
   readonly facts?: ParserFacts;
 }
 
+export type ParserExpectedOutcome =
+  | ParserClassification
+  | {
+      readonly classification: ParserClassification;
+      readonly facts?: ParserFacts;
+    };
+
 export interface DifferentialFuzzCase {
   readonly index: number;
   readonly recipes: readonly PsbtMutationRecipe[];
@@ -39,6 +46,7 @@ export interface DifferentialFuzzCase {
 export interface InterestingDifferentialCase extends DifferentialFuzzCase {
   readonly minimizedRecipes: readonly PsbtMutationRecipe[];
   readonly minimizedPsbt: string;
+  readonly minimizedOutcomes: Readonly<Record<string, ParserOutcome>>;
 }
 
 export interface DifferentialFuzzResult {
@@ -105,8 +113,11 @@ export function classifyAdapterParserResponse(response: AdapterResponse): Parser
   const { psbtVersion, inputs, outputs } = response.output;
   if (
     !Number.isSafeInteger(psbtVersion) ||
+    (psbtVersion !== 0 && psbtVersion !== 2) ||
     !Number.isSafeInteger(inputs) ||
-    !Number.isSafeInteger(outputs)
+    (inputs as number) < 0 ||
+    !Number.isSafeInteger(outputs) ||
+    (outputs as number) < 0
   ) {
     return {
       classification: "crashed",
@@ -139,6 +150,44 @@ function factKey(outcome: ParserOutcome): string {
   return outcome.facts
     ? `${outcome.facts.psbtVersion}:${outcome.facts.inputs}:${outcome.facts.outputs}`
     : "";
+}
+
+function parserOutcomeKey(outcome: ParserOutcome): string {
+  return `${outcome.classification}:${factKey(outcome)}`;
+}
+
+export function parserOutcomeMatches(
+  actual: ParserOutcome | undefined,
+  expected: ParserExpectedOutcome,
+): boolean {
+  if (!actual) return false;
+  const normalized = typeof expected === "string" ? { classification: expected } : expected;
+  return (
+    actual.classification === normalized.classification &&
+    (normalized.facts === undefined ||
+      (actual.facts !== undefined &&
+        actual.facts.psbtVersion === normalized.facts.psbtVersion &&
+        actual.facts.inputs === normalized.facts.inputs &&
+        actual.facts.outputs === normalized.facts.outputs))
+  );
+}
+
+export function hasSameParserOutcomes(
+  left: Readonly<Record<string, ParserOutcome>>,
+  right: Readonly<Record<string, ParserOutcome>>,
+): boolean {
+  const leftIds = Object.keys(left).sort();
+  const rightIds = Object.keys(right).sort();
+  return (
+    leftIds.length === rightIds.length &&
+    leftIds.every(
+      (id, index) =>
+        id === rightIds[index] &&
+        right[id] !== undefined &&
+        parserOutcomeKey(left[id] as ParserOutcome) ===
+          parserOutcomeKey(right[id] as ParserOutcome),
+    )
+  );
 }
 
 export function hasParserDifferential(outcomes: Readonly<Record<string, ParserOutcome>>): boolean {
@@ -278,12 +327,15 @@ export async function runDifferentialFuzz(
       const minimizedRecipes = await minimizeMutationRecipes(
         options.fixture.psbt,
         generatedCase.recipes,
-        async (candidate) => hasParserDifferential(await evaluator.evaluate(candidate)),
+        async (candidate) => hasSameParserOutcomes(outcomes, await evaluator.evaluate(candidate)),
       );
+      const minimizedPsbt = applyPsbtMutations(options.fixture.psbt, minimizedRecipes);
+      const minimizedOutcomes = await evaluator.evaluate(minimizedPsbt);
       interesting.push({
         ...fuzzCase,
         minimizedRecipes,
-        minimizedPsbt: applyPsbtMutations(options.fixture.psbt, minimizedRecipes),
+        minimizedPsbt,
+        minimizedOutcomes,
       });
     }
     return {

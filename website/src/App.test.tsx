@@ -23,9 +23,11 @@ describe("PSBT Interop Lab website", () => {
       screen.getByText(/run the same transaction through real bitcoin libraries/i),
     ).toBeInTheDocument();
     expect(screen.getByText("Dockerless parser checks")).toBeInTheDocument();
-    expect(screen.getByText("ECDSA and Taproot sighash commitment matrices")).toBeInTheDocument();
     expect(
-      screen.getByText("Seed, minimize, and promote differential parser fuzzing"),
+      screen.getByText("Cryptographically measured ECDSA and Taproot sighash mutations"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Promote exact parser classifications and structural facts"),
     ).toBeInTheDocument();
     expect(
       screen.getByText("Target one scenario or category for faster iteration"),

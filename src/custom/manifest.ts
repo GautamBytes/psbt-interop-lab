@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { open } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { FixtureDescriptorId } from "../core/fixture-profiles.js";
-import type { ParserClassification } from "../fuzz/differential.js";
+import type { ParserExpectedOutcome } from "../fuzz/differential.js";
 import { validateCustomSuiteManifest as generatedValidateManifest } from "../generated/validators.js";
 import { type PsbtDocument, parsePsbtDocument } from "../psbt/document.js";
 import type { PsbtMutationRecipe } from "../psbt/mutation.js";
@@ -67,7 +67,7 @@ export interface UserCompareParsersStepSpec {
   readonly operation: "compare-parsers";
   readonly input: string;
   readonly adapters: readonly string[];
-  readonly expected: Readonly<Record<string, ParserClassification>>;
+  readonly expected: Readonly<Record<string, ParserExpectedOutcome>>;
 }
 
 export type UserScenarioStepSpec =
@@ -176,6 +176,24 @@ function validateScenarioDataflow(scenarios: readonly UserScenarioSpec[]): void 
   }
 }
 
+function validateParserScenarioIsolation(
+  scenarios: readonly UserScenarioSpec[],
+  parserFixtureIds: ReadonlySet<string>,
+): void {
+  for (const scenario of scenarios) {
+    if (!parserFixtureIds.has(scenario.fixture)) continue;
+    if (
+      scenario.steps.some(
+        ({ operation }) => operation !== "mutate" && operation !== "compare-parsers",
+      )
+    ) {
+      throw manifestError(
+        `scenario ${scenario.id} uses parser fixture ${scenario.fixture} outside parser-only operations`,
+      );
+    }
+  }
+}
+
 export function parseCustomSuiteManifest(value: unknown): CustomSuiteManifest {
   if (!validateManifest(value)) {
     const details = (validateManifest.errors ?? [])
@@ -200,6 +218,7 @@ export function parseCustomSuiteManifest(value: unknown): CustomSuiteManifest {
   validateFixtureSemantics(value.fixtures);
   validateParserFixtures(parserFixtures);
   validateScenarioDataflow(value.scenarios);
+  validateParserScenarioIsolation(value.scenarios, new Set(parserFixtures.map(({ id }) => id)));
   const fixtureIds = new Set([...value.fixtures, ...parserFixtures].map(({ id }) => id));
   for (const scenario of value.scenarios) {
     if (!fixtureIds.has(scenario.fixture)) {

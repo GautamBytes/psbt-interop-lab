@@ -176,7 +176,8 @@ psbt-lab parse-matrix --runtime local --suite-manifest regression-suite.json
 ```
 
 Promotion removes redundant mutations, shrinks the remaining payload where possible, and emits a
-`psbt-lab.suite/0.2` parser fixture with the expected classification for each compared parser.
+`psbt-lab.suite/0.2` parser fixture with each parser's exact minimized classification and, for
+accepted parses, normalized version/input/output facts.
 `parse-matrix` replays that parser-only suite with the same Dockerless runtime. Core-backed or
 signing steps are refused on this path. A checked-in
 [parser regression example](examples/parser-regression-suite.json) shows the complete v0.2 shape.
@@ -209,7 +210,8 @@ The suite currently runs 45 scenarios:
 - Nested P2SH-P2WPKH roundtrips plus bidirectional Taproot script-path signing/finalization and
   wrong-leaf/control-block rejection canaries
 - ECDSA and Taproot key-path sighash matrices covering ALL, NONE, SINGLE, ANYONECANPAY
-  combinations, Taproot DEFAULT, committed/permitted mutations, and malformed signer requests
+  combinations, Taproot DEFAULT, cryptographically measured outpoint/sequence/output mutations,
+  and malformed signer requests
 - Eight adversarial rust-bitcoin signer probes for wrong UTXOs, scripts, derivations, Taproot
   internal keys, and Merkle roots
 - Seven deterministic bitcoinjs-lib combiner-conflict probes across UTXOs, scripts, sighash types,

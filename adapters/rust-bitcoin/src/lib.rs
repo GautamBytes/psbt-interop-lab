@@ -10,7 +10,7 @@ use bitcoin::script::Builder;
 use bitcoin::secp256k1::{Keypair, Message, Secp256k1, SecretKey, XOnlyPublicKey};
 use bitcoin::sighash::{EcdsaSighashType, Prevouts, SighashCache, TapSighashType};
 use bitcoin::taproot::{ControlBlock, LeafVersion, TapLeafHash, TaprootBuilder};
-use bitcoin::{PublicKey, ScriptBuf, TxOut, Witness, ecdsa, taproot};
+use bitcoin::{PublicKey, ScriptBuf, Transaction, TxOut, Witness, ecdsa, taproot};
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
@@ -998,6 +998,99 @@ fn manually_sign_inputs(
         .count())
 }
 
+fn sighash_signature_is_valid(
+    psbt: &Psbt,
+    profile: &SigningProfile,
+    prevouts: &[TxOut],
+    public_key: &PublicKey,
+    transaction: &Transaction,
+) -> bool {
+    let input_index = 0;
+    match profile {
+        SigningProfile::P2wpkh { script_pubkey } => {
+            let Some(signature) = psbt.inputs[input_index].partial_sigs.get(public_key) else {
+                return false;
+            };
+            let Ok(sighash) = SighashCache::new(transaction).p2wpkh_signature_hash(
+                input_index,
+                script_pubkey,
+                prevouts[input_index].value,
+                signature.sighash_type,
+            ) else {
+                return false;
+            };
+            Secp256k1::verification_only()
+                .verify_ecdsa(
+                    &Message::from(sighash),
+                    &signature.signature,
+                    &public_key.inner,
+                )
+                .is_ok()
+        }
+        SigningProfile::P2trKeypath { internal_key, .. } => {
+            let Some(signature) = psbt.inputs[input_index].tap_key_sig.as_ref() else {
+                return false;
+            };
+            let Ok(sighash) = SighashCache::new(transaction).taproot_key_spend_signature_hash(
+                input_index,
+                &Prevouts::All(prevouts),
+                signature.sighash_type,
+            ) else {
+                return false;
+            };
+            let secp = Secp256k1::verification_only();
+            let output_key = internal_key.tap_tweak(&secp, None).0.to_x_only_public_key();
+            secp.verify_schnorr(&signature.signature, &Message::from(sighash), &output_key)
+                .is_ok()
+        }
+        _ => false,
+    }
+}
+
+fn sighash_mutation_checks(
+    psbt: &Psbt,
+    profile: &SigningProfile,
+    prevouts: &[TxOut],
+    public_key: &PublicKey,
+) -> Option<Value> {
+    if psbt.inputs.len() < 2
+        || psbt.unsigned_tx.input.len() < 2
+        || psbt.unsigned_tx.output.len() < 2
+    {
+        return None;
+    }
+    let verify = |transaction: &Transaction| {
+        sighash_signature_is_valid(psbt, profile, prevouts, public_key, transaction)
+    };
+
+    let mut signed_input_sequence = psbt.unsigned_tx.clone();
+    let sequence = signed_input_sequence.input[0].sequence.to_consensus_u32();
+    signed_input_sequence.input[0].sequence = bitcoin::Sequence::from_consensus(sequence ^ 1);
+
+    let mut other_input_outpoint = psbt.unsigned_tx.clone();
+    other_input_outpoint.input[1].previous_output.vout ^= 1;
+
+    let mut other_input_sequence = psbt.unsigned_tx.clone();
+    let sequence = other_input_sequence.input[1].sequence.to_consensus_u32();
+    other_input_sequence.input[1].sequence = bitcoin::Sequence::from_consensus(sequence ^ 1);
+
+    let output_value_valid = (0..psbt.unsigned_tx.output.len())
+        .map(|index| {
+            let mut transaction = psbt.unsigned_tx.clone();
+            let value = transaction.output[index].value.to_sat();
+            transaction.output[index].value = bitcoin::Amount::from_sat(value + 1);
+            verify(&transaction)
+        })
+        .collect::<Vec<_>>();
+
+    Some(json!({
+        "signedInputSequenceValid": verify(&signed_input_sequence),
+        "otherInputOutpointValid": verify(&other_input_outpoint),
+        "otherInputSequenceValid": verify(&other_input_sequence),
+        "outputValueValid": output_value_valid
+    }))
+}
+
 fn roundtrip(request: &Request, digest: &str) -> Value {
     if !exact_fields(&request.payload, &["psbt"]) {
         return failure(
@@ -1195,14 +1288,33 @@ fn sign(request: &Request, digest: &str, commitments: &FixtureCommitments) -> Va
             "The fixture key did not sign every selected input",
         );
     }
-    success(
-        &request.id,
-        digest,
-        json!({
-            "psbt": encoded_psbt(&psbt),
-            "signedInputs": signed_inputs
-        }),
-    )
+    let mutation_checks = if requested_sighash_type.is_some() {
+        match sighash_mutation_checks(&psbt, &profile, &prevouts, &public_key) {
+            Some(checks) => Some(checks),
+            None => {
+                return failure(
+                    &request.id,
+                    digest,
+                    "crashed",
+                    "adapter.mutation_evidence_unavailable",
+                    "Sighash matrix fixture could not produce mutation evidence",
+                );
+            }
+        }
+    } else {
+        None
+    };
+    let mut output = json!({
+        "psbt": encoded_psbt(&psbt),
+        "signedInputs": signed_inputs
+    });
+    if let Some(checks) = mutation_checks {
+        output
+            .as_object_mut()
+            .expect("sign output is an object")
+            .insert("mutationChecks".to_owned(), checks);
+    }
+    success(&request.id, digest, output)
 }
 
 fn finalize_inputs(request: &Request, digest: &str, commitments: &FixtureCommitments) -> Value {

@@ -48,6 +48,14 @@ describe("promoteDifferentialCase", () => {
       ],
     });
     expect(parseCustomSuiteManifest(suite)).toEqual(suite);
+    expect(suite.scenarios[0].steps[1].expected).toEqual({
+      lab: { classification: "rejected" },
+      "rust-bitcoin": { classification: "rejected" },
+      "permissive-parser": {
+        classification: "accepted",
+        facts: { psbtVersion: 0, inputs: 0, outputs: 0 },
+      },
+    });
     expect(JSON.stringify(suite)).not.toMatch(/command|private|secret/i);
   });
 });

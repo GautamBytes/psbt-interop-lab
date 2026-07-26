@@ -31,8 +31,43 @@
           "input": "truncated",
           "adapters": ["bundled-js"],
           "expected": {
-            "lab": "rejected",
-            "bundled-js": "rejected"
+            "lab": {
+              "classification": "rejected"
+            },
+            "bundled-js": {
+              "classification": "rejected"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "structural-facts-regression",
+      "title": "Accepted PSBT structural facts",
+      "fixture": "bip174-minimal-base",
+      "steps": [
+        {
+          "id": "compare",
+          "operation": "compare-parsers",
+          "input": "fixture",
+          "adapters": ["bundled-js"],
+          "expected": {
+            "lab": {
+              "classification": "accepted",
+              "facts": {
+                "psbtVersion": 0,
+                "inputs": 1,
+                "outputs": 1
+              }
+            },
+            "bundled-js": {
+              "classification": "accepted",
+              "facts": {
+                "psbtVersion": 0,
+                "inputs": 1,
+                "outputs": 1
+              }
+            }
           }
         }
       ]

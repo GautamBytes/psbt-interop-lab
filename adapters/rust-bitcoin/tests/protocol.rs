@@ -968,6 +968,21 @@ fn ecdsa_sighash_commitments_match_permitted_mutations() {
             Some(json!([0])),
         );
         assert_eq!(response["status"], "ok", "{sighash_type}: {response}");
+        let checks = &response["output"]["mutationChecks"];
+        assert_eq!(checks["signedInputSequenceValid"], false);
+        assert_eq!(
+            checks["otherInputOutpointValid"],
+            matches!(
+                sighash_type,
+                EcdsaSighashType::AllPlusAnyoneCanPay
+                    | EcdsaSighashType::NonePlusAnyoneCanPay
+                    | EcdsaSighashType::SinglePlusAnyoneCanPay
+            )
+        );
+        assert_eq!(
+            checks["otherInputSequenceValid"],
+            !matches!(sighash_type, EcdsaSighashType::All)
+        );
         let signed = response_psbt(&response);
 
         let mut committed_input_mutation = signed.unsigned_tx.clone();
@@ -1021,27 +1036,41 @@ fn ecdsa_sighash_commitments_match_permitted_mutations() {
             );
         }
 
-        if matches!(
+        let mut other_input_sequence_mutation = signed.unsigned_tx.clone();
+        let sequence = other_input_sequence_mutation.input[1]
+            .sequence
+            .to_consensus_u32();
+        other_input_sequence_mutation.input[1].sequence = Sequence::from_consensus(sequence ^ 1);
+        let other_sequence_permitted = !matches!(sighash_type, EcdsaSighashType::All);
+        assert_eq!(
+            p2wpkh_signature_is_valid_for_transaction(
+                &signed,
+                &other_input_sequence_mutation,
+                0,
+                sighash_type
+            ),
+            other_sequence_permitted,
+            "{sighash_type} classified another input sequence incorrectly"
+        );
+
+        let mut other_input_outpoint_mutation = signed.unsigned_tx.clone();
+        other_input_outpoint_mutation.input[1].previous_output.vout ^= 1;
+        let other_outpoint_permitted = matches!(
             sighash_type,
             EcdsaSighashType::AllPlusAnyoneCanPay
                 | EcdsaSighashType::NonePlusAnyoneCanPay
                 | EcdsaSighashType::SinglePlusAnyoneCanPay
-        ) {
-            let mut permitted_input_mutation = signed.unsigned_tx.clone();
-            let sequence = permitted_input_mutation.input[1]
-                .sequence
-                .to_consensus_u32();
-            permitted_input_mutation.input[1].sequence = Sequence::from_consensus(sequence ^ 1);
-            assert!(
-                p2wpkh_signature_is_valid_for_transaction(
-                    &signed,
-                    &permitted_input_mutation,
-                    0,
-                    sighash_type
-                ),
-                "{sighash_type} committed another input despite ANYONECANPAY"
-            );
-        }
+        );
+        assert_eq!(
+            p2wpkh_signature_is_valid_for_transaction(
+                &signed,
+                &other_input_outpoint_mutation,
+                0,
+                sighash_type
+            ),
+            other_outpoint_permitted,
+            "{sighash_type} classified another input outpoint incorrectly"
+        );
     }
 }
 
@@ -1101,6 +1130,16 @@ fn taproot_sighash_commitments_match_permitted_mutations() {
             Some(json!([0])),
         );
         assert_eq!(response["status"], "ok", "{sighash_type}: {response}");
+        let checks = &response["output"]["mutationChecks"];
+        assert_eq!(checks["signedInputSequenceValid"], false);
+        let anyone_can_pay = matches!(
+            sighash_type,
+            TapSighashType::AllPlusAnyoneCanPay
+                | TapSighashType::NonePlusAnyoneCanPay
+                | TapSighashType::SinglePlusAnyoneCanPay
+        );
+        assert_eq!(checks["otherInputOutpointValid"], anyone_can_pay);
+        assert_eq!(checks["otherInputSequenceValid"], anyone_can_pay);
         let signed = response_psbt(&response);
 
         let mut committed_input_mutation = signed.unsigned_tx.clone();
@@ -1154,27 +1193,34 @@ fn taproot_sighash_commitments_match_permitted_mutations() {
             );
         }
 
-        if matches!(
-            sighash_type,
-            TapSighashType::AllPlusAnyoneCanPay
-                | TapSighashType::NonePlusAnyoneCanPay
-                | TapSighashType::SinglePlusAnyoneCanPay
-        ) {
-            let mut permitted_input_mutation = signed.unsigned_tx.clone();
-            let sequence = permitted_input_mutation.input[1]
-                .sequence
-                .to_consensus_u32();
-            permitted_input_mutation.input[1].sequence = Sequence::from_consensus(sequence ^ 1);
-            assert!(
-                taproot_signature_is_valid_for_transaction(
-                    &signed,
-                    &permitted_input_mutation,
-                    0,
-                    sighash_type
-                ),
-                "{sighash_type} committed another input despite ANYONECANPAY"
-            );
-        }
+        let mut other_input_sequence_mutation = signed.unsigned_tx.clone();
+        let sequence = other_input_sequence_mutation.input[1]
+            .sequence
+            .to_consensus_u32();
+        other_input_sequence_mutation.input[1].sequence = Sequence::from_consensus(sequence ^ 1);
+        assert_eq!(
+            taproot_signature_is_valid_for_transaction(
+                &signed,
+                &other_input_sequence_mutation,
+                0,
+                sighash_type
+            ),
+            anyone_can_pay,
+            "{sighash_type} classified another input sequence incorrectly"
+        );
+
+        let mut other_input_outpoint_mutation = signed.unsigned_tx.clone();
+        other_input_outpoint_mutation.input[1].previous_output.vout ^= 1;
+        assert_eq!(
+            taproot_signature_is_valid_for_transaction(
+                &signed,
+                &other_input_outpoint_mutation,
+                0,
+                sighash_type
+            ),
+            anyone_can_pay,
+            "{sighash_type} classified another input outpoint incorrectly"
+        );
     }
 }
 

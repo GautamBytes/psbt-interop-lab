@@ -6,12 +6,19 @@ import type {
 } from "../custom/manifest.js";
 import { applyPsbtMutations } from "../psbt/mutation.js";
 import type { RuntimeProvider } from "../runtime/provider.js";
-import { compareRuntimeParsers, type ParserClassification } from "./differential.js";
+import {
+  compareRuntimeParsers,
+  type ParserClassification,
+  type ParserFacts,
+  parserOutcomeMatches,
+} from "./differential.js";
 
 export interface ParserRegressionAssertion {
   readonly name: string;
   readonly expected: ParserClassification;
   readonly actual?: ParserClassification;
+  readonly expectedFacts?: ParserFacts;
+  readonly actualFacts?: ParserFacts;
   readonly passed: boolean;
 }
 
@@ -89,12 +96,16 @@ export async function runParserRegressionSuite(
       runtime = provider.runtime;
       const outcomes = await compareRuntimeParsers(provider, input);
       for (const [implementation, expected] of Object.entries(step.expected)) {
-        const actual = outcomes[implementation]?.classification;
+        const expectedOutcome =
+          typeof expected === "string" ? { classification: expected } : expected;
+        const actualOutcome = outcomes[implementation];
         assertions.push({
           name: `${step.id}-${implementation}`,
-          expected,
-          ...(actual ? { actual } : {}),
-          passed: actual === expected,
+          expected: expectedOutcome.classification,
+          ...(actualOutcome ? { actual: actualOutcome.classification } : {}),
+          ...(expectedOutcome.facts ? { expectedFacts: expectedOutcome.facts } : {}),
+          ...(actualOutcome?.facts ? { actualFacts: actualOutcome.facts } : {}),
+          passed: parserOutcomeMatches(actualOutcome, expected),
         });
       }
     }

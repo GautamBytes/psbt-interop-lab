@@ -650,6 +650,7 @@ function handleNativeParse(id, digest, payload) {
     const psbt = bitcoin.Psbt.fromBuffer(bytes, { network: bitcoin.networks.regtest });
     return success(id, digest, {
       nativeParser: "bitcoinjs-lib",
+      psbtVersion: 0,
       inputs: psbt.inputCount,
       outputs: psbt.txOutputs.length,
     });

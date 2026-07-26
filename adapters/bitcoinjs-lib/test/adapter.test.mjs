@@ -227,7 +227,12 @@ test("hello advertises only proven PSBTv0 operations and script types", () => {
 test("native-parse invokes bitcoinjs-lib without fixture policy", () => {
   const accepted = response(request("native-parse", { psbt: fixturePsbt().toBase64() }));
   assert.equal(accepted.status, "ok");
-  assert.equal(accepted.output.nativeParser, "bitcoinjs-lib");
+  assert.deepEqual(accepted.output, {
+    nativeParser: "bitcoinjs-lib",
+    psbtVersion: 0,
+    inputs: 1,
+    outputs: 1,
+  });
 
   const rejected = response(
     request("native-parse", { psbt: Buffer.from("not a psbt").toString("base64") }),

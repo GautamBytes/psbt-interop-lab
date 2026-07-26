@@ -149,4 +149,34 @@ describe("custom suite manifest", () => {
 
     expect(parseCustomSuiteManifest(example)).toEqual(example);
   });
+
+  test("keeps committed parser fixtures in parser-only operations", () => {
+    const parserFixture = {
+      id: "parser-base",
+      psbt: "cHNidP8BADwCAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/////wD/////AQAAAAAAAAAAAAAAAAAAAAA=",
+      sha256: "sha256:1c8e14a4d2f70496b46bb9df06f72a8c938b378b7160cf4806336bf24ba89130",
+    };
+    expect(() =>
+      parseCustomSuiteManifest({
+        schema: "psbt-lab.suite/0.2",
+        fixtures: [],
+        parserFixtures: [parserFixture],
+        scenarios: [
+          {
+            id: "unsafe-parser-sign",
+            title: "Unsafe parser signing",
+            fixture: parserFixture.id,
+            steps: [
+              {
+                id: "signed",
+                operation: "sign",
+                adapter: "rust-bitcoin",
+                input: "fixture",
+              },
+            ],
+          },
+        ],
+      }),
+    ).toThrow(/parser-only operations/i);
+  });
 });

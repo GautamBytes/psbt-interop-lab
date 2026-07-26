@@ -12,7 +12,11 @@ const IMPLEMENTATION = {
   artifactDigest: `sha256:${"b".repeat(64)}`,
 };
 
-function provider(): RuntimeProvider {
+function provider(acceptedFacts?: {
+  readonly psbtVersion: number;
+  readonly inputs: number;
+  readonly outputs: number;
+}): RuntimeProvider {
   return {
     runtime: "test",
     adapters: vi.fn(async () => [
@@ -37,16 +41,27 @@ function provider(): RuntimeProvider {
                 },
               };
             }
-            return {
-              protocol: "psbt-lab.adapter/0.2",
-              id: request.id,
-              status: "rejected",
-              implementation: IMPLEMENTATION,
-              error: {
-                class: "psbt.native_parse_failed",
-                message: "truncated PSBT",
-              },
-            };
+            return acceptedFacts
+              ? {
+                  protocol: "psbt-lab.adapter/0.2",
+                  id: request.id,
+                  status: "ok",
+                  implementation: IMPLEMENTATION,
+                  output: {
+                    nativeParser: IMPLEMENTATION.name,
+                    ...acceptedFacts,
+                  },
+                }
+              : {
+                  protocol: "psbt-lab.adapter/0.2",
+                  id: request.id,
+                  status: "rejected",
+                  implementation: IMPLEMENTATION,
+                  error: {
+                    class: "psbt.native_parse_failed",
+                    message: "truncated PSBT",
+                  },
+                };
           }),
           close: vi.fn(async () => undefined),
         },
@@ -148,5 +163,69 @@ describe("runParserRegressionSuite", () => {
     await expect(
       runParserRegressionSuite({ manifest, createProvider: async () => provider() }),
     ).rejects.toThrow(/contains a Core or signing operation/);
+  });
+
+  test("fails a promoted fact-level parser regression when structural facts drift", async () => {
+    const fixture = LOCAL_PARSE_FIXTURES[0];
+    if (!fixture) throw new Error("Missing local parser fixture");
+    const manifest: CustomSuiteManifest = {
+      schema: "psbt-lab.suite/0.2",
+      fixtures: [],
+      parserFixtures: [
+        {
+          id: "base",
+          psbt: fixture.psbt,
+          sha256: `sha256:${fixture.sha256}`,
+        },
+      ],
+      scenarios: [
+        {
+          id: "fact-regression",
+          title: "Fact regression",
+          fixture: "base",
+          steps: [
+            {
+              id: "compare",
+              operation: "compare-parsers",
+              input: "fixture",
+              adapters: ["regression-parser"],
+              expected: {
+                lab: {
+                  classification: "accepted",
+                  facts: { psbtVersion: 0, inputs: 1, outputs: 1 },
+                },
+                "regression-parser": {
+                  classification: "accepted",
+                  facts: { psbtVersion: 0, inputs: 2, outputs: 1 },
+                },
+              },
+            },
+          ],
+        },
+      ],
+    };
+
+    const report = await runParserRegressionSuite({
+      manifest,
+      createProvider: async () => provider({ psbtVersion: 0, inputs: 1, outputs: 1 }),
+    });
+
+    expect(report).toMatchObject({
+      outcome: "failed",
+      scenarios: [
+        {
+          outcome: "failed",
+          assertions: [
+            { name: "compare-lab", passed: true },
+            {
+              name: "compare-regression-parser",
+              expectedFacts: { psbtVersion: 0, inputs: 2, outputs: 1 },
+              actualFacts: { psbtVersion: 0, inputs: 1, outputs: 1 },
+              passed: false,
+            },
+          ],
+        },
+      ],
+    });
   });
 });

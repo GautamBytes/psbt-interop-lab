@@ -53,7 +53,7 @@ export const repositoryResources: RepositoryResource[] = [
     route: "/files/examples/parser-regression-suite.json",
     label: "Parser regression suite example",
     description:
-      "A Dockerless suite v0.2 regression that mutates a committed PSBT and checks parser classifications.",
+      "A Dockerless suite v0.2 regression that mutates a committed PSBT and checks parser classifications and structural facts.",
     sourcePath: "examples/parser-regression-suite.json",
     sourceUrl: `${repositoryUrl}/blob/main/examples/parser-regression-suite.json`,
     kind: "file",

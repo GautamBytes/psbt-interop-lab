@@ -95,26 +95,36 @@ describe("sighash commitment model", () => {
   });
 
   test("classifies committed inputs and outputs for mutation probes", () => {
-    expect(classifySighashCommitments(0x01, 0, 2, 2)).toEqual({
-      committedInputs: [0, 1],
-      permittedInputs: [],
+    expect(classifySighashCommitments("ecdsa", 0x01, 0, 2, 2)).toEqual({
+      committedInputOutpoints: [0, 1],
+      permittedInputOutpoints: [],
+      committedInputSequences: [0, 1],
+      permittedInputSequences: [],
       committedOutputs: [0, 1],
       permittedOutputs: [],
     });
-    expect(classifySighashCommitments(0x82, 0, 2, 2)).toEqual({
-      committedInputs: [0],
-      permittedInputs: [1],
+    expect(classifySighashCommitments("ecdsa", 0x82, 0, 2, 2)).toEqual({
+      committedInputOutpoints: [0],
+      permittedInputOutpoints: [1],
+      committedInputSequences: [0],
+      permittedInputSequences: [1],
       committedOutputs: [],
       permittedOutputs: [0, 1],
     });
-    expect(classifySighashCommitments(0x03, 0, 2, 2)).toEqual({
-      committedInputs: [0, 1],
-      permittedInputs: [],
+    expect(classifySighashCommitments("ecdsa", 0x03, 0, 2, 2)).toEqual({
+      committedInputOutpoints: [0, 1],
+      permittedInputOutpoints: [],
+      committedInputSequences: [0],
+      permittedInputSequences: [1],
       committedOutputs: [0],
       permittedOutputs: [1],
     });
-    expect(classifySighashCommitments(0x00, 0, 2, 2)).toEqual(
-      classifySighashCommitments(0x01, 0, 2, 2),
+    expect(classifySighashCommitments("taproot", 0x03, 0, 2, 2)).toMatchObject({
+      committedInputSequences: [0, 1],
+      permittedInputSequences: [],
+    });
+    expect(classifySighashCommitments("taproot", 0x00, 0, 2, 2)).toEqual(
+      classifySighashCommitments("taproot", 0x01, 0, 2, 2),
     );
   });
 });
@@ -170,7 +180,20 @@ describe("sighash matrix scenario", () => {
             id: request.id,
             status: "ok",
             implementation,
-            output: { psbt: signed, signedInputs: 2 },
+            output: {
+              psbt: signed,
+              signedInputs: 2,
+              mutationChecks: {
+                signedInputSequenceValid: false,
+                otherInputOutpointValid: (sighash & 0x80) !== 0,
+                otherInputSequenceValid:
+                  (sighash & 0x80) !== 0 || (!taproot && (sighash & 0x1f) !== 0x01),
+                outputValueValid: [0, 1].map((outputIndex) => {
+                  const base = sighash === 0 ? 0x01 : sighash & 0x1f;
+                  return base === 0x02 || (base === 0x03 && outputIndex !== 0);
+                }),
+              },
+            },
           };
         }),
       };

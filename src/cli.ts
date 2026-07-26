@@ -558,7 +558,7 @@ export function createProgram(): Command {
             seed: result.seed,
             caseIndex: interesting.index,
             recipes: interesting.minimizedRecipes,
-            outcomes: interesting.outcomes,
+            outcomes: interesting.minimizedOutcomes,
           });
           await writeFile(resolve(options.promote), `${JSON.stringify(suite, null, 2)}\n`, {
             encoding: "utf8",

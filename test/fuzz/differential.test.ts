@@ -1,5 +1,11 @@
 import { describe, expect, test, vi } from "vitest";
-import { runDifferentialFuzz } from "../../src/fuzz/differential.js";
+import {
+  hasSameParserOutcomes,
+  parserOutcomeMatches,
+  runDifferentialFuzz,
+} from "../../src/fuzz/differential.js";
+import { promoteDifferentialCase } from "../../src/fuzz/promotion.js";
+import { runParserRegressionSuite } from "../../src/fuzz/regression.js";
 import { LOCAL_PARSE_FIXTURES } from "../../src/local/fixtures.js";
 import { AdapterTimeoutError } from "../../src/protocol/adapter-process.js";
 import type { AdapterRequest, AdapterResponse } from "../../src/protocol/types.js";
@@ -86,6 +92,46 @@ function provider(): RuntimeProvider {
 }
 
 describe("runDifferentialFuzz", () => {
+  test("distinguishes exact classifications and accepted parser facts", () => {
+    const baseline = {
+      lab: {
+        classification: "accepted" as const,
+        detail: "accepted",
+        facts: { psbtVersion: 0, inputs: 1, outputs: 1 },
+      },
+      native: { classification: "rejected" as const, detail: "rejected" },
+    };
+
+    expect(
+      hasSameParserOutcomes(baseline, {
+        ...baseline,
+        lab: { ...baseline.lab, detail: "different diagnostic" },
+      }),
+    ).toBe(true);
+    expect(
+      hasSameParserOutcomes(baseline, {
+        ...baseline,
+        native: {
+          classification: "accepted",
+          detail: "accepted",
+          facts: { psbtVersion: 0, inputs: 0, outputs: 0 },
+        },
+      }),
+    ).toBe(false);
+    expect(
+      parserOutcomeMatches(baseline.lab, {
+        classification: "accepted",
+        facts: { psbtVersion: 0, inputs: 1, outputs: 1 },
+      }),
+    ).toBe(true);
+    expect(
+      parserOutcomeMatches(baseline.lab, {
+        classification: "accepted",
+        facts: { psbtVersion: 0, inputs: 2, outputs: 1 },
+      }),
+    ).toBe(false);
+  });
+
   test("finds, minimizes, and records seeded parser divergences", async () => {
     const runtime = provider();
     const result = await runDifferentialFuzz({
@@ -106,6 +152,26 @@ describe("runDifferentialFuzz", () => {
       },
     });
     expect(result.interesting.every((item) => item.minimizedRecipes.length > 0)).toBe(true);
+    expect(
+      result.interesting.every((item) =>
+        hasSameParserOutcomes(item.minimizedOutcomes, item.outcomes),
+      ),
+    ).toBe(true);
+    const interesting = result.interesting[0];
+    if (!interesting) throw new Error("Expected a differential case");
+    const suite = promoteDifferentialCase({
+      fixture: localFixture(0),
+      seed: result.seed,
+      caseIndex: interesting.index,
+      recipes: interesting.minimizedRecipes,
+      outcomes: interesting.minimizedOutcomes,
+    });
+    await expect(
+      runParserRegressionSuite({
+        manifest: suite,
+        createProvider: async () => provider(),
+      }),
+    ).resolves.toMatchObject({ outcome: "passed" });
     expect(runtime.close).toHaveBeenCalledOnce();
   });
 

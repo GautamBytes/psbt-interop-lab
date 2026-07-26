@@ -3,6 +3,7 @@ import {
   classifyAdapterParserResponse,
   classifyLabParser,
   type ParserOutcome,
+  parserOutcomeMatches,
 } from "../fuzz/differential.js";
 import type { AdapterOperation, AdapterRole } from "../protocol/types.js";
 import { applyPsbtMutations } from "../psbt/mutation.js";
@@ -240,12 +241,14 @@ async function executeScenario(
       }
       for (const [implementation, expected] of Object.entries(step.expected)) {
         const actual = outcomes[implementation];
+        const expectedOutcome =
+          typeof expected === "string" ? { classification: expected } : expected;
         assertions.push({
           name: `${step.id}-${implementation}`,
-          passed: actual?.classification === expected,
+          passed: parserOutcomeMatches(actual, expected),
           likelyImplementation: implementation,
           summary: actual
-            ? `${implementation} returned ${actual.classification}; expected ${expected}`
+            ? `${implementation} returned ${actual.classification}; expected ${expectedOutcome.classification}`
             : `${implementation} produced no parser outcome`,
         });
       }

@@ -278,7 +278,39 @@
         "expected": {
           "type": "object",
           "additionalProperties": {
-            "enum": ["accepted", "rejected", "unsupported", "crashed", "timeout"]
+            "oneOf": [
+              {
+                "enum": ["accepted", "rejected", "unsupported", "crashed", "timeout"]
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["classification"],
+                "properties": {
+                  "classification": {
+                    "enum": ["accepted", "rejected", "unsupported", "crashed", "timeout"]
+                  },
+                  "facts": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["psbtVersion", "inputs", "outputs"],
+                    "properties": {
+                      "psbtVersion": { "enum": [0, 2] },
+                      "inputs": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "outputs": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      }
+                    }
+                  }
+                }
+              }
+            ]
           },
           "minProperties": 2,
           "maxProperties": 17

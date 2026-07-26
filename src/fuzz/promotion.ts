@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { LocalParseFixture } from "../local/fixtures.js";
 import type { PsbtMutationRecipe } from "../psbt/mutation.js";
-import type { ParserOutcome } from "./differential.js";
+import type { ParserExpectedOutcome, ParserOutcome } from "./differential.js";
 
 export interface DifferentialPromotionInput {
   readonly fixture: LocalParseFixture;
@@ -38,7 +38,7 @@ export interface PromotedDifferentialSuite {
           readonly operation: "compare-parsers";
           readonly input: "mutated";
           readonly adapters: readonly string[];
-          readonly expected: Readonly<Record<string, ParserOutcome["classification"]>>;
+          readonly expected: Readonly<Record<string, ParserExpectedOutcome>>;
         },
       ];
     },
@@ -59,7 +59,13 @@ export function promoteDifferentialCase(
   const fixtureId = `${id}-base`;
   const adapters = Object.keys(input.outcomes).filter((adapter) => adapter !== "lab");
   const expected = Object.fromEntries(
-    Object.entries(input.outcomes).map(([adapter, outcome]) => [adapter, outcome.classification]),
+    Object.entries(input.outcomes).map(([adapter, outcome]) => [
+      adapter,
+      {
+        classification: outcome.classification,
+        ...(outcome.facts ? { facts: outcome.facts } : {}),
+      },
+    ]),
   );
   return {
     schema: "psbt-lab.suite/0.2",

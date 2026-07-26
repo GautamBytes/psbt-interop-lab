@@ -222,9 +222,12 @@ seed and compares the lossless lab parser with available native parsers. Structu
 operate on parsed PSBT maps; raw mutations are bounded XOR, truncation, and append operations.
 Results normalize to accepted, rejected, unsupported, crashed, or timed out and include structural
 facts for accepted parses. Interesting cases are minimized by deleting redundant operations and
-shrinking payloads, then can be promoted into SHA256-committed `psbt-lab.suite/0.2` parser
-regressions. `psbt-lab parse-matrix --suite-manifest <path>` replays those regressions through the
-same Dockerless provider and refuses any Core, signing, combining, or finalization operation.
+shrinking payloads while preserving the exact parser outcome vector, then can be promoted into
+SHA256-committed `psbt-lab.suite/0.2` parser regressions. Promoted expectations preserve both
+classification and accepted structural facts. `psbt-lab parse-matrix --suite-manifest <path>`
+replays those regressions through the same Dockerless provider and refuses any Core, signing,
+combining, or finalization operation. Manifest validation also prevents parser fixtures from
+entering those operations through the full matrix path.
 
 `psbt-lab baseline` captures the standard comparison snapshot, and
 `psbt-lab compare <base> <head>` checks whether a later run changed scenario outcomes, findings,
@@ -247,8 +250,9 @@ unsigned-transaction commitments authorize only deterministic regtest fixtures. 
 `psbt-lab matrix --suite-manifest <manifest>` compiles a strict bounded manifest into Core-funded
 fixtures and typed handoff scenarios. Users choose only fixed public descriptor templates and
 structured operations. Suite 0.2 additionally permits SHA256-committed parser-only fixtures,
-allowlisted mutations, and expected cross-parser classifications. Arbitrary commands, descriptors,
-keys, signing PSBTs, and adapter payloads remain rejected. Typed dataflow prevents parser fixtures
-from entering signing operations and prevents a finalized transaction result from being reused as
-a PSBT. Signing or input finalization of a custom transaction fixture requires both the normal
-commitment feature and the separate `user-fixture-template-v1` capability.
+allowlisted mutations, and expected cross-parser classifications plus accepted structural facts.
+Arbitrary commands, descriptors, keys, signing PSBTs, and adapter payloads remain rejected. Typed
+dataflow prevents parser fixtures from entering signing operations and prevents a finalized
+transaction result from being reused as a PSBT. Signing or input finalization of a custom
+transaction fixture requires both the normal commitment feature and the separate
+`user-fixture-template-v1` capability.

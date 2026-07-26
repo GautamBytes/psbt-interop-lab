@@ -26,8 +26,10 @@ export const TAPROOT_SIGHASH_CASES = [
 ] as const satisfies readonly SighashCase[];
 
 export interface SighashCommitments {
-  readonly committedInputs: readonly number[];
-  readonly permittedInputs: readonly number[];
+  readonly committedInputOutpoints: readonly number[];
+  readonly permittedInputOutpoints: readonly number[];
+  readonly committedInputSequences: readonly number[];
+  readonly permittedInputSequences: readonly number[];
   readonly committedOutputs: readonly number[];
   readonly permittedOutputs: readonly number[];
 }
@@ -37,6 +39,7 @@ function indexes(length: number): number[] {
 }
 
 export function classifySighashCommitments(
+  family: "ecdsa" | "taproot",
   sighashType: number,
   signingInput: number,
   inputCount: number,
@@ -58,7 +61,12 @@ export function classifySighashCommitments(
   }
   const allInputs = indexes(inputCount);
   const allOutputs = indexes(outputCount);
-  const committedInputs = normalized & 0x80 ? [signingInput] : allInputs;
+  const anyoneCanPay = (normalized & 0x80) !== 0;
+  const committedInputOutpoints = anyoneCanPay ? [signingInput] : allInputs;
+  const committedInputSequences =
+    anyoneCanPay || (family === "ecdsa" && (base === 0x02 || base === 0x03))
+      ? [signingInput]
+      : allInputs;
   const committedOutputs =
     base === 0x01
       ? allOutputs
@@ -68,10 +76,40 @@ export function classifySighashCommitments(
           ? [signingInput]
           : [];
   return {
-    committedInputs,
-    permittedInputs: allInputs.filter((index) => !committedInputs.includes(index)),
+    committedInputOutpoints,
+    permittedInputOutpoints: allInputs.filter((index) => !committedInputOutpoints.includes(index)),
+    committedInputSequences,
+    permittedInputSequences: allInputs.filter((index) => !committedInputSequences.includes(index)),
     committedOutputs,
     permittedOutputs: allOutputs.filter((index) => !committedOutputs.includes(index)),
+  };
+}
+
+interface SighashMutationChecks {
+  readonly signedInputSequenceValid: boolean;
+  readonly otherInputOutpointValid: boolean;
+  readonly otherInputSequenceValid: boolean;
+  readonly outputValueValid: readonly boolean[];
+}
+
+function mutationChecks(value: unknown): SighashMutationChecks | undefined {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+  const object = value as Record<string, unknown>;
+  const outputValueValid = object["outputValueValid"];
+  if (
+    typeof object["signedInputSequenceValid"] !== "boolean" ||
+    typeof object["otherInputOutpointValid"] !== "boolean" ||
+    typeof object["otherInputSequenceValid"] !== "boolean" ||
+    !Array.isArray(outputValueValid) ||
+    outputValueValid.some((item) => typeof item !== "boolean")
+  ) {
+    return undefined;
+  }
+  return {
+    signedInputSequenceValid: object["signedInputSequenceValid"],
+    otherInputOutpointValid: object["otherInputOutpointValid"],
+    otherInputSequenceValid: object["otherInputSequenceValid"],
+    outputValueValid: outputValueValid as boolean[],
   };
 }
 
@@ -183,19 +221,32 @@ export function createSighashMatrixScenario(
           signatureEvidence(options.family, testCase, signedPsbt, fixture.inputCount),
         );
         const commitments = classifySighashCommitments(
+          options.family,
           testCase.value,
           0,
           fixture.inputCount,
           fixture.outputCount,
         );
+        const measured = mutationChecks(response.output["mutationChecks"]);
+        const expectedOtherOutpoint = commitments.permittedInputOutpoints.includes(1);
+        const expectedOtherSequence = commitments.permittedInputSequences.includes(1);
+        const expectedOutputs = indexes(fixture.outputCount).map((index) =>
+          commitments.permittedOutputs.includes(index),
+        );
+        const exactMutationEvidence =
+          measured !== undefined &&
+          measured.signedInputSequenceValid === false &&
+          measured.otherInputOutpointValid === expectedOtherOutpoint &&
+          measured.otherInputSequenceValid === expectedOtherSequence &&
+          measured.outputValueValid.length === expectedOutputs.length &&
+          measured.outputValueValid.every((valid, index) => valid === expectedOutputs[index]);
         assertions.push({
-          name: `${testCase.id}-mutation-commitments`,
-          passed:
-            commitments.committedInputs.length + commitments.permittedInputs.length ===
-              fixture.inputCount &&
-            commitments.committedOutputs.length + commitments.permittedOutputs.length ===
-              fixture.outputCount,
-          summary: `${testCase.id} permits input mutations [${commitments.permittedInputs.join(",")}] and output mutations [${commitments.permittedOutputs.join(",")}]`,
+          name: `${testCase.id}-mutation-signature-validity`,
+          passed: exactMutationEvidence,
+          likelyImplementation: options.adapter,
+          summary: exactMutationEvidence
+            ? `${testCase.id} cryptographically matched the expected outpoint, sequence, and output commitments`
+            : `${testCase.id} did not return the expected cryptographic mutation evidence`,
         });
         await context.checkpoint(
           `${options.family}-sighash-matrix-${options.adapter}`,

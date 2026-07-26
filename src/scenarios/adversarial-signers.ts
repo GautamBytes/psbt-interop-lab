@@ -1,6 +1,6 @@
 import { FIXTURE_PUBLIC_KEYS, type FixtureScriptType } from "../core/fixture-profiles.js";
 import type { PsbtFixture } from "../core/fixtures.js";
-import { type PsbtMapLocation, parsePsbtDocument } from "../psbt/document.js";
+import { requireUniquePsbtEntryValue } from "../psbt/document.js";
 import { applyPsbtMutations, type PsbtMutationRecipe } from "../psbt/mutation.js";
 import type { ScenarioExecutionContext } from "./context.js";
 import type { ScenarioAssertionEvidence, ScenarioDefinition } from "./definition.js";
@@ -20,29 +20,13 @@ export interface AdversarialSignerCase {
   readonly mutatedPsbt: string;
 }
 
-function entryValue(psbt: string, location: PsbtMapLocation, keyType: number): Buffer {
-  const map = parsePsbtDocument(psbt).maps.find(
-    (candidate) =>
-      candidate.location.kind === location.kind &&
-      (candidate.location.kind === "global" ||
-        (location.kind !== "global" && candidate.location.index === location.index)),
-  );
-  const entries = map?.entries.filter(
-    (entry) => entry.keyType === keyType && entry.keyData.byteLength === 0,
-  );
-  if (entries?.length !== 1 || !entries[0]) {
-    throw new Error(`Fixture lacks one input field ${keyType}`);
-  }
-  return Buffer.from(entries[0].value);
-}
-
 function replaceInputValue(
   fixture: PsbtFixture,
   keyType: number,
   mutate: (value: Buffer) => void,
 ): string {
   const location = { kind: "input", index: 0 } as const;
-  const value = entryValue(fixture.initialPsbt, location, keyType);
+  const value = requireUniquePsbtEntryValue(fixture.initialPsbt, location, keyType);
   mutate(value);
   return applyPsbtMutations(fixture.initialPsbt, [
     {
