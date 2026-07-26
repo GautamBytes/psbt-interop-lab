@@ -88,9 +88,13 @@ describe("adapter contracts", () => {
         "combine",
         "finalize",
         "extract",
+        "construct",
       ],
-      roles: ["parser", "signer", "combiner", "finalizer", "extractor"],
-      scriptTypes: ["p2wpkh", "p2wsh"],
+      roles: ["parser", "updater", "signer", "combiner", "finalizer", "extractor", "constructor"],
+      scriptTypes: ["p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
+      operationScriptTypes: {
+        roundtrip: ["p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
+      },
     });
     expect(PSBTV2_ADAPTER_CONTRACT.operations).not.toContain("convert");
   });
@@ -115,7 +119,10 @@ describe("adapter contracts", () => {
         "convert",
       ],
       roles: ["parser", "signer", "combiner", "finalizer", "extractor"],
-      scriptTypes: ["p2wpkh", "p2wsh"],
+      scriptTypes: ["p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
+      operationScriptTypes: {
+        convert: ["p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
+      },
     });
   });
 

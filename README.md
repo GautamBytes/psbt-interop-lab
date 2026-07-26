@@ -27,7 +27,7 @@ semantic detector canaries, then completes one real Bitcoin Core -> rust-bitcoin
 signing and finalization handoff. It writes the same replayable reports as the full suite and stops
 the local regtest node automatically.
 
-For exhaustive compatibility testing, install the CLI once and run the complete 31-scenario matrix:
+For exhaustive compatibility testing, install the CLI once and run the complete 39-scenario matrix:
 
 ```bash
 npm install --global psbt-interop-lab@0.7.0
@@ -75,22 +75,23 @@ To work from a source checkout instead, install pnpm 10.30.2, run
 
 ## Walkthrough: Verify Your First Real Handoff
 
-This real v0.5.2 quickstart uses the public npm package. It verifies the local requirements, proves
-that all five semantic detector canaries catch their deliberate faults, and runs a Core-created
-PSBT through rust-bitcoin signing and back to Core for finalization and regtest policy acceptance.
+This real v0.7.0 quickstart uses the branch's packed npm package. It verifies the local
+requirements, proves that all five semantic detector canaries catch their deliberate faults, and
+runs a Core-created PSBT through rust-bitcoin signing and back to Core for finalization and regtest
+policy acceptance.
 
 ```bash
-npx --yes psbt-interop-lab@0.5.2 quickstart
+npx --yes psbt-interop-lab@0.7.0 quickstart
 ```
 
-![v0.5.2 quickstart terminal output](https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/274d5ec3e88cee27e7bd9e3ad8fdbec4e3f90fc2/docs/assets/walkthrough/cli-finding-and-replay.png)
+![v0.7.0 quickstart terminal output](https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/d4e3eb97200abe400af00124a07b8a0d6b813371/docs/assets/walkthrough/cli-finding-and-replay.png)
 
 The captured repeated run uses `--no-build` because its two pinned images were already present.
 Omit that flag on the first run and quickstart builds them before executing the same proof.
 
 The command is intentionally smaller than `matrix`: it proves that the installation, detector
 invariants, real-library handoff, Bitcoin Core oracle, artifact writer, and cleanup path work before
-a developer spends time on the complete suite. A passing quickstart is not a claim that all 31
+a developer spends time on the complete suite. A passing quickstart is not a claim that all 39
 scenarios or all seven implementations are compatible.
 
 Open `artifacts/<run-id>/report.html` for the complete result, or verify later that the recorded
@@ -100,15 +101,15 @@ evidence still matches its manifest:
 psbt-lab replay artifacts/<run-id>
 ```
 
-![v0.5.2 generated quickstart report](https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/274d5ec3e88cee27e7bd9e3ad8fdbec4e3f90fc2/docs/assets/walkthrough/compatibility-report.png)
+![v0.7.0 generated quickstart report](https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/d4e3eb97200abe400af00124a07b8a0d6b813371/docs/assets/walkthrough/compatibility-report.png)
 
 The report screenshot above comes directly from the generated, self-contained HTML artifact. The
 CLI screenshot is a typeset transcript of the same real run with the two long image digests and
-absolute local artifact path shortened. These images remain an honest v0.5.2 capture; current
-v0.7.0 reports add stable conformance rule IDs, normative levels, authoritative sources,
+absolute local artifact path shortened. The v0.7.0 report includes per-request adapter cells; full
+matrix reports also include stable conformance rule IDs, normative levels, authoritative sources,
 expected-versus-observed behavior, severity, repairability, confidence, exact evidence, adapter
-failure cells, and replay-verified artifact comparison. Run `psbt-lab matrix` when the bounded
-first proof passes and complete cross-library coverage is required.
+failure cells, and replay-verified artifact comparison. Run `psbt-lab matrix` when the bounded first
+proof passes and complete cross-library coverage is required.
 
 ## External Adapters
 
@@ -119,6 +120,7 @@ the built-in matrix:
 psbt-lab adapter check ./adapters.json
 psbt-lab adapter check ./adapters.json --json
 psbt-lab matrix --adapter-manifest ./adapters.json
+psbt-lab matrix --external-only --adapter-manifest ./adapters.json
 ```
 
 The command validates the strict manifest, process transport, self-reported implementation
@@ -127,10 +129,29 @@ preservation. It executes the configured command directly with `shell: false`; t
 manifest must therefore be treated as trusted local code. See [the adapter guide](docs/adapters.md)
 and the bundled [manifest schema](src/conformance/adapter-manifest.schema.json).
 
-The matrix keeps all 31 bundled scenarios and appends native-parse and semantic-roundtrip cells for
+The matrix keeps all 39 bundled scenarios and appends native-parse and semantic-roundtrip cells for
 each external adapter across P2WPKH, nested P2SH-P2WPKH, P2WSH, Taproot key-path, and Taproot
 script-path fixtures. It also appends signing handoffs when the adapter declares the matching
 signer capabilities and the `fixture-commitment-sha256` safety feature.
+
+`--external-only` prepares the same deterministic Core-backed fixtures but skips every bundled
+adapter and scenario. This is the focused path for wallet CI. The repository includes an
+independently installed [bitcoinjs-lib consumer example](examples/wallet-ci-adapter) and a reusable
+GitHub Action:
+
+```yaml
+- uses: GautamBytes/psbt-interop-lab@v0.7.0
+  with:
+    adapter-manifest: ./adapters.json
+```
+
+The action checks the adapter, runs its generated matrix, and uploads replayable artifacts plus
+JUnit and SARIF reports. The same outputs are available directly:
+
+```bash
+psbt-lab matrix --external-only --adapter-manifest ./adapters.json \
+  --junit psbt-interop.xml --sarif psbt-interop.sarif
+```
 
 ## Custom Suites
 
@@ -151,13 +172,19 @@ is capability-gated and runs only when an adapter explicitly advertises
 
 ## Current Coverage
 
-The suite currently runs 31 scenarios:
+The suite currently runs 39 scenarios:
 
 - Core-created P2WPKH, P2WSH, and Taproot key-path signing handoffs through rust-bitcoin,
   btcsuite, bitcoinjs-lib, and current BDK Wallet
 - Nested P2SH-P2WPKH roundtrips plus bidirectional Taproot script-path signing/finalization and
   wrong-leaf/control-block rejection canaries
 - All 14 valid and 21 invalid official BIP370 vectors through rust-psbt-v2 and libwally
+- Native PSBTv2 construction, input/output removal, sequence updates, scope sealing, and BIP370
+  fallback/height/time locktime selection and conflict rejection
+- All 6 valid and 11 invalid official BIP371 vectors through rust-bitcoin, btcsuite,
+  bitcoinjs-lib, and current BDK Wallet
+- Bidirectional PSBTv2 Taproot handoffs across all six valid BIP371 key-path and script-path
+  vectors through rust-psbt-v2 and libwally
 - Bidirectional PSBTv2 P2WPKH handoffs and cross-library 2-of-3 signing, combining, finalization,
   extraction, conversion, and Bitcoin Core policy acceptance
 - Same-input 2-of-3 multisig where Rust and JavaScript sign independent copies, JavaScript
@@ -208,10 +235,14 @@ Each run creates a private directory under `artifacts/<run-id>/` containing:
 - `report.json`: redacted machine-readable compatibility results
 - `report.md`: readable scenario and assertion summary
 - `report.html`: self-contained static compatibility report with no scripts or network requests
+- Optional JUnit XML and SARIF 2.1.0 files selected with `--junit` and `--sarif`
 - Compatibility findings: implementation-specific behavior that completed safely but diverged from
   the expected PSBT rules
 - `checkpoints/**/*.psbt`: canonical PSBT states at important handoffs
 - `checkpoints/**/*.facts.json`: bounded field facts and hashes
+
+Required scenarios that are unsupported remain command failures in both CI formats: JUnit records
+them as failed capability checks and SARIF emits `psbt-lab.scenario.unsupported`.
 
 The reports classify non-passing behavior by stable rule ID, normative level, category, severity,
 observed implementation boundary, repairability, and confidence. Every classification includes an

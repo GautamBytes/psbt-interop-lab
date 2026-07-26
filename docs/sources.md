@@ -26,18 +26,25 @@ protocol specification.
   field. The lab only names this field in semantic diagnostics until executable fixtures exist.
 - [BIP370: PSBT Version 2](https://bips.dev/370/) defines PSBTv2's global input/output counts and
   per-input/per-output transaction fields. The wire parser validates PSBTv2 and the rejection matrix
-  uses the complete official valid and invalid vector corpus. Dedicated workflows convert
-  Core-funded fixtures to PSBTv2, then exercise bidirectional P2WPKH signing/finalization and
+  uses the complete official valid and invalid vector corpus. Dedicated workflows exercise native
+  input/output construction, sequence updates, scope sealing, and locktime selection; convert
+  Core-funded fixtures to PSBTv2; then exercise bidirectional P2WPKH signing/finalization and
   cross-library 2-of-3 P2WSH signing, combining, finalization, and extraction. Its
   Constructor rules permit `PSBT_GLOBAL_TX_MODIFIABLE` to be omitted or removed when no further
   inputs or outputs may be added; the semantic roundtrip rule therefore treats omission and an
   explicit zero byte as equivalent, and no other field-presence normalization.
 - [BIP371: Taproot Fields for PSBT](https://bips.dev/371/) defines Taproot key, signature, leaf,
   derivation, internal-key, and tree fields. The semantic parser validates their field layouts, and
-  active scenarios create, key-path sign, finalize, and policy-check Core-generated P2TR PSBTs;
-  script-path fixtures exercise leaf-script, control-block, and internal-key preservation plus
-  bidirectional rust-bitcoin/BDK signing and finalization against an exact committed leaf witness.
-  Its finalizer rules permit removal of `PSBT_OUT_TAP_BIP32_DERIVATION` after finalization.
+  all 6 valid and 11 invalid official vectors run through four PSBTv0 implementations. Additional
+  scenarios create, key-path sign, finalize, and policy-check Core-generated P2TR PSBTs; script-path
+  fixtures exercise leaf-script, control-block, and internal-key preservation plus bidirectional
+  rust-bitcoin/BDK signing and finalization against an exact committed leaf witness. All six valid
+  vectors also make bidirectional rust-psbt-v2/libwally v2 handoffs. Its finalizer rules permit
+  removal of `PSBT_OUT_TAP_BIP32_DERIVATION` after finalization. The bundled corpus is generated
+  from Bitcoin BIPs commit `b289d016b99c81527623c10e995e0318f744ebf3`; the complete source file
+  is pinned by SHA256 `f7bde92b1de04c0286c678930dd11fdafbfaa7e72767038e44e12fd4d4b31091`,
+  and the canonical extracted vector set by SHA256
+  `6afe6b443edc7eeab2d424b743d048fc9493bd4728910bc199ca9837433a57a0`.
 - [BIP373](https://bips.dev/373/) defines MuSig2 PSBT fields for participant keys, public nonces,
   and partial signatures. The lab currently names these fields in diagnostics and leaves executable
   MuSig2 interoperability scenarios as future work.

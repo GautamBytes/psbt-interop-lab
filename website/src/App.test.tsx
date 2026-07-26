@@ -32,7 +32,7 @@ describe("PSBT Interop Lab website", () => {
       "/docs#quick-start",
     );
     expect(screen.getByText(/quickstart proves one real handoff/i)).toBeInTheDocument();
-    expect(screen.getByText(/matrix runs all 31 bundled scenarios/i)).toBeInTheDocument();
+    expect(screen.getByText(/matrix runs all 39 bundled scenarios/i)).toBeInTheDocument();
     expect(screen.getByText("PSBT Interop Lab 0.7.0")).toBeInTheDocument();
     expect(screen.getByText(/available now as version 0\.7\.0/i)).toBeInTheDocument();
   });
@@ -43,12 +43,12 @@ describe("PSBT Interop Lab website", () => {
     expect(
       screen.getByRole("heading", { name: /from one command to a policy-accepted transaction/i }),
     ).toBeInTheDocument();
-    expect(screen.getByText(/evidence from a real v0\.5\.2 quickstart/i)).toBeInTheDocument();
+    expect(screen.getByText(/evidence from a real v0\.7\.0 quickstart/i)).toBeInTheDocument();
     expect(
-      screen.getByRole("img", { name: /v0\.5\.2 quickstart terminal output/i }),
+      screen.getByRole("img", { name: /v0\.7\.0 quickstart terminal output/i }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("img", { name: /v0\.5\.2 generated quickstart report/i }),
+      screen.getByRole("img", { name: /v0\.7\.0 generated quickstart report/i }),
     ).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /open the complete walkthrough/i })).toHaveAttribute(
       "href",

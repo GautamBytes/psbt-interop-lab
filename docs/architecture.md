@@ -148,7 +148,7 @@ The detailed assumptions, abuse paths, and residual risks are recorded in the
 
 ## Proof Scenarios
 
-The executable catalog currently contains 31 scenarios. Twelve independent Core-to-library
+The executable catalog currently contains 39 scenarios. Twelve independent Core-to-library
 handoffs exercise rust-bitcoin, btcsuite, bitcoinjs, and current BDK signing for P2WSH, P2WPKH, and
 P2TR key-path inputs.
 A same-input 2-of-3 scenario has Rust and JavaScript sign independent PSBT copies, combines their
@@ -180,10 +180,14 @@ general BIP371 finalization rule permits removal of Taproot output key-origin en
 input is final; removal during earlier transitions remains a preservation failure. The suite still
 requires the exact committed script-path witness and Core policy acceptance.
 PSBTv2 scenarios send all 14 valid and 21 invalid official BIP370 vectors through rust-psbt-v2 and
-libwally, then run bidirectional P2WPKH and cross-library 2-of-3 workflows. Core policy-checks every
-completed transaction. The rust-psbt-v2 adapter serializes finalized SegWit PSBTs with canonical
-omission of empty final scriptSig fields and accepts the same canonical form before native
-extraction; strict rejection of an explicit zero-length field remains expected BIP174 behavior.
+libwally, exercise native construction and locktime selection, then run bidirectional P2WPKH,
+Taproot, and cross-library 2-of-3 workflows. The Taproot handoffs convert all six valid official
+BIP371 vectors to v2 and back while checking key, signature, script, derivation, and Merkle-root
+commitments through both native serializers. Separately, four PSBTv0 adapters parse all 17 official
+BIP371 vectors. Core policy-checks every completed signing transaction. The rust-psbt-v2 adapter
+serializes finalized SegWit PSBTs with canonical omission of empty final scriptSig fields and accepts
+the same canonical form before native extraction; strict rejection of an explicit zero-length field
+remains expected BIP174 behavior.
 
 Scenario findings carry a stable rule ID and the actual observation into the central conformance
 catalog. Classification adds normative level, authoritative source, expected behavior, severity,
@@ -212,7 +216,7 @@ the expected identity and baseline parser capabilities, probes valid and malform
 and requires semantic roundtrip preservation.
 
 `psbt-lab matrix --adapter-manifest <manifest>` then registers each external process by its manifest
-ID while retaining the separately validated implementation identity. The runner preserves all 31
+ID while retaining the separately validated implementation identity. The runner preserves all 39
 bundled scenarios and appends capability-gated P2WPKH, nested P2SH-P2WPKH, P2WSH, Taproot key-path,
 and Taproot script-path parse and roundtrip scenarios, plus signing where declared. Run-scoped
 unsigned-transaction commitments authorize only deterministic regtest fixtures. See

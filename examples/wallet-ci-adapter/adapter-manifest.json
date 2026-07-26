@@ -1,0 +1,17 @@
+{
+  "schema": "psbt-lab.adapters/0.1",
+  "adapters": [
+    {
+      "id": "wallet-ci-example",
+      "command": "node",
+      "args": ["adapter.mjs"],
+      "cwd": ".",
+      "expected": {
+        "name": "wallet-ci-bitcoinjs",
+        "version": "1.0.0",
+        "sourceRevision": "bitcoinjs-lib-v7.0.1-example",
+        "artifactDigest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      }
+    }
+  ]
+}

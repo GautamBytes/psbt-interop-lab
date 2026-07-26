@@ -55,8 +55,13 @@ describe("release documentation", () => {
     const psbtv2 = read("adapters/rust-psbt-v2/README.md");
     const bdk = read("adapters/bdk-wallet-current/README.md");
 
-    expect(psbtv2).toContain('"sign", "combine", "finalize", "extract"');
-    expect(psbtv2).toContain('"scriptTypes": ["p2wpkh", "p2wsh"]');
+    expect(psbtv2).toContain('"extract", "construct"');
+    expect(psbtv2).toContain('"extractor", "constructor"');
+    expect(psbtv2).toContain(
+      '"scriptTypes": ["p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"]',
+    );
+    expect(psbtv2).toContain("psbt.zero_amount_unsupported");
+    expect(psbtv2.replace(/\s+/g, " ")).toContain("Taproot inspection and native roundtripping");
     expect(psbtv2).not.toContain("parser-only PSBTv2 adapter");
     expect(read("adapters/rust-psbt-v2/src/lib.rs")).not.toContain("parser-only adapter scope");
     expect(bdk).toContain("p2tr-scriptpath");
@@ -77,7 +82,7 @@ describe("release documentation", () => {
     const normalizedReadme = readme.replace(/\s+/g, " ");
 
     expect(normalizedReadme).toContain("bounded first-run proof");
-    expect(normalizedReadme).toContain("complete 31-scenario matrix");
+    expect(normalizedReadme).toContain("complete 39-scenario matrix");
     expect(normalizedReadme).toContain("five semantic detector canaries");
     expect(normalizedReadme).toContain("stops the local regtest node automatically");
     expect(readme).not.toContain("focused v0.5.1 run");

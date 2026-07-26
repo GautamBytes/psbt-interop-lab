@@ -227,7 +227,7 @@ export const docLinks = [
   },
   {
     label: "Scenario coverage",
-    detail: "See all 31 bundled scenarios",
+    detail: "See all 39 bundled scenarios",
     href: "/docs#current-coverage",
   },
   { label: "Adapter kit", detail: "Bring another wallet or library", href: "/adapter-kit" },

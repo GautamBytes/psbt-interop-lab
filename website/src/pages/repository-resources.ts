@@ -49,6 +49,21 @@ export const repositoryResources: RepositoryResource[] = [
     content: customSuiteExample,
   },
   {
+    route: "/files/examples/wallet-ci-adapter",
+    label: "Wallet CI adapter example",
+    description:
+      "An independently installable bitcoinjs-lib adapter package that demonstrates the external wallet CI contract.",
+    sourcePath: "examples/wallet-ci-adapter/",
+    sourceUrl: `${repositoryUrl}/tree/main/examples/wallet-ci-adapter`,
+    kind: "directory",
+    entries: [
+      "examples/wallet-ci-adapter/adapter-manifest.json",
+      "examples/wallet-ci-adapter/adapter.mjs",
+      "examples/wallet-ci-adapter/package.json",
+      "examples/wallet-ci-adapter/test/adapter.test.mjs",
+    ],
+  },
+  {
     route: "/files/website",
     label: "Website source",
     description:

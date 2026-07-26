@@ -447,6 +447,15 @@ def hello(request_id, digest, payload):
             "convert",
         )
     }
+    taproot_roundtrip_types = [
+        "p2wpkh",
+        "p2wsh",
+        "p2tr-keypath",
+        "p2tr-scriptpath",
+    ]
+    operation_script_types["inspect"] = taproot_roundtrip_types
+    operation_script_types["roundtrip"] = taproot_roundtrip_types
+    operation_script_types["convert"] = taproot_roundtrip_types
     return success(
         request_id,
         digest,
@@ -464,7 +473,7 @@ def hello(request_id, digest, payload):
             ],
             "roles": ["parser", "signer", "combiner", "finalizer", "extractor"],
             "psbtVersions": [0, 2],
-            "scriptTypes": ["p2wpkh", "p2wsh"],
+            "scriptTypes": taproot_roundtrip_types,
             "operationScriptTypes": operation_script_types,
             "features": [
                 "fixture-commitment-sha256",
@@ -472,6 +481,7 @@ def hello(request_id, digest, payload):
                 "unsigned-tx-sha256",
                 "psbt-v0-v2-conversion",
                 "network-free",
+                "bip371-taproot-roundtrip",
             ],
         },
     )

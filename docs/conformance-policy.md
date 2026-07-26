@@ -59,6 +59,14 @@ zero-length value is not treated as equivalent to the canonical absent form. The
 require finalized SegWit PSBTs with omitted empty scriptSig fields to remain extractable, while
 strict rejection of an explicit zero-length field remains expected parser behavior.
 
+### Taproot tree serialization
+
+BIP371 serializes `PSBT_OUT_TAP_TREE` leaves in depth-first order, while BIP341 computes each
+TapBranch from the lexicographically sorted pair of child hashes. The lab accepts a serializer
+reordering sibling subtrees only when every non-tree field is unchanged and independently computed
+TapLeaf/TapBranch hashes produce the same output Merkle root. A changed leaf version, script,
+depth structure, or root remains a preservation failure.
+
 ## Challenging a Classification
 
 A classification may be challenged with an authoritative specification section, official test

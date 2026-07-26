@@ -34,6 +34,178 @@ fn request(operation: &str, payload: Value) -> Value {
     })
 }
 
+fn construct(payload: Value) -> Value {
+    handle_value(request("construct", payload), DIGEST)
+}
+
+fn constructed_psbt(response: &Value) -> Psbt {
+    assert_eq!(response["status"], "ok", "{response:#}");
+    Psbt::from_str(
+        response["output"]["psbt"]
+            .as_str()
+            .expect("construct response PSBT"),
+    )
+    .expect("constructed PSBT parses")
+}
+
+fn create_for_construction(fallback_locktime: u32) -> Value {
+    construct(json!({
+        "action": "create",
+        "inputsModifiable": true,
+        "outputsModifiable": true,
+        "fallbackLocktime": fallback_locktime
+    }))
+}
+
+fn add_input(psbt: &Value, txid_byte: &str, height: Option<u32>, time: Option<u32>) -> Value {
+    add_input_outpoint(psbt, &txid_byte.repeat(64), 0, height, time)
+}
+
+fn add_input_outpoint(
+    psbt: &Value,
+    previous_txid: &str,
+    output_index: u32,
+    height: Option<u32>,
+    time: Option<u32>,
+) -> Value {
+    let mut payload = json!({
+        "action": "add-input",
+        "psbt": psbt["output"]["psbt"],
+        "previousTxid": previous_txid,
+        "outputIndex": output_index
+    });
+    if let Some(height) = height {
+        payload["requiredHeightLocktime"] = json!(height);
+    }
+    if let Some(time) = time {
+        payload["requiredTimeLocktime"] = json!(time);
+    }
+    construct(payload)
+}
+
+#[test]
+fn constructs_updates_removes_and_seals_psbt_v2_maps() {
+    const FIRST_TXID: &str = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
+    const SECOND_TXID: &str = "f0e0d0c0b0a09080706050403020100ffeeddbbccaa998877665544332211000";
+    let created = create_for_construction(0);
+    let first_input = add_input_outpoint(&created, FIRST_TXID, 3, None, None);
+    let first_output = construct(json!({
+        "action": "add-output",
+        "psbt": first_input["output"]["psbt"],
+        "amountSats": 50_000,
+        "scriptHex": format!("0014{}", "00".repeat(20))
+    }));
+    let second_input = add_input_outpoint(&first_output, SECOND_TXID, 7, None, None);
+    let second_output = construct(json!({
+        "action": "add-output",
+        "psbt": second_input["output"]["psbt"],
+        "amountSats": 40_000,
+        "scriptHex": format!("0014{}", "11".repeat(20))
+    }));
+    let sequenced = construct(json!({
+        "action": "set-sequence",
+        "psbt": second_output["output"]["psbt"],
+        "index": 1,
+        "sequence": 4_294_967_294_u32
+    }));
+    let removed_input = construct(json!({
+        "action": "remove-input",
+        "psbt": sequenced["output"]["psbt"],
+        "index": 0
+    }));
+    let removed_output = construct(json!({
+        "action": "remove-output",
+        "psbt": removed_input["output"]["psbt"],
+        "index": 0
+    }));
+    let sealed = construct(json!({
+        "action": "seal",
+        "psbt": removed_output["output"]["psbt"],
+        "scope": "all"
+    }));
+    let psbt = constructed_psbt(&sealed);
+
+    assert_eq!(psbt.global.input_count, 1);
+    assert_eq!(psbt.global.output_count, 1);
+    assert_eq!(psbt.inputs.len(), 1);
+    assert_eq!(psbt.outputs.len(), 1);
+    assert_eq!(
+        psbt.inputs[0].previous_txid,
+        Txid::from_str(SECOND_TXID).expect("second txid")
+    );
+    assert_eq!(psbt.inputs[0].spent_output_index, 7);
+    assert_eq!(psbt.inputs[0].sequence, Some(Sequence(4_294_967_294)));
+    assert_eq!(psbt.outputs[0].amount, Amount::from_sat(40_000));
+    assert_eq!(
+        psbt.outputs[0].script_pubkey,
+        ScriptBuf::from_hex(&format!("0014{}", "11".repeat(20))).expect("second output script")
+    );
+    assert_eq!(psbt.global.tx_modifiable_flags & 0x03, 0);
+    assert_eq!(sealed["output"]["inputs"], 1);
+    assert_eq!(sealed["output"]["outputs"], 1);
+
+    let rejected = add_input(&sealed, "3", None, None);
+    assert_eq!(rejected["status"], "rejected");
+    assert_eq!(rejected["error"]["class"], "psbt.not_modifiable");
+}
+
+#[test]
+fn rejects_zero_valued_output_with_library_boundary_error() {
+    let created = create_for_construction(0);
+    let response = construct(json!({
+        "action": "add-output",
+        "psbt": created["output"]["psbt"],
+        "amountSats": 0,
+        "scriptHex": "6a"
+    }));
+    assert_eq!(response["status"], "rejected");
+    assert_eq!(response["error"]["class"], "psbt.zero_amount_unsupported");
+}
+
+#[test]
+fn determines_fallback_and_compatible_height_or_time_locktimes() {
+    let fallback = add_input(&create_for_construction(99), "1", None, None);
+    assert_eq!(fallback["output"]["locktime"], 99);
+    assert_eq!(fallback["output"]["locktimeType"], "height");
+
+    let height_one = add_input(&create_for_construction(0), "1", Some(100), None);
+    let height_two = add_input(&height_one, "2", Some(250), None);
+    assert_eq!(height_two["output"]["locktime"], 250);
+    assert_eq!(height_two["output"]["locktimeType"], "height");
+
+    let time_one = add_input(&create_for_construction(0), "1", None, Some(500_000_100));
+    let time_two = add_input(&time_one, "2", None, Some(500_000_200));
+    assert_eq!(time_two["output"]["locktime"], 500_000_200_u32);
+    assert_eq!(time_two["output"]["locktimeType"], "time");
+
+    let both_one = add_input(
+        &create_for_construction(0),
+        "1",
+        Some(300),
+        Some(500_000_300),
+    );
+    let both_two = add_input(&both_one, "2", Some(350), Some(500_000_350));
+    assert_eq!(both_two["output"]["locktime"], 350);
+    assert_eq!(both_two["output"]["locktimeType"], "height");
+}
+
+#[test]
+fn rejects_incompatible_locktime_domains_and_invalid_indexes() {
+    let height = add_input(&create_for_construction(0), "1", Some(100), None);
+    let conflict = add_input(&height, "2", None, Some(500_000_100));
+    assert_eq!(conflict["status"], "rejected");
+    assert_eq!(conflict["error"]["class"], "psbt.locktime_conflict");
+
+    let invalid_index = construct(json!({
+        "action": "set-sequence",
+        "psbt": height["output"]["psbt"],
+        "index": 5,
+        "sequence": 1
+    }));
+    assert_eq!(invalid_index["status"], "rejected");
+    assert_eq!(invalid_index["error"]["class"], "psbt.index_out_of_bounds");
+}
+
 fn scalar_one_public_key() -> PublicKey {
     let key = PrivateKey::from_wif(SCALAR_ONE_WIF).expect("fixture WIF");
     key.public_key(&Secp256k1::new())

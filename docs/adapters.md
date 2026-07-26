@@ -2,7 +2,7 @@
 
 `psbt-lab adapter check` lets a wallet or library maintainer validate a local adapter without
 changing PSBT Interop Lab source. The same manifest can enroll conforming adapters in the full
-matrix while preserving the 31 bundled scenarios.
+matrix while preserving the 39 bundled scenarios.
 
 ## Adapter Manifest
 
@@ -65,6 +65,32 @@ After conformance passes, run the built-in and external matrix together:
 psbt-lab matrix --adapter-manifest ./adapters.json
 psbt-lab run --suite proof --adapter-manifest ./adapters.json
 ```
+
+For wallet CI, run only the capability-generated external scenarios and write standard CI reports:
+
+```bash
+psbt-lab matrix --external-only --adapter-manifest ./adapters.json \
+  --junit psbt-interop.xml --sarif psbt-interop.sarif
+```
+
+`--external-only` starts only the isolated Bitcoin Core fixture service. It does not build or run
+the seven bundled library adapters. It cannot be combined with `--scenario`, `--category`, or a
+custom suite, and requires an adapter manifest.
+
+The root composite action wraps this focused path:
+
+```yaml
+- uses: GautamBytes/psbt-interop-lab@v0.7.0
+  with:
+    adapter-manifest: ./adapters.json
+```
+
+It installs the exact `psbt-interop-lab@0.7.0` release with lifecycle scripts disabled, checks the
+adapter, runs the matrix, and uploads the replay, JUnit, and SARIF outputs. `package-spec` can point
+to a trusted
+packed tarball for pre-release validation. The separately installed
+[`examples/wallet-ci-adapter`](../examples/wallet-ci-adapter) package is the executable reference
+consumer.
 
 The manifest `id` is the stable registry and report identity. It may differ from `expected.name`.
 It must not collide with `rust-bitcoin`, `btcsuite-go`, `bitcoinjs-lib`, `bdkpython`,

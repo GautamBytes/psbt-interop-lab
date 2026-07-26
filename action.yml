@@ -1,0 +1,61 @@
+name: PSBT Interop Lab
+description: Check a wallet PSBT adapter and run its generated interoperability matrix
+
+inputs:
+  adapter-manifest:
+    description: Trusted local PSBT adapter manifest
+    required: true
+  artifacts:
+    description: Replayable artifact directory
+    required: false
+    default: psbt-interop-artifacts
+  package-spec:
+    description: npm package or tarball containing the PSBT Interop Lab CLI
+    required: false
+    default: "psbt-interop-lab@0.7.0"
+  junit:
+    description: JUnit XML output path
+    required: false
+    default: psbt-interop-junit.xml
+  sarif:
+    description: SARIF 2.1.0 output path
+    required: false
+    default: psbt-interop.sarif
+  build:
+    description: Build the pinned Bitcoin Core image before running
+    required: false
+    default: "true"
+  upload-artifacts:
+    description: Upload replay, JUnit, and SARIF outputs
+    required: false
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Node.js
+      uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+      with:
+        node-version: 24
+        package-manager-cache: false
+    - name: Run PSBT interoperability matrix
+      shell: bash
+      env:
+        PSBT_LAB_ADAPTER_MANIFEST: ${{ inputs.adapter-manifest }}
+        PSBT_LAB_ARTIFACTS: ${{ inputs.artifacts }}
+        PSBT_LAB_PACKAGE_SPEC: ${{ inputs.package-spec }}
+        PSBT_LAB_JUNIT: ${{ inputs.junit }}
+        PSBT_LAB_SARIF: ${{ inputs.sarif }}
+        PSBT_LAB_BUILD: ${{ inputs.build }}
+      run: node "$GITHUB_ACTION_PATH/scripts/run-action.mjs"
+    - name: Upload PSBT interoperability reports
+      if: always() && inputs.upload-artifacts == 'true'
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: psbt-interop-${{ github.run_id }}
+        path: |
+          ${{ inputs.artifacts }}
+          ${{ inputs.junit }}
+          ${{ inputs.sarif }}
+        if-no-files-found: warn
+        retention-days: 14

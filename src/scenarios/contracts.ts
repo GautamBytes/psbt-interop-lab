@@ -124,17 +124,19 @@ export const PSBTV2_ADAPTER_CONTRACT = {
     "combine",
     "finalize",
     "extract",
+    "construct",
   ],
-  roles: ["parser", "signer", "combiner", "finalizer", "extractor"],
+  roles: ["parser", "updater", "signer", "combiner", "finalizer", "extractor", "constructor"],
   psbtVersions: [2],
-  scriptTypes: ["p2wpkh", "p2wsh"],
+  scriptTypes: ["p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
   operationScriptTypes: {
-    inspect: ["p2wpkh", "p2wsh"],
-    roundtrip: ["p2wpkh", "p2wsh"],
+    inspect: ["p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
+    roundtrip: ["p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
     sign: ["p2wpkh", "p2wsh"],
     combine: ["p2wpkh", "p2wsh"],
     finalize: ["p2wpkh", "p2wsh"],
     extract: ["p2wpkh", "p2wsh"],
+    construct: ["p2wpkh", "p2wsh"],
   },
   features: [
     "bip370-official-vectors",
@@ -142,6 +144,9 @@ export const PSBTV2_ADAPTER_CONTRACT = {
     "fixture-commitment-sha256",
     "bip370-unique-id",
     "unsigned-tx-sha256",
+    "bip370-constructor",
+    "bip370-locktime",
+    "bip371-taproot-roundtrip",
   ],
 } as const satisfies ExpectedAdapterContract;
 
@@ -162,15 +167,15 @@ export const LIBWALLY_ADAPTER_CONTRACT = {
   ],
   roles: ["parser", "signer", "combiner", "finalizer", "extractor"],
   psbtVersions: [0, 2],
-  scriptTypes: ["p2wpkh", "p2wsh"],
+  scriptTypes: ["p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
   operationScriptTypes: {
-    inspect: ["p2wpkh", "p2wsh"],
-    roundtrip: ["p2wpkh", "p2wsh"],
+    inspect: ["p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
+    roundtrip: ["p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
     sign: ["p2wpkh", "p2wsh"],
     combine: ["p2wpkh", "p2wsh"],
     finalize: ["p2wpkh", "p2wsh"],
     extract: ["p2wpkh", "p2wsh"],
-    convert: ["p2wpkh", "p2wsh"],
+    convert: ["p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
   },
   features: [
     "fixture-commitment-sha256",
@@ -178,6 +183,7 @@ export const LIBWALLY_ADAPTER_CONTRACT = {
     "unsigned-tx-sha256",
     "psbt-v0-v2-conversion",
     "network-free",
+    "bip371-taproot-roundtrip",
   ],
 } as const satisfies ExpectedAdapterContract;
 

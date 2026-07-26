@@ -2,8 +2,9 @@
 
 This is a bounded PSBTv2 workflow adapter for the `psbt-lab.adapter/0.2` JSONL
 protocol. It uses the Rust Bitcoin `psbt-v2` crate to parse, inspect, serialize,
-sign, combine, finalize, and extract BIP370 PSBTs. Signing and state-changing
-operations are restricted to committed deterministic regtest fixtures.
+sign, combine, finalize, extract, and construct BIP370 PSBTs. Signing operations
+are restricted to committed deterministic regtest fixtures; constructor actions
+operate only on caller-supplied PSBTv2 documents.
 
 ## Pinned source
 
@@ -26,21 +27,29 @@ The `hello` response declares:
 
 ```json
 {
-  "operations": ["hello", "native-parse", "inspect", "roundtrip", "sign", "combine", "finalize", "extract"],
-  "roles": ["parser", "signer", "combiner", "finalizer", "extractor"],
+  "operations": ["hello", "native-parse", "inspect", "roundtrip", "sign", "combine", "finalize", "extract", "construct"],
+  "roles": ["parser", "updater", "signer", "combiner", "finalizer", "extractor", "constructor"],
   "psbtVersions": [2],
-  "scriptTypes": ["p2wpkh", "p2wsh"]
+  "scriptTypes": ["p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"]
 }
 ```
 
-The operation-specific capability map declares P2WPKH and P2WSH for inspection,
-roundtripping, signing, combining, finalization, and extraction. The adapter
-does not declare conversion or Taproot support.
+The operation-specific capability map declares P2WPKH and P2WSH signing,
+combining, finalization, extraction, and construction. Taproot inspection and
+native roundtripping cover key-path and script-path PSBTv2 data, but the adapter
+does not claim Taproot signing or PSBT version conversion.
 
 `roundtrip` uses the native serializer. PSBT map order is not semantically
 significant, and the library may materialize an explicit default field, so the
 response includes `byteIdentical` as diagnostic data. Correctness is based on
 the roundtripped PSBT parsing to the same native PSBT value, not byte equality.
+
+`construct` creates modifiable PSBTv2 documents, adds or removes inputs and
+outputs, updates sequence values, selects BIP370 locktimes, and seals input or
+output scopes. The pinned `psbt-v2` 0.3.0 crate uses a zero amount as its
+internal missing-value sentinel, so zero-valued outputs are rejected with
+`psbt.zero_amount_unsupported`; this is a documented library boundary rather
+than a BIP370 validity claim.
 
 `sign` and `finalize` accept only `p2wpkh`, `intent-rich-p2wpkh`, or
 `p2wsh-2-of-3` and require a startup `PSBT_LAB_FIXTURE_COMMITMENTS` entry whose

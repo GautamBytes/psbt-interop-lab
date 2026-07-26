@@ -19,6 +19,8 @@ describe("baseline workflow", () => {
   test("checks the runtime before running the complete proof matrix", async () => {
     const deps = dependencies();
     const artifacts = resolve("baseline-artifacts");
+    const junit = resolve("reports", "baseline.xml");
+    const sarif = resolve("reports", "baseline.sarif");
 
     await runBaseline(
       {
@@ -27,6 +29,8 @@ describe("baseline workflow", () => {
         build: true,
         startCore: true,
         scenario: [],
+        junit,
+        sarif,
       },
       deps,
     );
@@ -39,6 +43,8 @@ describe("baseline workflow", () => {
       build: true,
       startCore: true,
       scenario: [],
+      junit,
+      sarif,
     });
     expect(vi.mocked(deps.write).mock.calls.join("\n")).toMatch(/complete proof matrix/i);
   });

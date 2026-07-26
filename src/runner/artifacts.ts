@@ -25,6 +25,7 @@ export interface RunSelectors {
   requested: {
     scenarios?: string[];
     category?: string;
+    externalOnly?: boolean;
   };
   executed: {
     scenarios: string[];

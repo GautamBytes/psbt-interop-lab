@@ -7,7 +7,8 @@ be driven by real wallet and library maintainers using those foundations.
 ## Broader Compatibility
 
 - Add adapters for more wallet projects, hardware-signing bridges, and implementation languages.
-- Expand PSBTv2 coverage beyond the current rust-psbt/libwally P2WPKH and 2-of-3 workflows.
+- Expand PSBTv2 coverage beyond the current constructor, P2WPKH, Taproot roundtrip, and 2-of-3
+  workflows.
 - Add Taproot script-path threshold leaves and carefully selected legacy profiles beyond the
   deterministic single-leaf signing and finalization paths.
 - Add executable workflows for MuSig2, Silent Payments, proof-of-reserves, generic signed message,
@@ -23,7 +24,8 @@ be driven by real wallet and library maintainers using those foundations.
 
 ## Developer Integration
 
-- Validate the adapter kit in an independent wallet repository and publish a reusable CI example.
+- Validate the reusable action against additional independent wallet repositories and native
+  adapter implementations.
 - Publish versioned compatibility reports and reusable test vectors.
 - Publish optional prebuilt adapter images after demand justifies the release and attestation work.
 - Produce reproducible upstream bug reports and contribute practical fixes where maintainers want
