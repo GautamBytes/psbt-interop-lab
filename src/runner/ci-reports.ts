@@ -221,7 +221,7 @@ export function generateSarifReport(manifest: RunManifest): string {
           tool: {
             driver: {
               name: "PSBT Interop Lab",
-              version: "0.7.0",
+              version: "0.8.0",
               informationUri: "https://github.com/GautamBytes/psbt-interop-lab",
               rules: [...rules.values()],
             },

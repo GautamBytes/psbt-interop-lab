@@ -322,7 +322,7 @@ describe("CLI program", () => {
 
       expect(result.status).toBe(0);
       expect(result.stderr).toBe("");
-      expect(result.stdout.trim()).toBe("0.7.0");
+      expect(result.stdout.trim()).toBe("0.8.0");
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }

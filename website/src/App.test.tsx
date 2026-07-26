@@ -45,8 +45,8 @@ describe("PSBT Interop Lab website", () => {
     expect(
       screen.getByText(/HWI-compatible simulator confirmation and key-origin policy/i),
     ).toBeInTheDocument();
-    expect(screen.getByText("PSBT Interop Lab 0.7.0")).toBeInTheDocument();
-    expect(screen.getByText(/available now as version 0\.7\.0/i)).toBeInTheDocument();
+    expect(screen.getByText("PSBT Interop Lab 0.8.0")).toBeInTheDocument();
+    expect(screen.getByText(/available now as version 0\.8\.0/i)).toBeInTheDocument();
   });
 
   it("shows a real command-to-report proof walkthrough", () => {
@@ -55,12 +55,12 @@ describe("PSBT Interop Lab website", () => {
     expect(
       screen.getByRole("heading", { name: /two protocol frontiers, one replayable artifact/i }),
     ).toBeInTheDocument();
-    expect(screen.getByText(/evidence from the real v0\.7\.0 P2 proof/i)).toBeInTheDocument();
+    expect(screen.getByText(/evidence from the real v0\.8\.0 P2 proof/i)).toBeInTheDocument();
     expect(
-      screen.getByRole("img", { name: /v0\.7\.0 P2 protocol proof terminal output/i }),
+      screen.getByRole("img", { name: /v0\.8\.0 P2 protocol proof terminal output/i }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("img", { name: /v0\.7\.0 generated P2 protocol report/i }),
+      screen.getByRole("img", { name: /v0\.8\.0 generated P2 protocol report/i }),
     ).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /open the complete walkthrough/i })).toHaveAttribute(
       "href",
@@ -75,7 +75,7 @@ describe("PSBT Interop Lab website", () => {
     await user.click(screen.getByRole("button", { name: "Copy install command" }));
 
     expect(screen.getByText(installCommand)).toBeInTheDocument();
-    expect(installCommand).toContain("psbt-interop-lab@0.7.0");
+    expect(installCommand).toContain("psbt-interop-lab@0.8.0");
     expect(screen.getByText("Install command copied")).toBeInTheDocument();
   });
 
