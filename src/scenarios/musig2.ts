@@ -54,6 +54,43 @@ function requireOk(
   return context.outputString(response, "psbt", operation);
 }
 
+async function preserveBip373Fields(
+  context: ScenarioExecutionContext,
+  assertions: ScenarioAssertionEvidence[],
+  psbt: string,
+  stage: string,
+): Promise<string> {
+  const rustRoundtrip = requireOk(
+    context,
+    await context.request("rust-bitcoin", "roundtrip", { psbt }),
+    "roundtrip",
+  );
+  assertions.push(
+    context.requireTransition(
+      "roundtrip",
+      `rust-bitcoin-preserved-bip373-${stage}`,
+      psbt,
+      rustRoundtrip,
+      "rust-bitcoin",
+    ),
+  );
+  const bitcoinjsRoundtrip = requireOk(
+    context,
+    await context.request("bitcoinjs-lib", "roundtrip", { psbt: rustRoundtrip }),
+    "roundtrip",
+  );
+  assertions.push(
+    context.requireTransition(
+      "roundtrip",
+      `bitcoinjs-preserved-bip373-${stage}`,
+      rustRoundtrip,
+      bitcoinjsRoundtrip,
+      "bitcoinjs-lib",
+    ),
+  );
+  return bitcoinjsRoundtrip;
+}
+
 export function createMusig2Scenario(
   fixture: PsbtFixture,
 ): ScenarioDefinition<ScenarioExecutionContext> {
@@ -105,33 +142,11 @@ export function createMusig2Scenario(
         fieldCountEvidence("participant-set-added", participantPsbt, PARTICIPANT_FIELD, 1),
       );
 
-      const rustRoundtrip = requireOk(
+      const bitcoinjsRoundtrip = await preserveBip373Fields(
         context,
-        await context.request("rust-bitcoin", "roundtrip", { psbt: participantPsbt }),
-        "roundtrip",
-      );
-      assertions.push(
-        context.requireTransition(
-          "roundtrip",
-          "rust-bitcoin-preserved-bip373-participants",
-          participantPsbt,
-          rustRoundtrip,
-          "rust-bitcoin",
-        ),
-      );
-      const bitcoinjsRoundtrip = requireOk(
-        context,
-        await context.request("bitcoinjs-lib", "roundtrip", { psbt: rustRoundtrip }),
-        "roundtrip",
-      );
-      assertions.push(
-        context.requireTransition(
-          "roundtrip",
-          "bitcoinjs-preserved-bip373-participants",
-          rustRoundtrip,
-          bitcoinjsRoundtrip,
-          "bitcoinjs-lib",
-        ),
+        assertions,
+        participantPsbt,
+        "participants",
       );
 
       const sessionId = `musig2-${fixture.unsignedTxSha256.slice(7, 23)}`;
@@ -167,15 +182,26 @@ export function createMusig2Scenario(
         }),
         "musig2-nonce",
       );
-      await context.checkpoint("bip373-musig2-keypath", "public-nonces", nonceTwo);
+      const preservedNonces = await preserveBip373Fields(
+        context,
+        assertions,
+        nonceTwo,
+        "public-nonces",
+      );
+      await context.checkpoint(
+        "bip373-musig2-keypath",
+        "public-nonces",
+        preservedNonces,
+        "structure",
+      );
       assertions.push(
-        fieldCountEvidence("complete-public-nonce-set", nonceTwo, PUBLIC_NONCE_FIELD, 2),
+        fieldCountEvidence("complete-public-nonce-set", preservedNonces, PUBLIC_NONCE_FIELD, 2),
       );
 
       const partialOne = requireOk(
         context,
         await context.request(MUSIG2_SIGNER_ONE, "musig2-partial-sign", {
-          psbt: nonceTwo,
+          psbt: preservedNonces,
           fixtureId: fixture.id,
           sessionId,
         }),
@@ -190,11 +216,22 @@ export function createMusig2Scenario(
         }),
         "musig2-partial-sign",
       );
-      await context.checkpoint("bip373-musig2-keypath", "partial-signatures", partialTwo);
+      const preservedPartials = await preserveBip373Fields(
+        context,
+        assertions,
+        partialTwo,
+        "partial-signatures",
+      );
+      await context.checkpoint(
+        "bip373-musig2-keypath",
+        "partial-signatures",
+        preservedPartials,
+        "structure",
+      );
       assertions.push(
         fieldCountEvidence(
           "complete-partial-signature-set",
-          partialTwo,
+          preservedPartials,
           PARTIAL_SIGNATURE_FIELD,
           2,
         ),
@@ -203,12 +240,17 @@ export function createMusig2Scenario(
       const aggregated = requireOk(
         context,
         await context.request(MUSIG2_SIGNER_ONE, "musig2-aggregate", {
-          psbt: partialTwo,
+          psbt: preservedPartials,
           fixtureId: fixture.id,
         }),
         "musig2-aggregate",
       );
-      await context.checkpoint("bip373-musig2-keypath", "aggregate-signature", aggregated);
+      await context.checkpoint(
+        "bip373-musig2-keypath",
+        "aggregate-signature",
+        aggregated,
+        "structure",
+      );
       assertions.push(
         fieldCountEvidence(
           "aggregate-taproot-key-signature",

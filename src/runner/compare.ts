@@ -295,8 +295,12 @@ function indexCheckpoints(
   );
 }
 
-function factsFingerprint(facts: PsbtWireFacts): string {
-  return JSON.stringify(facts);
+function checkpointFingerprint(checkpoint: CheckpointRecord): string {
+  if (checkpoint.comparison !== "structure") {
+    return JSON.stringify({ comparison: "exact", facts: checkpoint.facts });
+  }
+  const { sha256: _sha256, ...structure } = checkpoint.facts;
+  return JSON.stringify({ comparison: "structure", facts: structure });
 }
 
 function checkpointChangeFields(checkpoint: CheckpointRecord): {
@@ -339,7 +343,7 @@ function compareCheckpoints(
       });
       continue;
     }
-    if (base && head && factsFingerprint(base.facts) !== factsFingerprint(head.facts)) {
+    if (base && head && checkpointFingerprint(base) !== checkpointFingerprint(head)) {
       changes.push({
         kind: "checkpoint-facts-changed",
         ...checkpointChangeFields(checkpoint),

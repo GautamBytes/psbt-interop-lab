@@ -7,12 +7,15 @@ import type { ScenarioResult } from "../scenarios/definition.js";
 
 const SAFE_IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 
+export type CheckpointComparison = "structure";
+
 export interface CheckpointRecord {
   scenario: string;
   stage: string;
   psbtPath: string;
   factsPath: string;
   facts: PsbtWireFacts;
+  comparison?: CheckpointComparison;
 }
 
 export type ScenarioRecord = ScenarioResult;
@@ -102,9 +105,17 @@ export class ArtifactRun {
     return new ArtifactRun(directory, runId);
   }
 
-  async checkpoint(scenario: string, stage: string, psbt: string): Promise<CheckpointRecord> {
+  async checkpoint(
+    scenario: string,
+    stage: string,
+    psbt: string,
+    comparison?: CheckpointComparison,
+  ): Promise<CheckpointRecord> {
     requireIdentifier(scenario, "Scenario identifier");
     requireIdentifier(stage, "Checkpoint stage");
+    if (comparison !== undefined && comparison !== "structure") {
+      throw new TypeError("Checkpoint comparison policy is invalid");
+    }
     const facts = extractWireFacts(psbt);
     this.#checkpointCounter += 1;
     const prefix = `${String(this.#checkpointCounter).padStart(2, "0")}-${stage}`;
@@ -123,7 +134,14 @@ export class ArtifactRun {
     await atomicWrite(resolvedPsbtPath, `${psbt}\n`);
     await atomicWrite(resolvedFactsPath, `${JSON.stringify(facts, null, 2)}\n`);
 
-    return { scenario, stage, psbtPath, factsPath, facts };
+    return {
+      scenario,
+      stage,
+      psbtPath,
+      factsPath,
+      facts,
+      ...(comparison ? { comparison } : {}),
+    };
   }
 
   async writeManifest(manifest: RunManifest): Promise<void> {

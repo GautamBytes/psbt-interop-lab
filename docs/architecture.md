@@ -127,9 +127,14 @@ facts or recorded outcomes and does not rerun adapters. This does not authentica
 artifact directory.
 
 `psbt-lab compare <base> <head>` first verifies both artifact manifests through the replay path,
-then reports scenario status, finding, adapter-cell, and checkpoint digest changes between those
-runs. It compares recorded local evidence; it does not rerun Core or adapters and inherits replay's
-local mutable-directory trust boundary.
+then reports scenario status, finding, adapter-cell, and checkpoint changes between those runs.
+Deterministic checkpoints compare their complete wire facts, including SHA256. Checkpoints that
+contain fresh MuSig2 nonces or signatures opt into structural comparison: PSBT version, byte length,
+map shape, field types, key-data sizes, and value sizes must match, while the entropy-dependent
+SHA256 is excluded from cross-run comparison. The earlier exact participant checkpoint still
+anchors the deterministic transaction and key set. Replay always verifies each stored PSBT's exact
+SHA256 regardless of comparison policy. Comparison does not rerun Core or adapters and inherits
+replay's local mutable-directory trust boundary.
 
 Replay rejects absolute and lexically escaping checkpoint paths and caps a manifest at 1,000
 checkpoints. Intermediate symlinks remain trusted. Final-component `O_NOFOLLOW` protection applies
@@ -257,7 +262,7 @@ entering those operations through the full matrix path.
 
 `psbt-lab baseline` captures the standard comparison snapshot, and
 `psbt-lab compare <base> <head>` checks whether a later run changed scenario outcomes, findings,
-adapter cells, or checkpoint digests after replay-verifying both artifact directories.
+adapter cells, or checkpoint facts after replay-verifying both artifact directories.
 
 ## Extension Points
 

@@ -104,6 +104,12 @@ fn completes_two_round_musig2_and_rejects_nonce_reuse() {
         request("musig2-partial-sign", &psbt, Some("session-a")),
         DIGEST,
     ));
+    let repeated_partial = signer_one.handle_value(
+        request("musig2-partial-sign", &psbt, Some("session-a")),
+        DIGEST,
+    );
+    assert_eq!(repeated_partial["status"], "rejected");
+    assert_eq!(repeated_partial["error"]["class"], "musig2.session_missing");
     let psbt = output_psbt(&signer_two.handle_value(
         request("musig2-partial-sign", &psbt, Some("session-a")),
         DIGEST,
@@ -129,6 +135,37 @@ fn completes_two_round_musig2_and_rejects_nonce_reuse() {
             .count(),
         2
     );
+}
+
+#[test]
+fn invalid_partial_sign_attempt_consumes_the_secret_nonce() {
+    let (psbt, commitments) = fixture();
+    let mut signer = Musig2Adapter::new(SignerIdentity::One, commitments);
+    let psbt = output_psbt(&signer.handle_value(
+        request("musig2-nonce", &psbt, Some("session-invalid")),
+        DIGEST,
+    ));
+
+    let invalid = signer.handle_value(
+        request("musig2-partial-sign", &psbt, Some("session-invalid")),
+        DIGEST,
+    );
+    assert_eq!(invalid["status"], "rejected");
+    assert_eq!(invalid["error"]["class"], "bip373.nonce_set");
+
+    let repeated = signer.handle_value(
+        request("musig2-partial-sign", &psbt, Some("session-invalid")),
+        DIGEST,
+    );
+    assert_eq!(repeated["status"], "rejected");
+    assert_eq!(repeated["error"]["class"], "musig2.session_missing");
+
+    let reused = signer.handle_value(
+        request("musig2-nonce", &psbt, Some("session-invalid")),
+        DIGEST,
+    );
+    assert_eq!(reused["status"], "rejected");
+    assert_eq!(reused["error"]["class"], "musig2.nonce_reuse");
 }
 
 #[test]

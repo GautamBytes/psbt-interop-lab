@@ -63,7 +63,10 @@ Dockerless parser-only path: the published package currently runs its checksum-p
 JavaScript parser and reports native adapters without a published local binary as `unsupported`.
 Use `matrix` for the complete Core-backed, cross-library signing and finalization proof.
 `baseline` records the standard comparison snapshot, and `compare` replay-verifies both artifact
-directories before reporting scenario status, finding, adapter-cell, and checkpoint digest changes.
+directories before reporting scenario status, finding, adapter-cell, and checkpoint changes.
+Deterministic checkpoints compare exact wire facts. Entropy-bearing MuSig2 checkpoints explicitly
+compare field structure so fresh nonces and signatures do not create false regressions; replay still
+verifies the exact SHA256 of every stored PSBT.
 
 Stop the local regtest node when finished:
 

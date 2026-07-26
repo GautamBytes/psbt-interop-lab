@@ -87,6 +87,33 @@ describe("ArtifactRun", () => {
     });
   });
 
+  test("records and replays a structure-comparison checkpoint without weakening its hash", async () => {
+    const root = await temporaryRoot();
+    const run = await ArtifactRun.create(root, "run-structure");
+    const checkpoint = await run.checkpoint(
+      "happy-path",
+      "entropy-bearing-signature",
+      MINIMAL_PSBT,
+      "structure",
+    );
+    await run.writeManifest(manifest("run-structure", checkpoint));
+
+    expect(checkpoint.comparison).toBe("structure");
+    await expect(verifyReplay(run.directory)).resolves.toMatchObject({
+      runId: "run-structure",
+      verifiedCheckpoints: 1,
+    });
+  });
+
+  test("rejects an unknown checkpoint comparison policy before writing files", async () => {
+    const root = await temporaryRoot();
+    const run = await ArtifactRun.create(root, "run-invalid-policy");
+
+    await expect(
+      run.checkpoint("happy-path", "core-created", MINIMAL_PSBT, "values" as never),
+    ).rejects.toThrow(/comparison/i);
+  });
+
   test("writes the static HTML report with private file permissions", async () => {
     const root = await temporaryRoot();
     const run = await ArtifactRun.create(root, "run-html");
@@ -108,6 +135,20 @@ describe("ArtifactRun", () => {
     });
 
     await expect(verifyReplay(run.directory)).rejects.toThrow(/hash|base64/i);
+  });
+
+  test("replay rejects an unknown checkpoint comparison policy", async () => {
+    const root = await temporaryRoot();
+    const run = await ArtifactRun.create(root, "run-policy");
+    const checkpoint = await run.checkpoint("happy-path", "core-created", MINIMAL_PSBT);
+    await run.writeManifest(
+      manifest("run-policy", {
+        ...checkpoint,
+        comparison: "values" as never,
+      }),
+    );
+
+    await expect(verifyReplay(run.directory)).rejects.toThrow(/comparison/i);
   });
 
   test("replay rejects more than 1000 checkpoints before opening files", async () => {
