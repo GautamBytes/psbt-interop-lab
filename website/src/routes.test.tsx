@@ -220,10 +220,10 @@ describe("website documentation routes", () => {
     render(<App />);
 
     const cliProof = screen.getByRole("img", {
-      name: /v0\.5\.2 quickstart terminal output/i,
+      name: /v0\.7\.0 quickstart terminal output/i,
     });
     const reportProof = screen.getByRole("img", {
-      name: /v0\.5\.2 generated quickstart report/i,
+      name: /v0\.7\.0 generated quickstart report/i,
     });
 
     expect(cliProof).toHaveAttribute("src", expect.stringMatching(/cli-finding-and-replay/));
@@ -231,13 +231,13 @@ describe("website documentation routes", () => {
     expect(cliProof.getAttribute("src")).not.toMatch(/^https?:/);
     expect(reportProof.getAttribute("src")).not.toMatch(/^https?:/);
     expect(
-      screen.getByText(/v0\.7\.0 reports add stable conformance rule IDs/i),
+      screen.getByText(/v0\.7\.0 report includes per-request adapter cells/i),
     ).toBeInTheDocument();
   });
 
   it("maps the public npm walkthrough image URL to the bundled website asset", () => {
     const publicSource =
-      "https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/274d5ec3e88cee27e7bd9e3ad8fdbec4e3f90fc2/docs/assets/walkthrough/cli-finding-and-replay.png";
+      "https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/d4e3eb97200abe400af00124a07b8a0d6b813371/docs/assets/walkthrough/cli-finding-and-replay.png";
 
     const resolved = resolveDocumentImageSrc(publicSource, "");
 

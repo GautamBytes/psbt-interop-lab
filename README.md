@@ -75,15 +75,16 @@ To work from a source checkout instead, install pnpm 10.30.2, run
 
 ## Walkthrough: Verify Your First Real Handoff
 
-This real v0.5.2 quickstart uses the public npm package. It verifies the local requirements, proves
-that all five semantic detector canaries catch their deliberate faults, and runs a Core-created
-PSBT through rust-bitcoin signing and back to Core for finalization and regtest policy acceptance.
+This real v0.7.0 quickstart uses the branch's packed npm package. It verifies the local
+requirements, proves that all five semantic detector canaries catch their deliberate faults, and
+runs a Core-created PSBT through rust-bitcoin signing and back to Core for finalization and regtest
+policy acceptance.
 
 ```bash
-npx --yes psbt-interop-lab@0.5.2 quickstart
+npx --yes psbt-interop-lab@0.7.0 quickstart
 ```
 
-![v0.5.2 quickstart terminal output](https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/274d5ec3e88cee27e7bd9e3ad8fdbec4e3f90fc2/docs/assets/walkthrough/cli-finding-and-replay.png)
+![v0.7.0 quickstart terminal output](https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/d4e3eb97200abe400af00124a07b8a0d6b813371/docs/assets/walkthrough/cli-finding-and-replay.png)
 
 The captured repeated run uses `--no-build` because its two pinned images were already present.
 Omit that flag on the first run and quickstart builds them before executing the same proof.
@@ -100,15 +101,15 @@ evidence still matches its manifest:
 psbt-lab replay artifacts/<run-id>
 ```
 
-![v0.5.2 generated quickstart report](https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/274d5ec3e88cee27e7bd9e3ad8fdbec4e3f90fc2/docs/assets/walkthrough/compatibility-report.png)
+![v0.7.0 generated quickstart report](https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/d4e3eb97200abe400af00124a07b8a0d6b813371/docs/assets/walkthrough/compatibility-report.png)
 
 The report screenshot above comes directly from the generated, self-contained HTML artifact. The
 CLI screenshot is a typeset transcript of the same real run with the two long image digests and
-absolute local artifact path shortened. These images remain an honest v0.5.2 capture; current
-v0.7.0 reports add stable conformance rule IDs, normative levels, authoritative sources,
+absolute local artifact path shortened. The v0.7.0 report includes per-request adapter cells; full
+matrix reports also include stable conformance rule IDs, normative levels, authoritative sources,
 expected-versus-observed behavior, severity, repairability, confidence, exact evidence, adapter
-failure cells, and replay-verified artifact comparison. Run `psbt-lab matrix` when the bounded
-first proof passes and complete cross-library coverage is required.
+failure cells, and replay-verified artifact comparison. Run `psbt-lab matrix` when the bounded first
+proof passes and complete cross-library coverage is required.
 
 ## External Adapters
 

@@ -17,11 +17,12 @@ const coverage = [
   "P2WPKH, nested SegWit, P2WSH, and Taproot fixtures",
   "Signing, combining, finalization, and policy acceptance",
   "Unknown and proprietary metadata preservation",
-  "All official BIP370 valid and invalid vectors",
+  "All official BIP370 and BIP371 valid and invalid vectors",
+  "Native PSBTv2 constructors and bidirectional Taproot handoffs",
+  "Wallet CI Action with external-only, JUnit, and SARIF output",
   "Target one scenario or category for faster iteration",
   "Run bounded bundled parser checks without Docker",
   "Capture baselines and compare replay-verified artifacts",
-  "Adapter failure cells with implementation-level context",
   "Transaction intent, RBF, locktime, sighash, and derivations",
   "Malformed native-parser rejection without crashes",
 ] as const;
@@ -128,7 +129,8 @@ export function Sections() {
             <h2 id="adapter-title">Join the matrix without forking the lab.</h2>
             <p>
               A strict local JSONL adapter protocol lets maintainers test another wallet or library
-              against the bundled scenarios and semantic invariants.
+              against the bundled scenarios and semantic invariants, or run its generated matrix
+              alone in wallet CI.
             </p>
             <div className="adapter-actions">
               <SiteLink className="button button--primary" href={routes.adapterKit}>
