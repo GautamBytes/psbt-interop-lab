@@ -113,6 +113,28 @@ fn sign_profile(fixture_id: &str, encoded: &str, input_indexes: Option<Value>) -
     handle_authorized(request("sign", payload), fixture_id, encoded)
 }
 
+fn sign_profile_with_sighash(fixture_id: &str, encoded: &str, sighash_type: u32) -> Value {
+    sign_profile_with_sighash_and_indexes(fixture_id, encoded, sighash_type, None)
+}
+
+fn sign_profile_with_sighash_and_indexes(
+    fixture_id: &str,
+    encoded: &str,
+    sighash_type: u32,
+    input_indexes: Option<Value>,
+) -> Value {
+    let mut payload = json!({
+        "psbt": encoded,
+        "network": "regtest",
+        "fixtureId": fixture_id,
+        "sighashType": sighash_type
+    });
+    if let Some(input_indexes) = input_indexes {
+        payload["inputIndexes"] = input_indexes;
+    }
+    handle_authorized(request("sign", payload), fixture_id, encoded)
+}
+
 fn decode_psbt(encoded: &str) -> Psbt {
     Psbt::deserialize(&STANDARD.decode(encoded).expect("base64 PSBT")).expect("valid PSBT")
 }
@@ -170,48 +192,109 @@ fn taproot_script_path() -> (ScriptBuf, ScriptBuf, ControlBlock, TapLeafHash) {
 fn unsigned_profile_fixture(fixture_id: &str, input_count: usize) -> String {
     let secp = Secp256k1::new();
     let fixture_public_key = scalar_public_key(1);
-    let (script_pubkey, witness_script, tap_internal_key, tap_script) = match fixture_id {
-        "p2wpkh" | "intent-rich-p2wpkh" => (
-            ScriptBuf::new_p2wpkh(&fixture_public_key.wpubkey_hash().expect("compressed key")),
-            None,
-            None,
-            None,
-        ),
-        "p2wsh-2-of-3" => {
-            let witness_script = multisig_witness_script();
-            (witness_script.to_p2wsh(), Some(witness_script), None, None)
-        }
-        "p2tr-keypath" => {
-            let internal_key = scalar_xonly(1);
-            (
-                ScriptBuf::new_p2tr(&secp, internal_key, None),
+    let (script_pubkey, redeem_script, witness_script, tap_internal_key, tap_script) =
+        match fixture_id {
+            "p2pkh" => (
+                ScriptBuf::new_p2pkh(&fixture_public_key.pubkey_hash()),
                 None,
-                Some(internal_key),
                 None,
-            )
-        }
-        "p2tr-scriptpath" => {
-            let (script_pubkey, leaf_script, control_block, _) = taproot_script_path();
-            (
-                script_pubkey,
                 None,
-                Some(scalar_xonly(1)),
-                Some((control_block, (leaf_script, LeafVersion::TapScript))),
-            )
-        }
-        _ => panic!("unsupported profile fixture"),
-    };
+                None,
+            ),
+            "p2wpkh" | "intent-rich-p2wpkh" | "sighash-p2wpkh" => (
+                ScriptBuf::new_p2wpkh(&fixture_public_key.wpubkey_hash().expect("compressed key")),
+                None,
+                None,
+                None,
+                None,
+            ),
+            "p2wsh-2-of-3" => {
+                let witness_script = multisig_witness_script();
+                (
+                    witness_script.to_p2wsh(),
+                    None,
+                    Some(witness_script),
+                    None,
+                    None,
+                )
+            }
+            "p2sh-p2wsh-2-of-3" => {
+                let witness_script = multisig_witness_script();
+                let redeem_script = witness_script.to_p2wsh();
+                (
+                    redeem_script.to_p2sh(),
+                    Some(redeem_script),
+                    Some(witness_script),
+                    None,
+                    None,
+                )
+            }
+            "p2tr-keypath" | "sighash-p2tr-keypath" => {
+                let internal_key = scalar_xonly(1);
+                (
+                    ScriptBuf::new_p2tr(&secp, internal_key, None),
+                    None,
+                    None,
+                    Some(internal_key),
+                    None,
+                )
+            }
+            "p2tr-scriptpath" => {
+                let (script_pubkey, leaf_script, control_block, _) = taproot_script_path();
+                (
+                    script_pubkey,
+                    None,
+                    None,
+                    Some(scalar_xonly(1)),
+                    Some((control_block, (leaf_script, LeafVersion::TapScript))),
+                )
+            }
+            _ => panic!("unsupported profile fixture"),
+        };
     let funding_output = TxOut {
         value: Amount::from_sat(50_000),
         script_pubkey,
     };
+    let funding_transactions = (0..input_count)
+        .map(|index| Transaction {
+            version: Version::TWO,
+            lock_time: LockTime::ZERO,
+            input: vec![TxIn {
+                previous_output: OutPoint::null(),
+                script_sig: Builder::new()
+                    .push_int(i64::try_from(index + 1).expect("test index"))
+                    .into_script(),
+                sequence: Sequence::MAX,
+                witness: Witness::new(),
+            }],
+            output: vec![funding_output.clone()],
+        })
+        .collect::<Vec<_>>();
+    let fixture_fee = match fixture_id {
+        "p2pkh" => 10_500,
+        "p2wpkh" => 11_000,
+        "p2sh-p2wsh-2-of-3" => 12_500,
+        "p2wsh-2-of-3" => 13_000,
+        "p2tr-keypath" => 14_000,
+        "p2tr-scriptpath" => 14_500,
+        "intent-rich-p2wpkh" => 15_000,
+        "sighash-p2wpkh" => 22_000,
+        "sighash-p2tr-keypath" => 28_000,
+        _ => panic!("missing fixture fee"),
+    };
+    let output_count = if fixture_id.starts_with("sighash-") {
+        input_count
+    } else {
+        1
+    };
+    let spendable = u64::try_from(input_count).expect("test input count") * 50_000 - fixture_fee;
     let spend = Transaction {
         version: Version::TWO,
         lock_time: LockTime::ZERO,
         input: (0..input_count)
             .map(|index| TxIn {
                 previous_output: OutPoint {
-                    txid: Txid::from_byte_array([u8::try_from(index + 1).expect("test index"); 32]),
+                    txid: funding_transactions[index].compute_txid(),
                     vout: 0,
                 },
                 script_sig: ScriptBuf::new(),
@@ -219,16 +302,27 @@ fn unsigned_profile_fixture(fixture_id: &str, input_count: usize) -> String {
                 witness: Witness::new(),
             })
             .collect(),
-        output: vec![TxOut {
-            value: Amount::from_sat(
-                u64::try_from(input_count).expect("test input count") * 50_000 - 10_000,
-            ),
-            script_pubkey: funding_output.script_pubkey.clone(),
-        }],
+        output: (0..output_count)
+            .map(|index| {
+                let quotient = spendable / u64::try_from(output_count).expect("output count");
+                let remainder = spendable % u64::try_from(output_count).expect("output count");
+                TxOut {
+                    value: Amount::from_sat(
+                        quotient + u64::from(index == output_count - 1) * remainder,
+                    ),
+                    script_pubkey: funding_output.script_pubkey.clone(),
+                }
+            })
+            .collect(),
     };
     let mut psbt = Psbt::from_unsigned_tx(spend).expect("unsigned transaction");
-    for input in &mut psbt.inputs {
-        input.witness_utxo = Some(funding_output.clone());
+    for (index, input) in psbt.inputs.iter_mut().enumerate() {
+        if fixture_id == "p2pkh" {
+            input.non_witness_utxo = Some(funding_transactions[index].clone());
+        } else {
+            input.witness_utxo = Some(funding_output.clone());
+        }
+        input.redeem_script = redeem_script.clone();
         input.witness_script = witness_script.clone();
         input.tap_internal_key = tap_internal_key;
         if let Some((control_block, script)) = tap_script.clone() {
@@ -264,47 +358,87 @@ fn unsigned_profile_fixture(fixture_id: &str, input_count: usize) -> String {
 }
 
 fn assert_valid_ecdsa_signature(psbt: &Psbt, input_index: usize) {
+    assert_valid_ecdsa_signature_with_type(psbt, input_index, EcdsaSighashType::All);
+}
+
+fn assert_valid_ecdsa_signature_with_type(
+    psbt: &Psbt,
+    input_index: usize,
+    sighash_type: EcdsaSighashType,
+) {
     let public_key = scalar_public_key(1);
     let input = &psbt.inputs[input_index];
     let signature = input
         .partial_sigs
         .get(&public_key)
         .expect("scalar-1 ECDSA signature");
-    assert_eq!(signature.sighash_type, EcdsaSighashType::All);
-    let funding_output = input.witness_utxo.as_ref().expect("witness UTXO");
+    assert_eq!(signature.sighash_type, sighash_type);
+    let previous_output = psbt.unsigned_tx.input[input_index].previous_output;
+    let funding_output = input.witness_utxo.as_ref().unwrap_or_else(|| {
+        input
+            .non_witness_utxo
+            .as_ref()
+            .expect("non-witness UTXO")
+            .output
+            .get(previous_output.vout as usize)
+            .expect("referenced funding output")
+    });
     let mut cache = SighashCache::new(&psbt.unsigned_tx);
-    let sighash = match input.witness_script.as_ref() {
-        Some(witness_script) => cache
-            .p2wsh_signature_hash(
-                input_index,
-                witness_script,
-                funding_output.value,
-                EcdsaSighashType::All,
-            )
-            .expect("P2WSH sighash"),
-        None => cache
-            .p2wpkh_signature_hash(
-                input_index,
-                &funding_output.script_pubkey,
-                funding_output.value,
-                EcdsaSighashType::All,
-            )
-            .expect("P2WPKH sighash"),
+    let message = if funding_output.script_pubkey.is_p2pkh() {
+        Message::from(
+            cache
+                .legacy_signature_hash(
+                    input_index,
+                    &funding_output.script_pubkey,
+                    sighash_type.to_u32(),
+                )
+                .expect("P2PKH sighash"),
+        )
+    } else {
+        Message::from(match input.witness_script.as_ref() {
+            Some(witness_script) => cache
+                .p2wsh_signature_hash(
+                    input_index,
+                    witness_script,
+                    funding_output.value,
+                    sighash_type,
+                )
+                .expect("P2WSH sighash"),
+            None => cache
+                .p2wpkh_signature_hash(
+                    input_index,
+                    &funding_output.script_pubkey,
+                    funding_output.value,
+                    sighash_type,
+                )
+                .expect("P2WPKH sighash"),
+        })
     };
     Secp256k1::verification_only()
-        .verify_ecdsa(
-            &Message::from(sighash),
-            &signature.signature,
-            &public_key.inner,
-        )
+        .verify_ecdsa(&message, &signature.signature, &public_key.inner)
         .expect("valid scalar-1 ECDSA signature");
 }
 
 fn assert_valid_taproot_signature(psbt: &Psbt, input_index: usize) {
+    assert_valid_taproot_signature_with_type(psbt, input_index, TapSighashType::Default);
+}
+
+fn assert_valid_taproot_signature_with_type(
+    psbt: &Psbt,
+    input_index: usize,
+    sighash_type: TapSighashType,
+) {
     let input = &psbt.inputs[input_index];
     let signature = input.tap_key_sig.as_ref().expect("Taproot key signature");
-    assert_eq!(signature.sighash_type, TapSighashType::Default);
-    assert_eq!(signature.to_vec().len(), 64);
+    assert_eq!(signature.sighash_type, sighash_type);
+    assert_eq!(
+        signature.to_vec().len(),
+        if sighash_type == TapSighashType::Default {
+            64
+        } else {
+            65
+        }
+    );
     let prevouts = psbt
         .inputs
         .iter()
@@ -312,11 +446,7 @@ fn assert_valid_taproot_signature(psbt: &Psbt, input_index: usize) {
         .collect::<Vec<_>>();
     let mut cache = SighashCache::new(&psbt.unsigned_tx);
     let sighash = cache
-        .taproot_key_spend_signature_hash(
-            input_index,
-            &Prevouts::All(&prevouts),
-            TapSighashType::Default,
-        )
+        .taproot_key_spend_signature_hash(input_index, &Prevouts::All(&prevouts), sighash_type)
         .expect("Taproot key-path sighash");
     let secp = Secp256k1::verification_only();
     let output_key = scalar_xonly(1)
@@ -325,6 +455,67 @@ fn assert_valid_taproot_signature(psbt: &Psbt, input_index: usize) {
         .to_x_only_public_key();
     secp.verify_schnorr(&signature.signature, &Message::from(sighash), &output_key)
         .expect("valid tweaked scalar-1 Schnorr signature");
+}
+
+fn p2wpkh_signature_is_valid_for_transaction(
+    psbt: &Psbt,
+    transaction: &Transaction,
+    input_index: usize,
+    sighash_type: EcdsaSighashType,
+) -> bool {
+    let public_key = scalar_public_key(1);
+    let input = &psbt.inputs[input_index];
+    let Some(signature) = input.partial_sigs.get(&public_key) else {
+        return false;
+    };
+    let Some(funding_output) = input.witness_utxo.as_ref() else {
+        return false;
+    };
+    let Ok(sighash) = SighashCache::new(transaction).p2wpkh_signature_hash(
+        input_index,
+        &funding_output.script_pubkey,
+        funding_output.value,
+        sighash_type,
+    ) else {
+        return false;
+    };
+    Secp256k1::verification_only()
+        .verify_ecdsa(
+            &Message::from(sighash),
+            &signature.signature,
+            &public_key.inner,
+        )
+        .is_ok()
+}
+
+fn taproot_signature_is_valid_for_transaction(
+    psbt: &Psbt,
+    transaction: &Transaction,
+    input_index: usize,
+    sighash_type: TapSighashType,
+) -> bool {
+    let Some(signature) = psbt.inputs[input_index].tap_key_sig.as_ref() else {
+        return false;
+    };
+    let prevouts = psbt
+        .inputs
+        .iter()
+        .map(|input| input.witness_utxo.clone().expect("validated prevout"))
+        .collect::<Vec<_>>();
+    let Ok(sighash) = SighashCache::new(transaction).taproot_key_spend_signature_hash(
+        input_index,
+        &Prevouts::All(&prevouts),
+        sighash_type,
+    ) else {
+        return false;
+    };
+    let secp = Secp256k1::verification_only();
+    let output_key = scalar_xonly(1)
+        .tap_tweak(&secp, None)
+        .0
+        .to_x_only_public_key();
+    secp.verify_schnorr(&signature.signature, &Message::from(sighash), &output_key)
+        .is_ok()
 }
 
 fn assert_valid_taproot_script_signature(psbt: &Psbt, input_index: usize) {
@@ -369,13 +560,17 @@ fn negotiates_supported_operations() {
             "operations": ["hello", "native-parse", "roundtrip", "sign", "finalize-inputs"],
             "roles": ["parser", "signer", "finalizer"],
             "psbtVersions": [0],
-            "scriptTypes": ["p2wpkh", "p2sh-p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
+            "scriptTypes": ["p2pkh", "p2wpkh", "p2sh-p2wpkh", "p2sh-p2wsh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
             "operationScriptTypes": {
-                "roundtrip": ["p2wpkh", "p2sh-p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
-                "sign": ["p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
+                "roundtrip": ["p2pkh", "p2wpkh", "p2sh-p2wpkh", "p2sh-p2wsh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
+                "sign": ["p2pkh", "p2wpkh", "p2sh-p2wsh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
                 "finalize-inputs": ["p2wsh", "p2tr-scriptpath"]
             },
-            "features": ["fixture-commitment-sha256"]
+            "features": [
+                "fixture-commitment-sha256",
+                "sighash-matrix-v1",
+                "adversarial-signer-inputs-v1"
+            ]
         })
     );
 }
@@ -557,6 +752,34 @@ fn contributes_scalar_one_to_the_exact_ordered_two_of_three_script() {
 }
 
 #[test]
+fn signs_exact_p2pkh_with_non_witness_utxo() {
+    let encoded = unsigned_profile_fixture("p2pkh", 1);
+    let response = sign_profile("p2pkh", &encoded, None);
+
+    assert_eq!(response["status"], "ok", "{response}");
+    let signed = response_psbt(&response);
+    assert!(signed.inputs[0].witness_utxo.is_none());
+    assert!(signed.inputs[0].non_witness_utxo.is_some());
+    assert_valid_ecdsa_signature(&signed, 0);
+}
+
+#[test]
+fn signs_exact_nested_p2sh_p2wsh_multisig_profile() {
+    let encoded = unsigned_profile_fixture("p2sh-p2wsh-2-of-3", 1);
+    let response = sign_profile("p2sh-p2wsh-2-of-3", &encoded, None);
+
+    assert_eq!(response["status"], "ok", "{response}");
+    let signed = response_psbt(&response);
+    let witness_script = multisig_witness_script();
+    assert_eq!(
+        signed.inputs[0].redeem_script,
+        Some(witness_script.to_p2wsh())
+    );
+    assert_eq!(signed.inputs[0].witness_script, Some(witness_script));
+    assert_valid_ecdsa_signature(&signed, 0);
+}
+
+#[test]
 fn signs_exact_p2tr_keypath_with_default_sighash() {
     let encoded = unsigned_profile_fixture("p2tr-keypath", 1);
     let response = sign_profile("p2tr-keypath", &encoded, None);
@@ -694,6 +917,308 @@ fn rejects_non_default_taproot_sighashes() {
     assert_eq!(response["status"], "rejected", "{response}");
     assert_eq!(response["error"]["class"], "policy.psbt_not_authorized");
     assert!(response.get("output").is_none());
+}
+
+#[test]
+fn signs_all_standard_ecdsa_sighashes_for_matrix_fixture() {
+    let sighash_types = [
+        EcdsaSighashType::All,
+        EcdsaSighashType::None,
+        EcdsaSighashType::Single,
+        EcdsaSighashType::AllPlusAnyoneCanPay,
+        EcdsaSighashType::NonePlusAnyoneCanPay,
+        EcdsaSighashType::SinglePlusAnyoneCanPay,
+    ];
+    for sighash_type in sighash_types {
+        let mut psbt = decode_psbt(&unsigned_profile_fixture("sighash-p2wpkh", 2));
+        for input in &mut psbt.inputs {
+            input.sighash_type = Some(PsbtSighashType::from(sighash_type));
+        }
+        let encoded = STANDARD.encode(psbt.serialize());
+        let response = sign_profile_with_sighash("sighash-p2wpkh", &encoded, sighash_type.to_u32());
+
+        assert_eq!(response["status"], "ok", "{sighash_type}: {response}");
+        let signed = response_psbt(&response);
+        for input_index in 0..signed.inputs.len() {
+            assert_valid_ecdsa_signature_with_type(&signed, input_index, sighash_type);
+        }
+    }
+}
+
+#[test]
+fn ecdsa_sighash_commitments_match_permitted_mutations() {
+    let sighash_types = [
+        EcdsaSighashType::All,
+        EcdsaSighashType::None,
+        EcdsaSighashType::Single,
+        EcdsaSighashType::AllPlusAnyoneCanPay,
+        EcdsaSighashType::NonePlusAnyoneCanPay,
+        EcdsaSighashType::SinglePlusAnyoneCanPay,
+    ];
+    for sighash_type in sighash_types {
+        let mut psbt = decode_psbt(&unsigned_profile_fixture("sighash-p2wpkh", 2));
+        for input in &mut psbt.inputs {
+            input.sighash_type = Some(PsbtSighashType::from(sighash_type));
+        }
+        let encoded = STANDARD.encode(psbt.serialize());
+        let response = sign_profile_with_sighash_and_indexes(
+            "sighash-p2wpkh",
+            &encoded,
+            sighash_type.to_u32(),
+            Some(json!([0])),
+        );
+        assert_eq!(response["status"], "ok", "{sighash_type}: {response}");
+        let signed = response_psbt(&response);
+
+        let mut committed_input_mutation = signed.unsigned_tx.clone();
+        let sequence = committed_input_mutation.input[0]
+            .sequence
+            .to_consensus_u32();
+        committed_input_mutation.input[0].sequence = Sequence::from_consensus(sequence ^ 1);
+        assert!(
+            !p2wpkh_signature_is_valid_for_transaction(
+                &signed,
+                &committed_input_mutation,
+                0,
+                sighash_type
+            ),
+            "{sighash_type} accepted a mutation to the signed input"
+        );
+
+        if matches!(
+            sighash_type,
+            EcdsaSighashType::None | EcdsaSighashType::NonePlusAnyoneCanPay
+        ) {
+            let mut permitted_output_mutation = signed.unsigned_tx.clone();
+            let value = permitted_output_mutation.output[0].value.to_sat();
+            permitted_output_mutation.output[0].value = Amount::from_sat(value + 1);
+            assert!(
+                p2wpkh_signature_is_valid_for_transaction(
+                    &signed,
+                    &permitted_output_mutation,
+                    0,
+                    sighash_type
+                ),
+                "{sighash_type} committed an output despite SIGHASH_NONE"
+            );
+        }
+
+        if matches!(
+            sighash_type,
+            EcdsaSighashType::Single | EcdsaSighashType::SinglePlusAnyoneCanPay
+        ) {
+            let mut permitted_output_mutation = signed.unsigned_tx.clone();
+            let value = permitted_output_mutation.output[1].value.to_sat();
+            permitted_output_mutation.output[1].value = Amount::from_sat(value + 1);
+            assert!(
+                p2wpkh_signature_is_valid_for_transaction(
+                    &signed,
+                    &permitted_output_mutation,
+                    0,
+                    sighash_type
+                ),
+                "{sighash_type} committed an output other than the matching SINGLE output"
+            );
+        }
+
+        if matches!(
+            sighash_type,
+            EcdsaSighashType::AllPlusAnyoneCanPay
+                | EcdsaSighashType::NonePlusAnyoneCanPay
+                | EcdsaSighashType::SinglePlusAnyoneCanPay
+        ) {
+            let mut permitted_input_mutation = signed.unsigned_tx.clone();
+            let sequence = permitted_input_mutation.input[1]
+                .sequence
+                .to_consensus_u32();
+            permitted_input_mutation.input[1].sequence = Sequence::from_consensus(sequence ^ 1);
+            assert!(
+                p2wpkh_signature_is_valid_for_transaction(
+                    &signed,
+                    &permitted_input_mutation,
+                    0,
+                    sighash_type
+                ),
+                "{sighash_type} committed another input despite ANYONECANPAY"
+            );
+        }
+    }
+}
+
+#[test]
+fn signs_all_standard_taproot_sighashes_for_matrix_fixture() {
+    let sighash_types = [
+        TapSighashType::Default,
+        TapSighashType::All,
+        TapSighashType::None,
+        TapSighashType::Single,
+        TapSighashType::AllPlusAnyoneCanPay,
+        TapSighashType::NonePlusAnyoneCanPay,
+        TapSighashType::SinglePlusAnyoneCanPay,
+    ];
+    for sighash_type in sighash_types {
+        let mut psbt = decode_psbt(&unsigned_profile_fixture("sighash-p2tr-keypath", 2));
+        if sighash_type != TapSighashType::Default {
+            for input in &mut psbt.inputs {
+                input.sighash_type = Some(PsbtSighashType::from(sighash_type));
+            }
+        }
+        let encoded = STANDARD.encode(psbt.serialize());
+        let response =
+            sign_profile_with_sighash("sighash-p2tr-keypath", &encoded, sighash_type as u32);
+
+        assert_eq!(response["status"], "ok", "{sighash_type}: {response}");
+        let signed = response_psbt(&response);
+        for input_index in 0..signed.inputs.len() {
+            assert_valid_taproot_signature_with_type(&signed, input_index, sighash_type);
+        }
+    }
+}
+
+#[test]
+fn taproot_sighash_commitments_match_permitted_mutations() {
+    let sighash_types = [
+        TapSighashType::Default,
+        TapSighashType::All,
+        TapSighashType::None,
+        TapSighashType::Single,
+        TapSighashType::AllPlusAnyoneCanPay,
+        TapSighashType::NonePlusAnyoneCanPay,
+        TapSighashType::SinglePlusAnyoneCanPay,
+    ];
+    for sighash_type in sighash_types {
+        let mut psbt = decode_psbt(&unsigned_profile_fixture("sighash-p2tr-keypath", 2));
+        if sighash_type != TapSighashType::Default {
+            for input in &mut psbt.inputs {
+                input.sighash_type = Some(PsbtSighashType::from(sighash_type));
+            }
+        }
+        let encoded = STANDARD.encode(psbt.serialize());
+        let response = sign_profile_with_sighash_and_indexes(
+            "sighash-p2tr-keypath",
+            &encoded,
+            sighash_type as u32,
+            Some(json!([0])),
+        );
+        assert_eq!(response["status"], "ok", "{sighash_type}: {response}");
+        let signed = response_psbt(&response);
+
+        let mut committed_input_mutation = signed.unsigned_tx.clone();
+        let sequence = committed_input_mutation.input[0]
+            .sequence
+            .to_consensus_u32();
+        committed_input_mutation.input[0].sequence = Sequence::from_consensus(sequence ^ 1);
+        assert!(
+            !taproot_signature_is_valid_for_transaction(
+                &signed,
+                &committed_input_mutation,
+                0,
+                sighash_type
+            ),
+            "{sighash_type} accepted a mutation to the signed input"
+        );
+
+        if matches!(
+            sighash_type,
+            TapSighashType::None | TapSighashType::NonePlusAnyoneCanPay
+        ) {
+            let mut permitted_output_mutation = signed.unsigned_tx.clone();
+            let value = permitted_output_mutation.output[0].value.to_sat();
+            permitted_output_mutation.output[0].value = Amount::from_sat(value + 1);
+            assert!(
+                taproot_signature_is_valid_for_transaction(
+                    &signed,
+                    &permitted_output_mutation,
+                    0,
+                    sighash_type
+                ),
+                "{sighash_type} committed an output despite SIGHASH_NONE"
+            );
+        }
+
+        if matches!(
+            sighash_type,
+            TapSighashType::Single | TapSighashType::SinglePlusAnyoneCanPay
+        ) {
+            let mut permitted_output_mutation = signed.unsigned_tx.clone();
+            let value = permitted_output_mutation.output[1].value.to_sat();
+            permitted_output_mutation.output[1].value = Amount::from_sat(value + 1);
+            assert!(
+                taproot_signature_is_valid_for_transaction(
+                    &signed,
+                    &permitted_output_mutation,
+                    0,
+                    sighash_type
+                ),
+                "{sighash_type} committed an output other than the matching SINGLE output"
+            );
+        }
+
+        if matches!(
+            sighash_type,
+            TapSighashType::AllPlusAnyoneCanPay
+                | TapSighashType::NonePlusAnyoneCanPay
+                | TapSighashType::SinglePlusAnyoneCanPay
+        ) {
+            let mut permitted_input_mutation = signed.unsigned_tx.clone();
+            let sequence = permitted_input_mutation.input[1]
+                .sequence
+                .to_consensus_u32();
+            permitted_input_mutation.input[1].sequence = Sequence::from_consensus(sequence ^ 1);
+            assert!(
+                taproot_signature_is_valid_for_transaction(
+                    &signed,
+                    &permitted_input_mutation,
+                    0,
+                    sighash_type
+                ),
+                "{sighash_type} committed another input despite ANYONECANPAY"
+            );
+        }
+    }
+}
+
+#[test]
+fn rejects_invalid_taproot_default_anyonecanpay() {
+    let mut psbt = decode_psbt(&unsigned_profile_fixture("sighash-p2tr-keypath", 2));
+    for input in &mut psbt.inputs {
+        input.sighash_type = Some(PsbtSighashType::from_u32(0x80));
+    }
+    let encoded = STANDARD.encode(psbt.serialize());
+    let response = sign_profile_with_sighash("sighash-p2tr-keypath", &encoded, 0x80);
+
+    assert_eq!(response["status"], "rejected", "{response}");
+    assert_eq!(response["error"]["class"], "policy.psbt_not_authorized");
+}
+
+#[test]
+fn rejects_invalid_ecdsa_sighash_for_matrix_fixture() {
+    let mut psbt = decode_psbt(&unsigned_profile_fixture("sighash-p2wpkh", 2));
+    for input in &mut psbt.inputs {
+        input.sighash_type = Some(PsbtSighashType::from_u32(0x04));
+    }
+    let encoded = STANDARD.encode(psbt.serialize());
+    let response = sign_profile_with_sighash("sighash-p2wpkh", &encoded, 0x04);
+
+    assert_eq!(response["status"], "rejected", "{response}");
+    assert_eq!(response["error"]["class"], "policy.psbt_not_authorized");
+}
+
+#[test]
+fn rejects_unexpected_bip32_derivation() {
+    let mut psbt = decode_psbt(&unsigned_profile_fixture("p2wpkh", 1));
+    psbt.inputs[0].bip32_derivation.insert(
+        scalar_public_key(2).inner,
+        (
+            Fingerprint::from([0xde, 0xad, 0xbe, 0xef]),
+            DerivationPath::default(),
+        ),
+    );
+    let encoded = STANDARD.encode(psbt.serialize());
+    let response = sign_profile("p2wpkh", &encoded, None);
+
+    assert_eq!(response["status"], "rejected", "{response}");
+    assert_eq!(response["error"]["class"], "policy.psbt_not_authorized");
 }
 
 #[test]

@@ -1,4 +1,5 @@
 import customSuiteExample from "../../../examples/custom-suite.json?raw";
+import parserRegressionExample from "../../../examples/parser-regression-suite.json?raw";
 import adapterManifestSchema from "../../../src/conformance/adapter-manifest.schema.json?raw";
 import customSuiteSchema from "../../../src/custom/suite-manifest.schema.json?raw";
 import { repositoryUrl } from "../content";
@@ -47,6 +48,17 @@ export const repositoryResources: RepositoryResource[] = [
     kind: "file",
     language: "json",
     content: customSuiteExample,
+  },
+  {
+    route: "/files/examples/parser-regression-suite.json",
+    label: "Parser regression suite example",
+    description:
+      "A Dockerless suite v0.2 regression that mutates a committed PSBT and checks parser classifications.",
+    sourcePath: "examples/parser-regression-suite.json",
+    sourceUrl: `${repositoryUrl}/blob/main/examples/parser-regression-suite.json`,
+    kind: "file",
+    language: "json",
+    content: parserRegressionExample,
   },
   {
     route: "/files/examples/wallet-ci-adapter",

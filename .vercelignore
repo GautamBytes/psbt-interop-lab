@@ -17,6 +17,7 @@
 
 !examples
 !examples/custom-suite.json
+!examples/parser-regression-suite.json
 
 !src
 !src/conformance

@@ -10,19 +10,28 @@ describe("fixture profile definitions", () => {
     });
     expect(JSON.stringify(FIXTURE_PUBLIC_KEYS)).not.toMatch(/priv|secret|["']0{63}[1-3]["']/i);
     expect(FIXTURE_PROFILES.map((profile) => profile.id)).toEqual([
+      "p2pkh",
       "p2wpkh",
       "p2sh-p2wpkh",
+      "p2sh-p2wsh-2-of-3",
       "p2wsh-single-key",
       "p2wsh-2-of-3",
       "p2tr-keypath",
       "p2tr-scriptpath",
       "mixed-p2wpkh-p2tr",
       "intent-rich-p2wpkh",
+      "sighash-p2wpkh",
+      "sighash-p2tr-keypath",
     ]);
   });
 
   test("declares exact descriptor requirements without secret material", () => {
     expect(FIXTURE_PROFILES).toMatchObject([
+      {
+        id: "p2pkh",
+        scriptTypes: ["p2pkh"],
+        inputDescriptorIds: ["p2pkh"],
+      },
       {
         id: "p2wpkh",
         scriptTypes: ["p2wpkh"],
@@ -32,6 +41,11 @@ describe("fixture profile definitions", () => {
         id: "p2sh-p2wpkh",
         scriptTypes: ["p2sh-p2wpkh"],
         inputDescriptorIds: ["p2sh-p2wpkh"],
+      },
+      {
+        id: "p2sh-p2wsh-2-of-3",
+        scriptTypes: ["p2sh-p2wsh"],
+        inputDescriptorIds: ["p2sh-p2wsh-2-of-3"],
       },
       {
         id: "p2wsh-single-key",
@@ -67,11 +81,27 @@ describe("fixture profile definitions", () => {
         locktime: 42,
         transactionVersion: 2,
       },
+      {
+        id: "sighash-p2wpkh",
+        scriptTypes: ["p2wpkh"],
+        inputDescriptorIds: ["p2wpkh", "p2wpkh"],
+        outputDescriptorIds: ["p2wpkh", "p2tr-keypath"],
+      },
+      {
+        id: "sighash-p2tr-keypath",
+        scriptTypes: ["p2tr-keypath"],
+        inputDescriptorIds: ["p2tr-keypath", "p2tr-keypath"],
+        outputDescriptorIds: ["p2tr-keypath", "p2wpkh"],
+      },
     ]);
 
     const descriptors = FIXTURE_PROFILES.flatMap((profile) => profile.descriptors);
+    expect(descriptors).toContain(`pkh(${FIXTURE_PUBLIC_KEYS.scalar1})`);
     expect(descriptors).toContain(`wpkh(${FIXTURE_PUBLIC_KEYS.scalar1})`);
     expect(descriptors).toContain(`sh(wpkh(${FIXTURE_PUBLIC_KEYS.scalar1}))`);
+    expect(descriptors).toContain(
+      `sh(wsh(multi(2,${FIXTURE_PUBLIC_KEYS.scalar1},${FIXTURE_PUBLIC_KEYS.scalar2},${FIXTURE_PUBLIC_KEYS.scalar3})))`,
+    );
     expect(descriptors).toContain(`wsh(pk(${FIXTURE_PUBLIC_KEYS.scalar1}))`);
     expect(descriptors).toContain(
       `wsh(multi(2,${FIXTURE_PUBLIC_KEYS.scalar1},${FIXTURE_PUBLIC_KEYS.scalar2},${FIXTURE_PUBLIC_KEYS.scalar3}))`,

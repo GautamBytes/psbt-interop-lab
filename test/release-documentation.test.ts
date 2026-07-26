@@ -82,7 +82,7 @@ describe("release documentation", () => {
     const normalizedReadme = readme.replace(/\s+/g, " ");
 
     expect(normalizedReadme).toContain("bounded first-run proof");
-    expect(normalizedReadme).toContain("complete 39-scenario matrix");
+    expect(normalizedReadme).toContain("complete 45-scenario matrix");
     expect(normalizedReadme).toContain("five semantic detector canaries");
     expect(normalizedReadme).toContain("stops the local regtest node automatically");
     expect(readme).not.toContain("focused v0.5.1 run");

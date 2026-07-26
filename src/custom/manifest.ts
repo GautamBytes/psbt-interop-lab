@@ -1,9 +1,14 @@
+import { createHash } from "node:crypto";
 import { open } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { FixtureDescriptorId } from "../core/fixture-profiles.js";
+import type { ParserClassification } from "../fuzz/differential.js";
 import { validateCustomSuiteManifest as generatedValidateManifest } from "../generated/validators.js";
+import { type PsbtDocument, parsePsbtDocument } from "../psbt/document.js";
+import type { PsbtMutationRecipe } from "../psbt/mutation.js";
 
-export const CUSTOM_SUITE_SCHEMA = "psbt-lab.suite/0.1" as const;
+export const CUSTOM_SUITE_SCHEMA = "psbt-lab.suite/0.2" as const;
+export const LEGACY_CUSTOM_SUITE_SCHEMA = "psbt-lab.suite/0.1" as const;
 const MAX_MANIFEST_BYTES = 1024 * 1024;
 
 export interface UserFixtureInputSpec {
@@ -22,6 +27,12 @@ export interface UserFixtureSpec {
   readonly feeSats: number;
   readonly locktime: number;
   readonly transactionVersion: 2;
+}
+
+export interface UserParserFixtureSpec {
+  readonly id: string;
+  readonly psbt: string;
+  readonly sha256: `sha256:${string}`;
 }
 
 export interface UserAdapterStepSpec {
@@ -44,7 +55,27 @@ export interface UserCoreStepSpec {
   readonly input: string;
 }
 
-export type UserScenarioStepSpec = UserAdapterStepSpec | UserCombineStepSpec | UserCoreStepSpec;
+export interface UserMutateStepSpec {
+  readonly id: string;
+  readonly operation: "mutate";
+  readonly input: string;
+  readonly recipes: readonly PsbtMutationRecipe[];
+}
+
+export interface UserCompareParsersStepSpec {
+  readonly id: string;
+  readonly operation: "compare-parsers";
+  readonly input: string;
+  readonly adapters: readonly string[];
+  readonly expected: Readonly<Record<string, ParserClassification>>;
+}
+
+export type UserScenarioStepSpec =
+  | UserAdapterStepSpec
+  | UserCombineStepSpec
+  | UserCoreStepSpec
+  | UserMutateStepSpec
+  | UserCompareParsersStepSpec;
 
 export interface UserScenarioSpec {
   readonly id: string;
@@ -54,8 +85,9 @@ export interface UserScenarioSpec {
 }
 
 export interface CustomSuiteManifest {
-  readonly schema: typeof CUSTOM_SUITE_SCHEMA;
+  readonly schema: typeof CUSTOM_SUITE_SCHEMA | typeof LEGACY_CUSTOM_SUITE_SCHEMA;
   readonly fixtures: readonly UserFixtureSpec[];
+  readonly parserFixtures?: readonly UserParserFixtureSpec[];
   readonly scenarios: readonly UserScenarioSpec[];
 }
 
@@ -92,6 +124,21 @@ function validateFixtureSemantics(fixtures: readonly UserFixtureSpec[]): void {
   }
 }
 
+function validateParserFixtures(fixtures: readonly UserParserFixtureSpec[]): void {
+  for (const fixture of fixtures) {
+    let document: PsbtDocument;
+    try {
+      document = parsePsbtDocument(fixture.psbt);
+    } catch {
+      throw manifestError(`parser fixture ${fixture.id} is not a valid base PSBT`);
+    }
+    const digest = `sha256:${createHash("sha256").update(document.bytes).digest("hex")}`;
+    if (digest !== fixture.sha256) {
+      throw manifestError(`parser fixture ${fixture.id} does not match its sha256 commitment`);
+    }
+  }
+}
+
 function validateScenarioDataflow(scenarios: readonly UserScenarioSpec[]): void {
   for (const scenario of scenarios) {
     const available = new Set(["fixture"]);
@@ -110,6 +157,20 @@ function validateScenarioDataflow(scenarios: readonly UserScenarioSpec[]): void 
           );
         }
       }
+      if (step.operation === "compare-parsers") {
+        if (new Set(step.adapters).size !== step.adapters.length) {
+          throw manifestError(`scenario ${scenario.id} step ${step.id} repeats an adapter`);
+        }
+        const expectedAdapters = new Set(["lab", ...step.adapters]);
+        if (
+          Object.keys(step.expected).some((adapter) => !expectedAdapters.has(adapter)) ||
+          [...expectedAdapters].some((adapter) => step.expected[adapter] === undefined)
+        ) {
+          throw manifestError(
+            `scenario ${scenario.id} step ${step.id} expected outcomes must match lab and adapters`,
+          );
+        }
+      }
       available.add(step.id);
     }
   }
@@ -122,10 +183,29 @@ export function parseCustomSuiteManifest(value: unknown): CustomSuiteManifest {
       .join("; ");
     throw manifestError(details);
   }
-  requireUniqueIds(value.fixtures, "fixture");
+  if (
+    value.schema === LEGACY_CUSTOM_SUITE_SCHEMA &&
+    (value.parserFixtures !== undefined ||
+      value.scenarios.some((scenario) =>
+        scenario.steps.some(
+          (step) => step.operation === "mutate" || step.operation === "compare-parsers",
+        ),
+      ))
+  ) {
+    throw manifestError("schema 0.1 cannot contain parser regression features");
+  }
+  const parserFixtures = value.parserFixtures ?? [];
+  requireUniqueIds([...value.fixtures, ...parserFixtures], "fixture");
   requireUniqueIds(value.scenarios, "scenario");
   validateFixtureSemantics(value.fixtures);
+  validateParserFixtures(parserFixtures);
   validateScenarioDataflow(value.scenarios);
+  const fixtureIds = new Set([...value.fixtures, ...parserFixtures].map(({ id }) => id));
+  for (const scenario of value.scenarios) {
+    if (!fixtureIds.has(scenario.fixture)) {
+      throw manifestError(`scenario ${scenario.id} references unknown fixture ${scenario.fixture}`);
+    }
+  }
   return value;
 }
 

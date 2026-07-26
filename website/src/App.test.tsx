@@ -23,6 +23,10 @@ describe("PSBT Interop Lab website", () => {
       screen.getByText(/run the same transaction through real bitcoin libraries/i),
     ).toBeInTheDocument();
     expect(screen.getByText("Dockerless parser checks")).toBeInTheDocument();
+    expect(screen.getByText("ECDSA and Taproot sighash commitment matrices")).toBeInTheDocument();
+    expect(
+      screen.getByText("Seed, minimize, and promote differential parser fuzzing"),
+    ).toBeInTheDocument();
     expect(
       screen.getByText("Target one scenario or category for faster iteration"),
     ).toBeInTheDocument();
@@ -32,7 +36,7 @@ describe("PSBT Interop Lab website", () => {
       "/docs#quick-start",
     );
     expect(screen.getByText(/quickstart proves one real handoff/i)).toBeInTheDocument();
-    expect(screen.getByText(/matrix runs all 39 bundled scenarios/i)).toBeInTheDocument();
+    expect(screen.getByText(/matrix runs all 45 bundled scenarios/i)).toBeInTheDocument();
     expect(screen.getByText("PSBT Interop Lab 0.7.0")).toBeInTheDocument();
     expect(screen.getByText(/available now as version 0\.7\.0/i)).toBeInTheDocument();
   });

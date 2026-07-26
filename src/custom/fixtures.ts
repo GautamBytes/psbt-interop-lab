@@ -5,7 +5,9 @@ import {
   type FixtureDescriptorId,
   type FixtureScriptType,
 } from "../core/fixture-profiles.js";
-import type { UserFixtureOutputSpec, UserFixtureSpec } from "./manifest.js";
+import type { PsbtFixture } from "../core/fixtures.js";
+import { parsePsbtDocument } from "../psbt/document.js";
+import type { UserFixtureOutputSpec, UserFixtureSpec, UserParserFixtureSpec } from "./manifest.js";
 
 const BUILT_IN_FIXTURE_IDS = new Set([
   "happy-path",
@@ -80,4 +82,35 @@ export function compileUserFixturePlans(
   return [...specs]
     .sort((left, right) => left.id.localeCompare(right.id))
     .map(compileUserFixturePlan);
+}
+
+export function compileUserParserFixtures(
+  specs: readonly UserParserFixtureSpec[],
+): ReadonlyMap<string, PsbtFixture> {
+  return new Map(
+    specs.map((spec) => {
+      if (BUILT_IN_FIXTURE_IDS.has(spec.id)) {
+        throw new TypeError(`Parser fixture ${spec.id} collides with a built-in fixture id`);
+      }
+      const document = parsePsbtDocument(spec.psbt);
+      return [
+        spec.id,
+        {
+          id: spec.id,
+          initialPsbt: spec.psbt,
+          outpoints: [],
+          inputCount: document.inputCount,
+          outputCount: document.outputCount,
+          feeSats: 0,
+          scriptTypes: [],
+          inputDescriptors: [],
+          outputDescriptor: "",
+          psbtVersion: document.psbtVersion,
+          transactionId: "0".repeat(64),
+          psbtSha256: document.sha256,
+          unsignedTxSha256: `sha256:${document.sha256}`,
+        } as PsbtFixture,
+      ] as const;
+    }),
+  );
 }

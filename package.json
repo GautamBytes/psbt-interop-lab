@@ -57,6 +57,7 @@
     "adapters/libwally-1.5.4/*.py",
     "adapters/libwally-1.5.4/build-requirements.txt",
     "examples/custom-suite.json",
+    "examples/parser-regression-suite.json",
     "docs/*.md",
     "README.md",
     "SECURITY.md",

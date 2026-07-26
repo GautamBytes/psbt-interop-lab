@@ -27,7 +27,7 @@ semantic detector canaries, then completes one real Bitcoin Core -> rust-bitcoin
 signing and finalization handoff. It writes the same replayable reports as the full suite and stops
 the local regtest node automatically.
 
-For exhaustive compatibility testing, install the CLI once and run the complete 39-scenario matrix:
+For exhaustive compatibility testing, install the CLI once and run the complete 45-scenario matrix:
 
 ```bash
 npm install --global psbt-interop-lab@0.7.0
@@ -50,6 +50,7 @@ psbt-lab list
 psbt-lab run --scenario psbtv2-2-of-3-cross-library
 psbt-lab run --category taproot-scriptpath
 psbt-lab parse-matrix --runtime local
+psbt-lab fuzz --runtime local --seed 42 --cases 64
 psbt-lab baseline
 psbt-lab compare artifacts/<baseline-run-id> artifacts/<candidate-run-id>
 psbt-lab replay artifacts/<run-id>
@@ -91,7 +92,7 @@ Omit that flag on the first run and quickstart builds them before executing the 
 
 The command is intentionally smaller than `matrix`: it proves that the installation, detector
 invariants, real-library handoff, Bitcoin Core oracle, artifact writer, and cleanup path work before
-a developer spends time on the complete suite. A passing quickstart is not a claim that all 39
+a developer spends time on the complete suite. A passing quickstart is not a claim that all 45
 scenarios or all seven implementations are compatible.
 
 Open `artifacts/<run-id>/report.html` for the complete result, or verify later that the recorded
@@ -129,7 +130,7 @@ preservation. It executes the configured command directly with `shell: false`; t
 manifest must therefore be treated as trusted local code. See [the adapter guide](docs/adapters.md)
 and the bundled [manifest schema](src/conformance/adapter-manifest.schema.json).
 
-The matrix keeps all 39 bundled scenarios and appends native-parse and semantic-roundtrip cells for
+The matrix keeps all 45 bundled scenarios and appends native-parse and semantic-roundtrip cells for
 each external adapter across P2WPKH, nested P2SH-P2WPKH, P2WSH, Taproot key-path, and Taproot
 script-path fixtures. It also appends signing handoffs when the adapter declares the matching
 signer capabilities and the `fixture-commitment-sha256` safety feature.
@@ -153,6 +154,33 @@ psbt-lab matrix --external-only --adapter-manifest ./adapters.json \
   --junit psbt-interop.xml --sarif psbt-interop.sarif
 ```
 
+## Differential Fuzzing
+
+Run a deterministic, bounded mutation campaign through the lab parser and the available native
+parsers without starting Bitcoin Core:
+
+```bash
+psbt-lab fuzz --runtime local --fixture minimal --seed 42 --cases 64 --json
+```
+
+The seed reproduces the exact recipe sequence. Each case applies an allowlisted structured-map or
+raw-byte mutation, normalizes every parser result as accepted, rejected, unsupported, crashed, or
+timed out, and reports structural divergences among accepted parses. Campaigns are capped at 512
+cases.
+
+When a divergence is found, write a minimized, SHA256-committed custom-suite regression:
+
+```bash
+psbt-lab fuzz --runtime local --seed 42 --cases 64 --promote regression-suite.json
+psbt-lab parse-matrix --runtime local --suite-manifest regression-suite.json
+```
+
+Promotion removes redundant mutations, shrinks the remaining payload where possible, and emits a
+`psbt-lab.suite/0.2` parser fixture with the expected classification for each compared parser.
+`parse-matrix` replays that parser-only suite with the same Dockerless runtime. Core-backed or
+signing steps are refused on this path. A checked-in
+[parser regression example](examples/parser-regression-suite.json) shows the complete v0.2 shape.
+
 ## Custom Suites
 
 Maintainers can describe deterministic regtest fixtures and checked handoff steps without changing
@@ -163,21 +191,29 @@ psbt-lab matrix --suite-manifest examples/custom-suite.json
 ```
 
 The manifest can select fixed public script templates, transaction outputs, fee, locktime,
-sequences, and adapter order. It cannot supply shell commands, descriptors, private keys, raw PSBTs,
-or arbitrary adapter payloads. The bundled adapters can roundtrip custom fixtures. Custom signing
-is capability-gated and runs only when an adapter explicitly advertises
+sequences, and adapter order. Suite schema 0.2 can also include SHA256-committed parser fixtures,
+allowlisted mutation recipes, and cross-parser classification checks. Parser fixtures never enter a
+signing step. The manifest cannot supply shell commands, descriptors, private keys, arbitrary
+signing PSBTs, or arbitrary adapter payloads. The bundled adapters can roundtrip custom transaction
+fixtures. Custom signing is capability-gated and runs only when an adapter explicitly advertises
 `user-fixture-template-v1` in addition to the normal fixture-commitment protection. See the
 [example](examples/custom-suite.json) and
 [schema](src/custom/suite-manifest.schema.json).
 
 ## Current Coverage
 
-The suite currently runs 39 scenarios:
+The suite currently runs 45 scenarios:
 
-- Core-created P2WPKH, P2WSH, and Taproot key-path signing handoffs through rust-bitcoin,
-  btcsuite, bitcoinjs-lib, and current BDK Wallet
+- Core-created P2PKH, P2WPKH, P2WSH, nested P2SH-P2WSH, and Taproot key-path signing handoffs
+  through rust-bitcoin, btcsuite, bitcoinjs-lib, and current BDK Wallet
 - Nested P2SH-P2WPKH roundtrips plus bidirectional Taproot script-path signing/finalization and
   wrong-leaf/control-block rejection canaries
+- ECDSA and Taproot key-path sighash matrices covering ALL, NONE, SINGLE, ANYONECANPAY
+  combinations, Taproot DEFAULT, committed/permitted mutations, and malformed signer requests
+- Eight adversarial rust-bitcoin signer probes for wrong UTXOs, scripts, derivations, Taproot
+  internal keys, and Merkle roots
+- Seven deterministic bitcoinjs-lib combiner-conflict probes across UTXOs, scripts, sighash types,
+  derivations, ECDSA signatures, and Taproot signatures
 - All 14 valid and 21 invalid official BIP370 vectors through rust-psbt-v2 and libwally
 - Native PSBTv2 construction, input/output removal, sequence updates, scope sealing, and BIP370
   fallback/height/time locktime selection and conflict rejection
@@ -261,7 +297,8 @@ directory controlled by the same host.
 
 This is test infrastructure, not a wallet or signer:
 
-- Only bounded, suite-generated regtest fixtures are accepted; arbitrary PSBT input is not exposed.
+- Signing and finalization accept only bounded, suite-generated regtest fixtures; committed custom
+  bytes are confined to parser-only regression steps.
 - Signers require a run-scoped SHA256 commitment to the exact unsigned transaction.
 - The only private keys are deterministic Bitcoin scalars one and two, public test values with no
   economic value.

@@ -65,13 +65,15 @@ describe("adapter contracts", () => {
   test.each([RUST_ADAPTER_CONTRACT, GO_ADAPTER_CONTRACT, BITCOINJS_ADAPTER_CONTRACT])(
     "$name declares modern SegWit and Taproot profile support",
     (contract) => {
-      expect(contract.scriptTypes).toEqual([
-        "p2wpkh",
-        "p2sh-p2wpkh",
-        "p2wsh",
-        "p2tr-keypath",
-        "p2tr-scriptpath",
-      ]);
+      expect(contract.scriptTypes).toEqual(
+        expect.arrayContaining([
+          "p2wpkh",
+          "p2sh-p2wpkh",
+          "p2wsh",
+          "p2tr-keypath",
+          "p2tr-scriptpath",
+        ]),
+      );
     },
   );
 
@@ -141,7 +143,7 @@ describe("adapter contracts", () => {
 
   test("declares native Taproot script-path signing and finalization in rust-bitcoin", () => {
     expect(RUST_ADAPTER_CONTRACT.operationScriptTypes).toMatchObject({
-      sign: ["p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
+      sign: ["p2pkh", "p2wpkh", "p2sh-p2wsh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
       "finalize-inputs": ["p2wsh", "p2tr-scriptpath"],
     });
   });

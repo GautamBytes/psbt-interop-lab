@@ -174,6 +174,11 @@ describe("website documentation routes", () => {
     ["/files/src/custom/suite-manifest.schema.json", "Custom suite schema", /p2tr-scriptpath/],
     ["/files/examples/custom-suite.json", "Custom suite example", /nested-to-taproot/],
     [
+      "/files/examples/parser-regression-suite.json",
+      "Parser regression suite example",
+      /truncated-map-regression/,
+    ],
+    [
       "/files/examples/wallet-ci-adapter",
       "Wallet CI adapter example",
       /external wallet CI contract/,
