@@ -1,5 +1,10 @@
 import { describe, expect, test } from "vitest";
-import { FIXTURE_PROFILES, FIXTURE_PUBLIC_KEYS } from "../../src/core/fixture-profiles.js";
+import {
+  FIXTURE_DESCRIPTORS,
+  FIXTURE_PROFILES,
+  FIXTURE_PUBLIC_KEYS,
+  MUSIG2_AGGREGATE_PUBLIC_KEY,
+} from "../../src/core/fixture-profiles.js";
 
 describe("fixture profile definitions", () => {
   test("uses only fixed public keys and declares each required profile", () => {
@@ -17,6 +22,7 @@ describe("fixture profile definitions", () => {
       "p2wsh-single-key",
       "p2wsh-2-of-3",
       "p2tr-keypath",
+      "p2tr-musig2",
       "p2tr-scriptpath",
       "mixed-p2wpkh-p2tr",
       "intent-rich-p2wpkh",
@@ -63,6 +69,11 @@ describe("fixture profile definitions", () => {
         inputDescriptorIds: ["p2tr-keypath"],
       },
       {
+        id: "p2tr-musig2",
+        scriptTypes: ["p2tr-keypath"],
+        inputDescriptorIds: ["p2tr-musig2"],
+      },
+      {
         id: "p2tr-scriptpath",
         scriptTypes: ["p2tr-scriptpath"],
         inputDescriptorIds: ["p2tr-scriptpath"],
@@ -107,9 +118,13 @@ describe("fixture profile definitions", () => {
       `wsh(multi(2,${FIXTURE_PUBLIC_KEYS.scalar1},${FIXTURE_PUBLIC_KEYS.scalar2},${FIXTURE_PUBLIC_KEYS.scalar3}))`,
     );
     expect(descriptors).toContain(`tr(${FIXTURE_PUBLIC_KEYS.scalar1.slice(2)})`);
+    expect(descriptors).toContain(`rawtr(${MUSIG2_AGGREGATE_PUBLIC_KEY.slice(2)})`);
     expect(descriptors).toContain(
       `tr(${FIXTURE_PUBLIC_KEYS.scalar1.slice(2)},pk(${FIXTURE_PUBLIC_KEYS.scalar2.slice(2)}))`,
     );
     expect(descriptors.join("\n")).not.toMatch(/xprv|tprv|priv|secret/i);
+    expect(FIXTURE_DESCRIPTORS["p2tr-musig2"]).toBe(
+      "rawtr(3b46d262d2f610e9038b44beabdfe97ab5a0feb89870acc2264edfb7f63ec2ec)",
+    );
   });
 });

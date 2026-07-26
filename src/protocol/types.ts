@@ -12,6 +12,9 @@ export const adapterOperations = [
   "extract",
   "convert",
   "construct",
+  "musig2-nonce",
+  "musig2-partial-sign",
+  "musig2-aggregate",
 ] as const;
 
 export type AdapterOperation = (typeof adapterOperations)[number];

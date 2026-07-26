@@ -7,6 +7,7 @@
       "!!.vercel",
       "!!artifacts",
       "!!adapters/rust-bitcoin/target",
+      "!!adapters/musig2-rust/target",
       "!!adapters/bdk-wallet-current/target",
       "!!adapters/rust-psbt-v2/target",
       "!!src/generated/validators.ts",

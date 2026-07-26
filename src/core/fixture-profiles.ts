@@ -13,6 +13,9 @@ export const FIXTURE_PUBLIC_KEYS = {
   scalar3: "02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
 } as const;
 
+export const MUSIG2_AGGREGATE_PUBLIC_KEY =
+  "023b46d262d2f610e9038b44beabdfe97ab5a0feb89870acc2264edfb7f63ec2ec";
+
 export const FIXTURE_DESCRIPTORS = {
   p2pkh: `pkh(${FIXTURE_PUBLIC_KEYS.scalar1})`,
   p2wpkh: `wpkh(${FIXTURE_PUBLIC_KEYS.scalar1})`,
@@ -21,6 +24,7 @@ export const FIXTURE_DESCRIPTORS = {
   "p2wsh-single-key": `wsh(pk(${FIXTURE_PUBLIC_KEYS.scalar1}))`,
   "p2wsh-2-of-3": `wsh(multi(2,${FIXTURE_PUBLIC_KEYS.scalar1},${FIXTURE_PUBLIC_KEYS.scalar2},${FIXTURE_PUBLIC_KEYS.scalar3}))`,
   "p2tr-keypath": `tr(${FIXTURE_PUBLIC_KEYS.scalar1.slice(2)})`,
+  "p2tr-musig2": `rawtr(${MUSIG2_AGGREGATE_PUBLIC_KEY.slice(2)})`,
   "p2tr-scriptpath": `tr(${FIXTURE_PUBLIC_KEYS.scalar1.slice(2)},pk(${FIXTURE_PUBLIC_KEYS.scalar2.slice(2)}))`,
 } as const;
 
@@ -34,6 +38,7 @@ export const FIXTURE_DESCRIPTOR_SCRIPT_TYPES = {
   "p2wsh-single-key": "p2wsh",
   "p2wsh-2-of-3": "p2wsh",
   "p2tr-keypath": "p2tr-keypath",
+  "p2tr-musig2": "p2tr-keypath",
   "p2tr-scriptpath": "p2tr-scriptpath",
 } as const satisfies Record<FixtureDescriptorId, FixtureScriptType>;
 
@@ -57,6 +62,7 @@ export type FixtureProfileId =
   | "p2wsh-single-key"
   | "p2wsh-2-of-3"
   | "p2tr-keypath"
+  | "p2tr-musig2"
   | "p2tr-scriptpath"
   | "sighash-p2wpkh"
   | "sighash-p2tr-keypath"
@@ -140,6 +146,17 @@ export const FIXTURE_PROFILES = [
     transactionVersion: 2,
     descriptors: [FIXTURE_DESCRIPTORS["p2tr-keypath"]],
     feeSats: 14_000,
+  },
+  {
+    id: "p2tr-musig2",
+    scriptTypes: ["p2tr-keypath"],
+    inputDescriptorIds: ["p2tr-musig2"],
+    outputDescriptorIds: ["p2tr-musig2"],
+    sequences: [0xffff_fffd],
+    locktime: 0,
+    transactionVersion: 2,
+    descriptors: [FIXTURE_DESCRIPTORS["p2tr-musig2"]],
+    feeSats: 14_250,
   },
   {
     id: "p2tr-scriptpath",

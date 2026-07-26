@@ -11,7 +11,7 @@ import type {
 import { ADAPTER_PROTOCOL } from "../protocol/types.js";
 import { parsePsbtDocument } from "../psbt/document.js";
 import { assertPsbtTransition, type PsbtTransitionPolicy } from "../psbt/invariants.js";
-import type { CheckpointRecord } from "../runner/artifacts.js";
+import type { CheckpointComparison, CheckpointRecord } from "../runner/artifacts.js";
 import type { ScenarioAdapterCell, ScenarioAssertionEvidence } from "./definition.js";
 import { ScenarioAssertionError } from "./engine.js";
 
@@ -22,7 +22,12 @@ export interface AdapterRequestClient {
 }
 
 export interface CheckpointWriter {
-  checkpoint(scenario: string, stage: string, psbt: string): Promise<CheckpointRecord>;
+  checkpoint(
+    scenario: string,
+    stage: string,
+    psbt: string,
+    comparison?: CheckpointComparison,
+  ): Promise<CheckpointRecord>;
 }
 
 export interface ScenarioExecutionContextOptions {
@@ -416,8 +421,13 @@ export class ScenarioExecutionContext {
     return evidence;
   }
 
-  async checkpoint(scenario: string, stage: string, psbt: string): Promise<CheckpointRecord> {
-    const checkpoint = await this.#artifacts.checkpoint(scenario, stage, psbt);
+  async checkpoint(
+    scenario: string,
+    stage: string,
+    psbt: string,
+    comparison?: CheckpointComparison,
+  ): Promise<CheckpointRecord> {
+    const checkpoint = await this.#artifacts.checkpoint(scenario, stage, psbt, comparison);
     this.#checkpoints.push(checkpoint);
     return checkpoint;
   }

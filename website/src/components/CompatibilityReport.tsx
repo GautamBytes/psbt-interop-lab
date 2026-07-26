@@ -62,7 +62,7 @@ export function CompatibilityReport() {
                 </button>
               );
             })}
-            <small>45 bundled scenarios</small>
+            <small>47 bundled scenarios</small>
           </aside>
 
           <div className="evidence-panel">

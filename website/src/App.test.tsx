@@ -38,7 +38,13 @@ describe("PSBT Interop Lab website", () => {
       "/docs#quick-start",
     );
     expect(screen.getByText(/quickstart proves one real handoff/i)).toBeInTheDocument();
-    expect(screen.getByText(/matrix runs all 45 bundled scenarios/i)).toBeInTheDocument();
+    expect(screen.getByText(/matrix runs all 47 bundled scenarios/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/BIP373 MuSig2 nonce exchange, partial verification, and aggregation/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/HWI-compatible simulator confirmation and key-origin policy/i),
+    ).toBeInTheDocument();
     expect(screen.getByText("PSBT Interop Lab 0.7.0")).toBeInTheDocument();
     expect(screen.getByText(/available now as version 0\.7\.0/i)).toBeInTheDocument();
   });
@@ -47,18 +53,18 @@ describe("PSBT Interop Lab website", () => {
     render(<App />);
 
     expect(
-      screen.getByRole("heading", { name: /six safety proofs, one replayable artifact/i }),
+      screen.getByRole("heading", { name: /two protocol frontiers, one replayable artifact/i }),
     ).toBeInTheDocument();
-    expect(screen.getByText(/evidence from the real v0\.7\.0 P1 gate/i)).toBeInTheDocument();
+    expect(screen.getByText(/evidence from the real v0\.7\.0 P2 proof/i)).toBeInTheDocument();
     expect(
-      screen.getByRole("img", { name: /v0\.7\.0 P1 safety proof terminal output/i }),
+      screen.getByRole("img", { name: /v0\.7\.0 P2 protocol proof terminal output/i }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("img", { name: /v0\.7\.0 generated P1 safety report/i }),
+      screen.getByRole("img", { name: /v0\.7\.0 generated P2 protocol report/i }),
     ).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /open the complete walkthrough/i })).toHaveAttribute(
       "href",
-      "/docs#walkthrough-verify-the-p1-safety-gate",
+      "/docs#walkthrough-verify-the-p2-protocol-frontier",
     );
   });
 

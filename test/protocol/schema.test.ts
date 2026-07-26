@@ -33,6 +33,9 @@ describe("adapter protocol schemas", () => {
   test.each([
     ["extract", { psbt: "cHNidP8=" }],
     ["convert", { psbt: "cHNidP8=", targetVersion: 2 }],
+    ["musig2-nonce", { psbt: "cHNidP8=", sessionId: "session-1" }],
+    ["musig2-partial-sign", { psbt: "cHNidP8=", sessionId: "session-1" }],
+    ["musig2-aggregate", { psbt: "cHNidP8=" }],
     [
       "construct",
       {
@@ -75,7 +78,7 @@ describe("adapter protocol schemas", () => {
     expect(result.ok).toBe(false);
   });
 
-  test.each(["fixture-finalize-input", "broadcast"])(
+  test.each(["fixture-finalize-input", "musig2-sign", "broadcast"])(
     "rejects unknown operation %s",
     (operation) => {
       const result = validateAdapterRequest({

@@ -43,6 +43,8 @@ export const implementations = [
   { name: "BDK Wallet", version: "3.1.0", short: "BDK", tone: "green" },
   { name: "rust-psbt PSBTv2", version: "0.3.0", short: "V2", tone: "violet" },
   { name: "libwally", version: "1.5.4", short: "LW", tone: "blue" },
+  { name: "MuSig2 signer", version: "musig2 0.4.1", short: "M2", tone: "green" },
+  { name: "HWI simulator", version: "JSON contract v1", short: "HWI", tone: "neutral" },
 ] as const;
 
 export const reportScenarios: ReportScenario[] = [
@@ -199,6 +201,76 @@ export const reportScenarios: ReportScenario[] = [
     ],
     replay: "psbt-lab replay artifacts/<run-id>",
   },
+  {
+    id: "musig2",
+    shortLabel: "BIP373 MuSig2",
+    title: "Two-process MuSig2 key-path signing",
+    status: "pass",
+    statusLabel: "Passed",
+    handoff: "Core -> Rust/JavaScript preservation -> signer 1 + signer 2 -> Core",
+    summary:
+      "Two isolated signer processes exchange BIP373 nonces and partial signatures, reject nonce reuse, verify both shares, and aggregate a Core-accepted BIP340 signature.",
+    implementations: ["Bitcoin Core", "rust-bitcoin", "bitcoinjs-lib", "MuSig2 signer"],
+    evidence: [
+      {
+        field: "BIP373 participant and nonce fields",
+        expected: "ordered and preserved",
+        actual: "preserved across both parsers",
+        implementation: "rust-bitcoin / bitcoinjs-lib",
+        nextStep: "Keep participant ordering bound to the aggregate key.",
+      },
+      {
+        field: "Secret nonce lifecycle",
+        expected: "one session, one use",
+        actual: "in-memory and reuse rejected",
+        implementation: "MuSig2 signer processes",
+        nextStep: "Never persist or recycle production nonces.",
+      },
+      {
+        field: "Aggregate signature",
+        expected: "partials verified and Core accepted",
+        actual: "BIP340 verification and regtest policy passed",
+        implementation: "musig2 0.4.1 / Bitcoin Core 31.1",
+        nextStep: "Add a second independent MuSig2 implementation next.",
+      },
+    ],
+    replay: "psbt-lab replay artifacts/<run-id>",
+  },
+  {
+    id: "hwi",
+    shortLabel: "HWI simulator",
+    title: "Simulator-backed hardware signing handoff",
+    status: "pass",
+    statusLabel: "Passed",
+    handoff: "Core -> HWI adapter -> simulated device process -> Core",
+    summary:
+      "A separate HWI-compatible process enforces a fixed key origin and explicit confirmation, while the adapter accepts only the expected signature mutation.",
+    implementations: ["Bitcoin Core", "HWI simulator"],
+    evidence: [
+      {
+        field: "Device enumeration",
+        expected: "one pinned simulator identity",
+        actual: "fingerprint 73c5da0a",
+        implementation: "HWI JSON process",
+        nextStep: "Do not interpret this as physical-device attestation.",
+      },
+      {
+        field: "User confirmation",
+        expected: "refusal cancels signing",
+        actual: "hwi.action_canceled",
+        implementation: "simulated device process",
+        nextStep: "Retain refusal as a required canary.",
+      },
+      {
+        field: "Returned PSBT",
+        expected: "signature-only mutation",
+        actual: "validated before Core finalization",
+        implementation: "HWI adapter / Bitcoin Core 31.1",
+        nextStep: "Add vendor and USB coverage only with physical-device CI.",
+      },
+    ],
+    replay: "psbt-lab replay artifacts/<run-id>",
+  },
 ];
 
 export const workflowSteps = [
@@ -227,7 +299,7 @@ export const docLinks = [
   },
   {
     label: "Scenario coverage",
-    detail: "See all 45 bundled scenarios",
+    detail: "See all 47 bundled scenarios",
     href: "/docs#current-coverage",
   },
   { label: "Adapter kit", detail: "Bring another wallet or library", href: "/adapter-kit" },

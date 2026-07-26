@@ -19,6 +19,13 @@ const signature = Buffer.concat([
   Buffer.alloc(32, 2),
   Buffer.from([1]),
 ]);
+const alternateSignature = Buffer.concat([
+  Buffer.from("30440220", "hex"),
+  Buffer.alloc(32, 3),
+  Buffer.from("0220", "hex"),
+  Buffer.alloc(32, 4),
+  Buffer.from([1]),
+]);
 
 async function temporaryRun(manifest: RunManifest): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "psbt-lab-compare-"));
@@ -63,11 +70,12 @@ async function temporaryArtifactRun(
   runId: string,
   encodedPsbt: string,
   overrides: Partial<RunManifest> = {},
+  comparison?: "structure",
 ): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), "psbt-lab-compare-artifacts-"));
   roots.push(root);
   const run = await ArtifactRun.create(root, runId);
-  const checkpoint = await run.checkpoint("happy-path", "handoff", encodedPsbt);
+  const checkpoint = await run.checkpoint("happy-path", "handoff", encodedPsbt, comparison);
   await run.writeManifest(manifest({ runId, checkpoints: [checkpoint], ...overrides }));
   return run.directory;
 }
@@ -283,6 +291,54 @@ describe("compareRuns", () => {
         capabilityChanges: 0,
         checkpointChanges: 1,
       },
+      changes: [
+        expect.objectContaining({
+          kind: "checkpoint-facts-changed",
+          scenarioId: "happy-path",
+          stage: "handoff",
+        }),
+      ],
+    });
+  });
+
+  test("ignores value entropy for structure-comparison checkpoints", async () => {
+    const base = await temporaryArtifactRun(
+      "base-run",
+      psbt([entry(0x02, signature, publicKey)]),
+      {},
+      "structure",
+    );
+    const head = await temporaryArtifactRun(
+      "head-run",
+      psbt([entry(0x02, alternateSignature, publicKey)]),
+      {},
+      "structure",
+    );
+
+    await expect(compareRuns(base, head)).resolves.toMatchObject({
+      changed: false,
+      summary: { checkpointChanges: 0 },
+      changes: [],
+    });
+  });
+
+  test("still reports structural changes for structure-comparison checkpoints", async () => {
+    const base = await temporaryArtifactRun(
+      "base-run",
+      psbt([entry(0x02, signature, publicKey)]),
+      {},
+      "structure",
+    );
+    const head = await temporaryArtifactRun(
+      "head-run",
+      psbt([entry(0x02, Buffer.concat([alternateSignature, Buffer.from([0])]), publicKey)]),
+      {},
+      "structure",
+    );
+
+    await expect(compareRuns(base, head)).resolves.toMatchObject({
+      changed: true,
+      summary: { checkpointChanges: 1 },
       changes: [
         expect.objectContaining({
           kind: "checkpoint-facts-changed",

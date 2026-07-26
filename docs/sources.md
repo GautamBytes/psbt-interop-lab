@@ -46,8 +46,9 @@ protocol specification.
   and the canonical extracted vector set by SHA256
   `6afe6b443edc7eeab2d424b743d048fc9493bd4728910bc199ca9837433a57a0`.
 - [BIP373](https://bips.dev/373/) defines MuSig2 PSBT fields for participant keys, public nonces,
-  and partial signatures. The lab currently names these fields in diagnostics and leaves executable
-  MuSig2 interoperability scenarios as future work.
+  and partial signatures. The executable MuSig2 workflow validates these layouts, preserves the
+  ordered participant set across rust-bitcoin and bitcoinjs-lib, exchanges two public nonces and
+  partial signatures, and aggregates a verified BIP340 key-path signature.
 - [BIP375](https://bips.dev/375/) defines Silent Payment PSBT send fields for ECDH shares, DLEQ
   proofs, recipient scan keys, spend keys, labels, and eligible inputs. The lab currently names
   registered send fields in diagnostics.
@@ -82,6 +83,18 @@ protocol specification.
   signature, and PSBT APIs used by the adapter.
 - The adapter builds with the official `rust:1.97.0-bookworm` image and a committed `Cargo.lock`.
   `cargo test --locked` runs during the image build.
+
+## MuSig2 And HWI Adapters
+
+- [`musig2` 0.4.1](https://docs.rs/musig2/0.4.1/musig2/) supplies BIP327 key aggregation,
+  nonce construction, partial signing and verification, and final signature aggregation. Nonce
+  seeds come from the operating-system CSPRNG and are additionally bound to the session, message,
+  aggregate key, and signing key. The adapter pins the crate and `bitcoin` 0.32.102 in its
+  committed `Cargo.lock`.
+- [Bitcoin Core HWI](https://github.com/bitcoin-core/HWI) defines the external command and JSON
+  response boundary used by hardware-wallet integrations. The lab implements an HWI-compatible
+  simulator command with `enumerate` and `signtx`; it does not execute the HWI Python package,
+  vendor plugins, USB transport, or a physical device.
 
 ## Go Adapter
 

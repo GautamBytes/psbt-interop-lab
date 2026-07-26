@@ -83,7 +83,7 @@ function normalizeRepoPath(baseDir: string, href: string): string {
 }
 
 const publicWalkthroughAssetBase =
-  "https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/19d6f874b2efd66fba6aa5d142a5d7d0280816c0/docs/assets/walkthrough/";
+  "https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/9820664a69c9dab452aee31b5236dfd78b9a429d/docs/assets/walkthrough/";
 
 const bundledImages: Readonly<Record<string, string>> = {
   "docs/assets/walkthrough/cli-finding-and-replay.png": cliProof,

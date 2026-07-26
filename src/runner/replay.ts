@@ -98,6 +98,9 @@ async function verifyCheckpoint(directory: string, checkpoint: CheckpointRecord)
   ) {
     throw new Error("Replay checkpoint record is invalid");
   }
+  if (checkpoint.comparison !== undefined && checkpoint.comparison !== "structure") {
+    throw new Error("Replay checkpoint comparison policy is invalid");
+  }
   const psbtText = await readRegularFile(
     containedPath(directory, checkpoint.psbtPath),
     4 * 1024 * 1024 + 1,

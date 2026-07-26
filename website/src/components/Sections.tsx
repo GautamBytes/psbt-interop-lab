@@ -18,6 +18,8 @@ const coverage = [
   "Signing, combining, finalization, and policy acceptance",
   "Cryptographically measured ECDSA and Taproot sighash mutations",
   "Adversarial signer and deterministic combiner conflicts",
+  "BIP373 MuSig2 nonce exchange, partial verification, and aggregation",
+  "HWI-compatible simulator confirmation and key-origin policy",
   "Unknown and proprietary metadata preservation",
   "All official BIP370 and BIP371 valid and invalid vectors",
   "Native PSBTv2 constructors and bidirectional Taproot handoffs",

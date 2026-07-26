@@ -57,6 +57,8 @@ const EXPECTED_SCRIPT_PUBKEYS = {
     .digest("hex")}`,
   // BIP341 TapTweak output key for the scalar-1 x-only internal key.
   "p2tr-keypath": "5120da4710964f7852695de2da025290e24af6d8c281de5a0b902b7135fd9fd74d21",
+  // Untweaked BIP327 aggregate output key for scalar-1 and scalar-2.
+  "p2tr-musig2": "51203b46d262d2f610e9038b44beabdfe97ab5a0feb89870acc2264edfb7f63ec2ec",
   // BIP341 output key for scalar-1 with pk(scalar-2) as its only tapscript leaf.
   "p2tr-scriptpath": "5120456b959d3ad02729d12d7df9a6ce66f2f02043fb5c5b61071897c59414a1842e",
 } as const satisfies Record<FixtureDescriptorId, string>;
@@ -274,7 +276,7 @@ function parseValidatedScriptPubKey(
   const scriptPubKey = object["scriptPubKey"];
   const isNestedSegwit = id === "p2sh-p2wpkh" || id === "p2sh-p2wsh-2-of-3";
   const isLegacy = id === "p2pkh";
-  const isTaproot = id === "p2tr-keypath" || id === "p2tr-scriptpath";
+  const isTaproot = id === "p2tr-keypath" || id === "p2tr-musig2" || id === "p2tr-scriptpath";
   const witnessVersion = isTaproot ? 1 : 0;
   const expectedScriptPattern = isLegacy
     ? /^76a914[0-9a-f]{40}88ac$/i
@@ -872,7 +874,10 @@ function assertDecodedFixture(
     ) {
       throw new Error(`Fixture ${plan.id} input ${index} redeem script does not match descriptor`);
     }
-    if (scriptType === "p2tr-keypath" || scriptType === "p2tr-scriptpath") {
+    if (
+      descriptorId !== "p2tr-musig2" &&
+      (scriptType === "p2tr-keypath" || scriptType === "p2tr-scriptpath")
+    ) {
       if (input["taproot_internal_key"] !== FIXTURE_PUBLIC_KEYS.scalar1.slice(2)) {
         throw new Error(`Fixture ${plan.id} input ${index} lacks Taproot internal-key metadata`);
       }

@@ -37,7 +37,7 @@ The confirmed local assumptions are:
 
 The trusted developer chooses the checkout, Docker images, RPC endpoint, and artifact directory.
 The supported guarantee therefore excludes a malicious or compromised host account, Docker daemon,
-kernel, or base image. Production keys and PSBTs, mainnet/testnet/signet use, hardware devices,
+kernel, or base image. Production keys and PSBTs, mainnet/testnet/signet use, physical hardware devices,
 transaction broadcast, public services, and callers other than the one trusted developer are also
 out of scope.
 
@@ -49,9 +49,10 @@ untrusted host executables are out of scope.
 ### GitHub CI boundary
 
 GitHub-hosted CI is a separate build-time boundary: no secrets, read-only repository permission,
-ephemeral runners, and the complete Docker proof only on trusted main-branch or manual runs.
-Pull-request code is untrusted and runs only the TypeScript, Rust, Go, JavaScript, and frozen BDK
-build/test jobs.
+ephemeral runners, a bounded feature Docker proof on pull requests, and the complete Docker proof
+only on trusted main-branch or manual runs. Pull-request code is untrusted and runs the language
+build/test jobs plus the release-tarball, selected protocol-category, and external-wallet action
+proofs.
 The workflow in `.github/workflows/ci.yml` supplies `contents: read`, disables persisted checkout
 credentials, pins action revisions, sets per-job timeouts, and cancels superseded runs. A manual
 Docker proof is assumed to target a revision selected by a trusted maintainer. This workflow does not
@@ -77,6 +78,10 @@ flowchart TB
     V2["Networkless rust-psbt PSBTv2 adapter"]
     Wally["Networkless libwally 1.5.4 PSBTv0/v2 adapter"]
     Frozen["Networkless bdkpython 2.3.1 specimen"]
+    MuSig1["Networkless MuSig2 signer process 1"]
+    MuSig2["Networkless MuSig2 signer process 2"]
+    HWI["Networkless HWI simulator adapter"]
+    Device["Separate simulated device process"]
     LocalManifest["Strict internal Dockerless manifest"]
     Snapshot["Private checksum-verified adapter snapshot"]
     LocalJS["Bundled Dockerless JavaScript parser"]
@@ -96,6 +101,10 @@ flowchart TB
     CLI <-->|"bounded stdin/stdout JSONL"| V2
     CLI <-->|"bounded stdin/stdout JSONL"| Wally
     CLI <-->|"bounded stdin/stdout JSONL"| Frozen
+    CLI <-->|"bounded stdin/stdout JSONL"| MuSig1
+    CLI <-->|"bounded stdin/stdout JSONL"| MuSig2
+    CLI <-->|"bounded stdin/stdout JSONL"| HWI
+    HWI <-->|"bounded HWI-style JSON"| Device
     LocalManifest -->|"safe package-relative path and SHA256"| Snapshot
     Snapshot --> LocalJS
     CLI <-->|"bounded host stdin/stdout JSONL"| LocalJS
@@ -112,12 +121,14 @@ flowchart TB
     Event["push, pull_request, or workflow_dispatch"]
     PR["Untrusted pull-request code"]
     Checks["TypeScript, Rust, Go, JavaScript, and BDK jobs"]
+    FeatureProof["Bounded feature Docker proof"]
     Gate{"main branch or trusted manual run?"}
     DockerProof["Complete Docker proof"]
     Skip["Docker proof skipped"]
 
     Event --> Checks
     PR --> Checks
+    PR --> FeatureProof
     Event --> Gate
     Gate -->|"yes"| DockerProof
     Gate -->|"pull request or non-main push"| Skip
@@ -148,6 +159,12 @@ The local components and their repository evidence are:
   JavaScript parser. This is host execution, not a sandbox or full proof runtime.
 - `AdapterProcess.request` in `src/protocol/adapter-process.ts` mediates one bounded JSONL request at
   a time, validates response schemas and IDs, and terminates on timeout or protocol violation.
+- The two `adapters/musig2-rust` processes each own one public deterministic regtest scalar and keep
+  CSPRNG-seeded secret nonces only in bounded, expiring memory. A partial-sign attempt consumes its
+  session before downstream nonce-set, sighash, or signature validation, and a bounded replay cache
+  refuses recent session reuse. Both processes use the same pinned MuSig2 implementation.
+- `adapters/hwi-simulator` mediates a separate device process with bounded HWI-style JSON, a fixed
+  regtest key origin, and explicit simulated approval or refusal.
 - `loadAdapterManifest` and `runAdapterConformance` in `src/conformance/` validate bounded,
   versioned executable configuration and test a trusted external adapter's identity, native parser,
   transport, and semantic roundtrip behavior. They do not sandbox or attest the command.
@@ -167,6 +184,7 @@ The local components and their repository evidence are:
 | Asset | Security objective | Evidence and limitation |
 | --- | --- | --- |
 | Proof outcome and checkpoints | Malformed round trips, disallowed field changes, mismatched RPC replies, and Core-rejected returned PSBTs must not produce PASS. | Scenario transition policies, the lossless semantic parser, and `CoreRpc.call` enforce those checks. The one baselined btcsuite duplicate-key acceptance is reported as a compatibility finding rather than hidden or counted as an unrecognized PASS. Core validation does not prove which binary executed; see TM-001. |
+| MuSig2 secret nonce state | A secret nonce must remain process-local, expire, be used for at most one partial-sign attempt, and not be recreated from deterministic process state. | OS-CSPRNG seeds, signing-key/message/aggregate/session binding, a 15-minute live-session TTL, a 64-session bound, consume-before-validation behavior, and a bounded 1,024-ID replay cache enforce the test workflow. Process memory, the host kernel, and the pinned crate remain trusted; this is not production key custody. |
 | Host files and processes | Adapter and Core activity should remain within bounded containers and the selected local artifact directory. | `compose.yaml`, `createDockerAdapter`, and contained artifact paths reduce exposure. The host account, Docker daemon, and kernel remain trusted. |
 | Dockerless package artifacts and host process | The local parser runtime should execute only the exact bounded package artifact named by the internal manifest and should clean up its private snapshot. | `createLocalRuntimeProvider` contains paths, rejects symlinks, caps files at 16 MiB, checks SHA256, creates mode-`0700`/`0400` or `0500` snapshots, and removes them on close. The process still inherits the trusted host account's filesystem and network authority. |
 | Artifact confidentiality | Raw PSBT, script, and UTXO material should remain out of reports. Implementation identity metadata is intentionally recorded. | `ArtifactRun` uses `0700` directories and `0600` files; those local permissions are the only protection for recorded identity metadata and checkpoint contents. Files are not encrypted from the trusted host account. |
@@ -215,7 +233,9 @@ a privileged environment. Those events violate the confirmed trust assumptions.
 | Replay | `src/runner/replay.ts`: `verifyReplay` | Rejects absolute and lexically escaping paths; bounds manifest/files and checkpoint count; reparses each PSBT and verifies its SHA256 against the manifest and stored facts JSON `sha256` | Intermediate symlinks remain trusted. Final-component `O_NOFOLLOW` applies only where Node exposes it. Other facts/outcomes are not recomputed, and mutable hashes are not authenticity. |
 | Artifact writes | `src/runner/artifacts.ts`: `ArtifactRun` | Safe identifiers, contained paths, exclusive temporary files, `fsync`, atomic rename, private modes | The trusted account can read or replace local artifacts; directory contents are not signed. |
 | Containers | `compose.yaml` and `src/scenarios/proof.ts`: `createDockerAdapter` | Read-only roots, dropped capabilities, PID/memory limits, `no-new-privileges`; adapters have no network; Core keeps only its named data volume writable | Docker daemon, kernel, images, and an intentionally attached bridge container are trusted. |
-| GitHub CI | `.github/workflows/ci.yml` | Read-only permission, no persisted checkout credential, pinned actions, ephemeral hosted jobs, timeouts, concurrency cancellation, Docker proof only on main/manual | Pull-request build code has job network/compute access; GitHub-host isolation and dependency services are external trust. |
+| MuSig2 signers | `adapters/musig2-rust`: `Musig2Adapter::nonce` and `partial_sign` | Explicit process identity, fixture commitment, OS-CSPRNG nonce seed, BIP327 context binding, bounded expiring live sessions, consume-before-validation, recent-session replay refusal, partial verification, and final BIP340 verification | Both signers use the same pinned crate and public test keys. Host/process compromise can expose nonce state; no cross-library agreement or production custody is claimed. |
+| HWI simulator | `adapters/hwi-simulator`: adapter and device processes | Fixed public regtest key origin, explicit simulated confirmation, signature-only PSBT mutation check, bounded JSON child process | No physical transport, secure element, firmware, PIN, passphrase, or vendor implementation is tested. |
+| GitHub CI | `.github/workflows/ci.yml` | Read-only permission, no persisted checkout credential, pinned actions, ephemeral hosted jobs, timeouts, concurrency cancellation, bounded feature Docker proof on pull requests, complete proof only on main/manual | Pull-request build code has job network/compute and Docker access; GitHub-host isolation and dependency services are external trust. |
 
 ## 7. Top Abuse Paths
 
@@ -294,7 +314,7 @@ tests and build scripts, green means those revision-controlled checks were self-
 not establish independent check integrity.
 
 Accepting arbitrary or adversarial PSBTs, production keys, mainnet funds, public requests, uploads,
-multiple tenants, or hardware devices would add assets and attackers absent here. Any such change
+multiple tenants, or physical hardware devices would add assets and attackers absent here. Any such change
 requires a new threat model and could raise integrity, confidentiality, availability, and fund-loss
 severity materially.
 

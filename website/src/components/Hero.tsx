@@ -9,8 +9,8 @@ import { InstallCommand } from "./InstallCommand";
 import { SiteLink } from "./SiteLink";
 
 const metrics = [
-  { icon: Flask, label: "45 scenarios" },
-  { icon: FlowArrow, label: "7 implementations" },
+  { icon: Flask, label: "47 scenarios" },
+  { icon: FlowArrow, label: "9 integration stacks" },
   { icon: ShieldCheck, label: "regtest only" },
   { icon: HardDrives, label: "Dockerless parser checks" },
 ] as const;
@@ -45,7 +45,7 @@ export function Hero() {
         <InstallCommand />
         <p className="hero__mode-note">
           <span>Quickstart proves one real handoff.</span>
-          <span>Matrix runs all 45 bundled scenarios.</span>
+          <span>Matrix runs all 47 bundled scenarios.</span>
         </p>
         <ul className="hero__metrics" aria-label="Project coverage">
           {metrics.map(({ icon: Icon, label }) => (
