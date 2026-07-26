@@ -47,18 +47,18 @@ describe("PSBT Interop Lab website", () => {
     render(<App />);
 
     expect(
-      screen.getByRole("heading", { name: /from one command to a policy-accepted transaction/i }),
+      screen.getByRole("heading", { name: /six safety proofs, one replayable artifact/i }),
     ).toBeInTheDocument();
-    expect(screen.getByText(/evidence from a real v0\.7\.0 quickstart/i)).toBeInTheDocument();
+    expect(screen.getByText(/evidence from the real v0\.7\.0 P1 gate/i)).toBeInTheDocument();
     expect(
-      screen.getByRole("img", { name: /v0\.7\.0 quickstart terminal output/i }),
+      screen.getByRole("img", { name: /v0\.7\.0 P1 safety proof terminal output/i }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("img", { name: /v0\.7\.0 generated quickstart report/i }),
+      screen.getByRole("img", { name: /v0\.7\.0 generated P1 safety report/i }),
     ).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /open the complete walkthrough/i })).toHaveAttribute(
       "href",
-      "/docs#walkthrough-verify-your-first-real-handoff",
+      "/docs#walkthrough-verify-the-p1-safety-gate",
     );
   });
 

@@ -74,26 +74,31 @@ To work from a source checkout instead, install pnpm 10.30.2, run
 `pnpm install --frozen-lockfile`, and replace `psbt-lab` above with `node dist/cli.js` after
 `pnpm build`.
 
-## Walkthrough: Verify Your First Real Handoff
+## Walkthrough: Verify the P1 Safety Gate
 
-This real v0.7.0 quickstart uses the branch's packed npm package. It verifies the local
-requirements, proves that all five semantic detector canaries catch their deliberate faults, and
-runs a Core-created PSBT through rust-bitcoin signing and back to Core for finalization and regtest
-policy acceptance.
+This real v0.7.0 branch run exercises the six P1 review gates added in this change: legacy P2PKH
+signing, nested P2SH-P2WSH multisig, ECDSA and Taproot sighash matrices, adversarial signer inputs,
+and deterministic combiner conflicts. Build the source checkout first, then select the exact gate:
 
 ```bash
-npx --yes psbt-interop-lab@0.7.0 quickstart
+node dist/cli.js run \
+  --scenario p2pkh-sign-rust-bitcoin \
+  --scenario nested-p2sh-p2wsh-2-of-3-multisig \
+  --scenario ecdsa-sighash-matrix-rust-bitcoin \
+  --scenario taproot-sighash-matrix-rust-bitcoin \
+  --scenario adversarial-signer-inputs-rust-bitcoin \
+  --scenario combiner-conflicts-bitcoinjs-lib
 ```
 
-![v0.7.0 quickstart terminal output](https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/d4e3eb97200abe400af00124a07b8a0d6b813371/docs/assets/walkthrough/cli-finding-and-replay.png)
+![v0.7.0 P1 safety proof terminal output](https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/19d6f874b2efd66fba6aa5d142a5d7d0280816c0/docs/assets/walkthrough/cli-finding-and-replay.png)
 
-The captured repeated run uses `--no-build` because its two pinned images were already present.
-Omit that flag on the first run and quickstart builds them before executing the same proof.
+The captured repeated run uses `--no-build` because its required pinned Docker images were already
+present. Omit that flag on the first run so the CLI builds them before executing the same proof.
 
-The command is intentionally smaller than `matrix`: it proves that the installation, detector
-invariants, real-library handoff, Bitcoin Core oracle, artifact writer, and cleanup path work before
-a developer spends time on the complete suite. A passing quickstart is not a claim that all 45
-scenarios or all seven implementations are compatible.
+The filtered command is the focused P1 review gate, not the complete compatibility matrix. It
+proves the new signing, mutation, refusal, conflict-classification, Bitcoin Core oracle, artifact,
+and replay paths without implying that all 45 scenarios or all seven implementations are
+compatible.
 
 Open `artifacts/<run-id>/report.html` for the complete result, or verify later that the recorded
 evidence still matches its manifest:
@@ -102,15 +107,16 @@ evidence still matches its manifest:
 psbt-lab replay artifacts/<run-id>
 ```
 
-![v0.7.0 generated quickstart report](https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/d4e3eb97200abe400af00124a07b8a0d6b813371/docs/assets/walkthrough/compatibility-report.png)
+![v0.7.0 generated P1 safety report](https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/19d6f874b2efd66fba6aa5d142a5d7d0280816c0/docs/assets/walkthrough/compatibility-report.png)
 
 The report screenshot above comes directly from the generated, self-contained HTML artifact. The
-CLI screenshot is a typeset transcript of the same real run with the two long image digests and
-absolute local artifact path shortened. The v0.7.0 report includes per-request adapter cells; full
-matrix reports also include stable conformance rule IDs, normative levels, authoritative sources,
-expected-versus-observed behavior, severity, repairability, confidence, exact evidence, adapter
-failure cells, and replay-verified artifact comparison. Run `psbt-lab matrix` when the bounded first
-proof passes and complete cross-library coverage is required.
+CLI screenshot is a typeset summary of the same real run, with the installed binary name used and
+long descriptions plus the absolute artifact path condensed. It preserves the selected scenarios,
+outcomes, Core height, run ID, and 17-checkpoint replay result. The v0.7.0 report includes
+per-request adapter cells; full matrix reports also include stable conformance rule IDs, normative
+levels, authoritative sources, expected-versus-observed behavior, severity, repairability,
+confidence, exact evidence, adapter failure cells, and replay-verified artifact comparison. Run
+`psbt-lab matrix` when the focused gate passes and complete cross-library coverage is required.
 
 ## External Adapters
 
