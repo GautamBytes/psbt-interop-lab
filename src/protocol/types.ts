@@ -31,6 +31,7 @@ export type AdapterRole = (typeof adapterRoles)[number];
 export const adapterScriptTypes = [
   "p2pkh",
   "p2sh-p2wpkh",
+  "p2sh-p2wsh",
   "p2wpkh",
   "p2wsh",
   "p2tr-keypath",

@@ -191,4 +191,99 @@ describe("custom scenario compiler", () => {
       compileUserScenarios([invalid], new Map([["merchant-refund", customFixture()]])),
     ).toThrow(/core-finalize/i);
   });
+
+  test("replays promoted mutation and parser-classification steps", async () => {
+    const fixture = customFixture();
+    const regression: UserScenarioSpec = {
+      id: "parser-regression",
+      title: "Parser regression",
+      fixture: fixture.id,
+      steps: [
+        {
+          id: "mutated",
+          operation: "mutate",
+          input: "fixture",
+          recipes: [{ kind: "truncate", byteLength: 10 }],
+        },
+        {
+          id: "compare",
+          operation: "compare-parsers",
+          input: "mutated",
+          adapters: ["rust-bitcoin"],
+          expected: { lab: "rejected", "rust-bitcoin": "rejected" },
+        },
+      ],
+    };
+    const [definition] = compileUserScenarios([regression], new Map([[fixture.id, fixture]]));
+    expect(definition?.requirements).toEqual([
+      {
+        adapter: "rust-bitcoin",
+        operations: ["native-parse"],
+        roles: ["parser"],
+        psbtVersions: [0],
+        scriptTypes: ["p2wpkh"],
+      },
+    ]);
+
+    const implementation: AdapterImplementation = {
+      name: "rust-bitcoin",
+      version: "0.1.0",
+      sourceRevision: "bitcoin-crate-0.32.102",
+      artifactDigest: `sha256:${"d".repeat(64)}`,
+    };
+    const context = new ScenarioExecutionContext({
+      rpc: { call: vi.fn() } as never,
+      artifacts: {
+        checkpoint: vi.fn(async (scenarioId: string, stage: string, encoded: string) => ({
+          scenario: scenarioId,
+          stage,
+          psbtPath: `checkpoints/${scenarioId}/${stage}.psbt`,
+          factsPath: `checkpoints/${scenarioId}/${stage}.facts.json`,
+          facts: { sha256: encoded },
+        })) as never,
+      },
+      adapters: new Map([
+        [
+          "rust-bitcoin",
+          {
+            request: vi.fn(
+              async (request: AdapterRequest): Promise<AdapterResponse> => ({
+                protocol: "psbt-lab.adapter/0.2",
+                id: request.id,
+                status: "rejected",
+                implementation,
+                error: { class: "psbt.parse_failed", message: "truncated map" },
+              }),
+            ),
+          },
+        ],
+      ]),
+      adapterTimeoutMs: 1_000,
+    });
+    const negotiated: NegotiatedAdapter = {
+      implementation,
+      capabilities: {
+        operations: ["hello", "native-parse"],
+        roles: ["parser"],
+        psbtVersions: [0],
+        scriptTypes: ["p2wpkh"],
+      },
+    };
+
+    const [result] = await runScenarioCatalog(
+      definition ? [definition] : [],
+      context,
+      new Map([["rust-bitcoin", negotiated]]),
+    );
+
+    expect(result).toMatchObject({
+      id: "parser-regression",
+      outcome: "passed",
+      assertions: [
+        { name: "mutated", passed: true },
+        { name: "compare-lab", passed: true },
+        { name: "compare-rust-bitcoin", passed: true },
+      ],
+    });
+  });
 });

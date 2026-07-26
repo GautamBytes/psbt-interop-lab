@@ -42,11 +42,11 @@ Bitcoin Core numeric version `310100`.
 
 ### Bitcoin Core fixture source and oracle
 
-Core 31.1 mines a local regtest chain and funds deterministic public P2WPKH, nested P2SH-P2WPKH,
-single-key and 2-of-3 P2WSH, P2TR key-path, and P2TR script-path descriptors. It creates PSBTv0 with
-`createpsbt` and fills UTXO/script metadata with `utxoupdatepsbt`. Intent fixtures add multiple
-outputs, RBF sequence, non-zero locktime, explicit sighash type, and derivation metadata. At the
-end of each signing path,
+Core 31.1 mines a local regtest chain and funds deterministic public P2PKH, P2WPKH, nested
+P2SH-P2WPKH, nested P2SH-P2WSH, single-key and 2-of-3 P2WSH, P2TR key-path, and P2TR script-path
+descriptors. It creates PSBTv0 with `createpsbt` and fills UTXO/script metadata with
+`utxoupdatepsbt`. Intent fixtures add multiple outputs, RBF sequence, non-zero locktime, explicit
+sighash type, and derivation metadata. At the end of each signing path,
 `finalizepsbt` extracts the transaction and `testmempoolaccept` checks current consensus and mempool
 policy without broadcasting it.
 
@@ -148,9 +148,10 @@ The detailed assumptions, abuse paths, and residual risks are recorded in the
 
 ## Proof Scenarios
 
-The executable catalog currently contains 39 scenarios. Twelve independent Core-to-library
+The executable catalog currently contains 45 scenarios. Twelve independent Core-to-library
 handoffs exercise rust-bitcoin, btcsuite, bitcoinjs, and current BDK signing for P2WSH, P2WPKH, and
-P2TR key-path inputs.
+P2TR key-path inputs. Additional rust-bitcoin handoffs prove legacy P2PKH signing from an exact
+`non_witness_utxo` and nested P2SH-P2WSH 2-of-3 signing and finalization.
 A same-input 2-of-3 scenario has Rust and JavaScript sign independent PSBT copies, combines their
 partial signatures, and requires Core to finalize the union. A four-library chain proves
 byte-semantic preservation across BDK, Rust, Go, and JavaScript. A parallel path has Rust sign input
@@ -159,6 +160,18 @@ zero and Go sign input one, then requires bitcoinjs to combine the union before 
 The transaction-intent scenario roundtrips a multi-output P2WPKH fixture through all three current
 adapters, signs it, and verifies transaction version, output amounts and scripts, RBF sequence,
 non-zero locktime, explicit `SIGHASH_ALL`, and BIP32 derivation metadata before Core finalization.
+
+Two sighash matrices exercise every standard ECDSA ALL, NONE, SINGLE, and ANYONECANPAY combination,
+plus all standard Taproot key-path modes including DEFAULT. Native signature verification proves
+which output and other-input mutations remain permitted and which committed-input mutations
+invalidate the signature. The signer also refuses nonstandard ECDSA values and the invalid Taproot
+DEFAULT plus ANYONECANPAY encoding.
+
+An adversarial signer matrix submits wrong witness amounts and scripts, incorrect
+`non_witness_utxo` transactions, redeem/witness script mismatches, derivation mismatches, and
+Taproot internal-key or Merkle-root mismatches. A separate combiner matrix injects conflicting
+UTXOs, scripts, sighash types, derivations, ECDSA partial signatures, and Taproot key signatures.
+Every conflict has a deterministic classification and must be rejected before native combining.
 
 The rejection matrix runs five malformed or undeclared PSBT cases through all four native parser
 paths. It currently records btcsuite 1.2.0 accepting a duplicate global unsigned-transaction key as
@@ -204,6 +217,18 @@ this catalog. The selection changes runtime cost, not assertion depth: each sele
 the same adapter checks, semantic transitions, Core policy oracle, and report artifacts as a full
 matrix run.
 
+`psbt-lab fuzz --runtime local` generates up to 512 deterministic mutation recipes from a 32-bit
+seed and compares the lossless lab parser with available native parsers. Structured mutations
+operate on parsed PSBT maps; raw mutations are bounded XOR, truncation, and append operations.
+Results normalize to accepted, rejected, unsupported, crashed, or timed out and include structural
+facts for accepted parses. Interesting cases are minimized by deleting redundant operations and
+shrinking payloads while preserving the exact parser outcome vector, then can be promoted into
+SHA256-committed `psbt-lab.suite/0.2` parser regressions. Promoted expectations preserve both
+classification and accepted structural facts. `psbt-lab parse-matrix --suite-manifest <path>`
+replays those regressions through the same Dockerless provider and refuses any Core, signing,
+combining, or finalization operation. Manifest validation also prevents parser fixtures from
+entering those operations through the full matrix path.
+
 `psbt-lab baseline` captures the standard comparison snapshot, and
 `psbt-lab compare <base> <head>` checks whether a later run changed scenario outcomes, findings,
 adapter cells, or checkpoint digests after replay-verifying both artifact directories.
@@ -216,7 +241,7 @@ the expected identity and baseline parser capabilities, probes valid and malform
 and requires semantic roundtrip preservation.
 
 `psbt-lab matrix --adapter-manifest <manifest>` then registers each external process by its manifest
-ID while retaining the separately validated implementation identity. The runner preserves all 39
+ID while retaining the separately validated implementation identity. The runner preserves all 45
 bundled scenarios and appends capability-gated P2WPKH, nested P2SH-P2WPKH, P2WSH, Taproot key-path,
 and Taproot script-path parse and roundtrip scenarios, plus signing where declared. Run-scoped
 unsigned-transaction commitments authorize only deterministic regtest fixtures. See
@@ -224,7 +249,10 @@ unsigned-transaction commitments authorize only deterministic regtest fixtures. 
 
 `psbt-lab matrix --suite-manifest <manifest>` compiles a strict bounded manifest into Core-funded
 fixtures and typed handoff scenarios. Users choose only fixed public descriptor templates and
-structured operations; arbitrary commands, descriptors, keys, PSBTs, and payloads are rejected.
-Typed dataflow prevents a finalized transaction result from being reused as a PSBT. Signing or
-input finalization of a custom fixture requires both the normal commitment feature and the separate
+structured operations. Suite 0.2 additionally permits SHA256-committed parser-only fixtures,
+allowlisted mutations, and expected cross-parser classifications plus accepted structural facts.
+Arbitrary commands, descriptors, keys, signing PSBTs, and adapter payloads remain rejected. Typed
+dataflow prevents parser fixtures from entering signing operations and prevents a finalized
+transaction result from being reused as a PSBT. Signing or input finalization of a custom
+transaction fixture requires both the normal commitment feature and the separate
 `user-fixture-template-v1` capability.

@@ -14,14 +14,17 @@ import { routes } from "../routes";
 import { SiteLink } from "./SiteLink";
 
 const coverage = [
-  "P2WPKH, nested SegWit, P2WSH, and Taproot fixtures",
+  "Legacy P2PKH, nested SegWit, P2WSH, and Taproot fixtures",
   "Signing, combining, finalization, and policy acceptance",
+  "Cryptographically measured ECDSA and Taproot sighash mutations",
+  "Adversarial signer and deterministic combiner conflicts",
   "Unknown and proprietary metadata preservation",
   "All official BIP370 and BIP371 valid and invalid vectors",
   "Native PSBTv2 constructors and bidirectional Taproot handoffs",
   "Wallet CI Action with external-only, JUnit, and SARIF output",
   "Target one scenario or category for faster iteration",
   "Run bounded bundled parser checks without Docker",
+  "Promote exact parser classifications and structural facts",
   "Capture baselines and compare replay-verified artifacts",
   "Transaction intent, RBF, locktime, sighash, and derivations",
   "Malformed native-parser rejection without crashes",

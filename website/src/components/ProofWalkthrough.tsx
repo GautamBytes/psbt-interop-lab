@@ -5,16 +5,16 @@ import { SiteLink } from "./SiteLink";
 
 const facts = [
   {
-    label: "Detectors",
-    value: "5 / 5 deliberate semantic faults caught",
+    label: "P1 gate",
+    value: "6 / 6 safety scenarios passed",
   },
   {
-    label: "Handoff",
-    value: "Bitcoin Core to rust-bitcoin to Bitcoin Core",
+    label: "Coverage",
+    value: "Legacy, nested multisig, sighash, signer, and combiner",
   },
   {
-    label: "Result",
-    value: "Finalized, policy accepted, reported, and cleaned up",
+    label: "Replay",
+    value: "17 checkpoints verified from the same artifact",
   },
 ] as const;
 
@@ -24,21 +24,17 @@ export function ProofWalkthrough() {
       <div className="page-shell">
         <header className="proof-heading">
           <div>
-            <span className="eyebrow">Evidence from a real v0.7.0 quickstart</span>
-            <h2 id="proof-title">From one command to a policy-accepted transaction.</h2>
+            <span className="eyebrow">Evidence from the real v0.7.0 P1 gate</span>
+            <h2 id="proof-title">Six safety proofs, one replayable artifact.</h2>
           </div>
           <div>
             <p>
-              The bounded first-run proof checks the environment and semantic detectors, completes a
-              real signing handoff, writes a self-contained report, and stops Core automatically.
-              These fresh v0.7.0 captures show the real branch package completing its bounded
-              handoff. The generated report exposes per-request adapter cells alongside sourced
-              conformance diagnostics and replayable artifact evidence.
+              This filtered branch run covers legacy and nested signing, cryptographically measured
+              sighash mutations, signer refusals, and deterministic combiner conflicts. The
+              generated report records per-request adapter cells, Core-backed outcomes, and 17
+              replay-verified checkpoints from the same run.
             </p>
-            <SiteLink
-              className="inline-link"
-              href="/docs#walkthrough-verify-your-first-real-handoff"
-            >
+            <SiteLink className="inline-link" href="/docs#walkthrough-verify-the-p1-safety-gate">
               Open the complete walkthrough <ArrowSquareOut aria-hidden="true" />
             </SiteLink>
           </div>
@@ -49,16 +45,16 @@ export function ProofWalkthrough() {
             <a href={cliProof} aria-label="Open full-size CLI proof">
               <img
                 src={cliProof}
-                alt="v0.7.0 quickstart terminal output"
+                alt="v0.7.0 P1 safety proof terminal output"
                 loading="lazy"
                 decoding="async"
               />
             </a>
             <figcaption>
               <span>01</span>
-              <strong>Run quickstart</strong>
+              <strong>Run the P1 gate</strong>
               <small>
-                Actual v0.7.0 branch-package output; only digests and the local path are shortened.
+                Six focused scenarios covering signing, sighashes, refusals, and conflicts.
               </small>
             </figcaption>
           </figure>
@@ -67,7 +63,7 @@ export function ProofWalkthrough() {
             <a href={reportProof} aria-label="Open full-size generated report">
               <img
                 src={reportProof}
-                alt="v0.7.0 generated quickstart report"
+                alt="v0.7.0 generated P1 safety report"
                 loading="lazy"
                 decoding="async"
               />
@@ -75,7 +71,7 @@ export function ProofWalkthrough() {
             <figcaption>
               <span>02</span>
               <strong>Inspect the report</strong>
-              <small>Direct capture of the self-contained HTML artifact from the same run.</small>
+              <small>Direct capture of the six-scenario, self-contained HTML artifact.</small>
             </figcaption>
           </figure>
         </div>

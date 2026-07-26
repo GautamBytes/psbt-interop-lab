@@ -131,24 +131,34 @@ describe("proof scenario classification", () => {
 function fixture(id: PsbtFixture["id"]): PsbtFixture {
   const commitmentByte = id === "happy-path" ? "c" : "d";
   const scriptTypes =
-    id === "p2wpkh" || id === "intent-rich-p2wpkh"
-      ? (["p2wpkh"] as const)
-      : id === "p2sh-p2wpkh"
-        ? (["p2sh-p2wpkh"] as const)
-        : id === "p2tr-keypath"
-          ? (["p2tr-keypath"] as const)
-          : id === "p2tr-scriptpath"
-            ? (["p2tr-scriptpath"] as const)
-            : id === "mixed-p2wpkh-p2tr"
-              ? (["p2wpkh", "p2tr-keypath"] as const)
-              : (["p2wsh"] as const);
+    id === "p2pkh"
+      ? (["p2pkh"] as const)
+      : id === "p2wpkh" || id === "intent-rich-p2wpkh" || id === "sighash-p2wpkh"
+        ? (["p2wpkh"] as const)
+        : id === "p2sh-p2wpkh"
+          ? (["p2sh-p2wpkh"] as const)
+          : id === "p2sh-p2wsh-2-of-3"
+            ? (["p2sh-p2wsh"] as const)
+            : id === "p2tr-keypath" || id === "sighash-p2tr-keypath"
+              ? (["p2tr-keypath"] as const)
+              : id === "p2tr-scriptpath"
+                ? (["p2tr-scriptpath"] as const)
+                : id === "mixed-p2wpkh-p2tr"
+                  ? (["p2wpkh", "p2tr-keypath"] as const)
+                  : (["p2wsh"] as const);
   return {
     id,
     initialPsbt:
       "cHNidP8BADwCAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/////wD/////AQAAAAAAAAAAAAAAAAAAAAA=",
     outpoints: [],
-    inputCount: id === "bdk-finalize-regression" ? 2 : 1,
-    outputCount: id === "intent-rich-p2wpkh" ? 2 : 1,
+    inputCount:
+      id === "bdk-finalize-regression" || id === "sighash-p2wpkh" || id === "sighash-p2tr-keypath"
+        ? 2
+        : 1,
+    outputCount:
+      id === "intent-rich-p2wpkh" || id === "sighash-p2wpkh" || id === "sighash-p2tr-keypath"
+        ? 2
+        : 1,
     feeSats: 1_000,
     scriptTypes,
     inputDescriptors: ["wsh(pk(...))#fixture"],
@@ -168,14 +178,18 @@ function preparedFixtures(): PreparedFixtures {
     happy: fixture("happy-path"),
     regression: fixture("bdk-finalize-regression"),
     profiles: {
+      p2pkh: fixture("p2pkh"),
       p2wpkh: fixture("p2wpkh"),
       "p2sh-p2wpkh": fixture("p2sh-p2wpkh"),
+      "p2sh-p2wsh-2-of-3": fixture("p2sh-p2wsh-2-of-3"),
       "p2wsh-single-key": fixture("p2wsh-single-key"),
       "p2wsh-2-of-3": fixture("p2wsh-2-of-3"),
       "p2tr-keypath": fixture("p2tr-keypath"),
       "p2tr-scriptpath": fixture("p2tr-scriptpath"),
       "mixed-p2wpkh-p2tr": fixture("mixed-p2wpkh-p2tr"),
       "intent-rich-p2wpkh": fixture("intent-rich-p2wpkh"),
+      "sighash-p2wpkh": fixture("sighash-p2wpkh"),
+      "sighash-p2tr-keypath": fixture("sighash-p2tr-keypath"),
     },
     custom: {},
   } as PreparedFixtures;
@@ -634,10 +648,16 @@ describe("proof runtime", () => {
       "p2wpkh-sign-rust-bitcoin",
       "p2wpkh-sign-btcsuite-go",
       "p2wpkh-sign-bitcoinjs-lib",
+      "p2pkh-sign-rust-bitcoin",
       "p2tr-keypath-sign-rust-bitcoin",
       "p2tr-keypath-sign-btcsuite-go",
       "p2tr-keypath-sign-bitcoinjs-lib",
       "same-input-2-of-3-multisig",
+      "nested-p2sh-p2wsh-2-of-3-multisig",
+      "ecdsa-sighash-matrix-rust-bitcoin",
+      "taproot-sighash-matrix-rust-bitcoin",
+      "adversarial-signer-inputs-rust-bitcoin",
+      "combiner-conflicts-bitcoinjs-lib",
       "four-library-roundtrip-chain",
       "parallel-sign-and-combine",
       "transaction-intent-preservation",
@@ -680,7 +700,7 @@ describe("proof runtime", () => {
     ).toEqual(PROOF_SCENARIOS);
   });
 
-  test("appends external scenarios without changing the 18 built-in definitions", () => {
+  test("appends external scenarios without changing the built-in definitions", () => {
     const external: NegotiatedAdapter = {
       registryId: "wallet-alias",
       implementation: {
@@ -765,8 +785,20 @@ describe("proof runtime", () => {
       p2wpkh: `sha256:${"d".repeat(64)}`,
       "p2wsh-2-of-3": `sha256:${"d".repeat(64)}`,
       "p2tr-keypath": `sha256:${"d".repeat(64)}`,
+      p2pkh: `sha256:${"d".repeat(64)}`,
+      "p2sh-p2wsh-2-of-3": `sha256:${"d".repeat(64)}`,
       "p2tr-scriptpath": `sha256:${"d".repeat(64)}`,
       "intent-rich-p2wpkh": `sha256:${"d".repeat(64)}`,
+      "sighash-p2wpkh": `sha256:${"d".repeat(64)}`,
+      "sighash-p2tr-keypath": `sha256:${"d".repeat(64)}`,
+    });
+    const bitcoinjsCommitments = JSON.stringify({
+      "happy-path": `sha256:${"c".repeat(64)}`,
+      "bdk-finalize-regression": `sha256:${"d".repeat(64)}`,
+      p2wpkh: `sha256:${"d".repeat(64)}`,
+      "p2wsh-2-of-3": `sha256:${"d".repeat(64)}`,
+      "p2tr-keypath": `sha256:${"d".repeat(64)}`,
+      "p2sh-p2wsh-2-of-3": `sha256:${"d".repeat(64)}`,
     });
     const bdkCommitments = JSON.stringify({
       "happy-path": `sha256:${"c".repeat(64)}`,
@@ -794,7 +826,7 @@ describe("proof runtime", () => {
       },
       {
         image: "psbt-interop-lab/bitcoinjs-lib:7.0.1",
-        options: { env: { PSBT_LAB_FIXTURE_COMMITMENTS: commonCommitments } },
+        options: { env: { PSBT_LAB_FIXTURE_COMMITMENTS: bitcoinjsCommitments } },
       },
       {
         image: "psbt-interop-lab/bdkpython:2.3.1",

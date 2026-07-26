@@ -24,6 +24,12 @@ describe("PSBT Interop Lab website", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("Dockerless parser checks")).toBeInTheDocument();
     expect(
+      screen.getByText("Cryptographically measured ECDSA and Taproot sighash mutations"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Promote exact parser classifications and structural facts"),
+    ).toBeInTheDocument();
+    expect(
       screen.getByText("Target one scenario or category for faster iteration"),
     ).toBeInTheDocument();
     expect(screen.getByText("Native parser duplicate-key probe")).toBeInTheDocument();
@@ -32,7 +38,7 @@ describe("PSBT Interop Lab website", () => {
       "/docs#quick-start",
     );
     expect(screen.getByText(/quickstart proves one real handoff/i)).toBeInTheDocument();
-    expect(screen.getByText(/matrix runs all 39 bundled scenarios/i)).toBeInTheDocument();
+    expect(screen.getByText(/matrix runs all 45 bundled scenarios/i)).toBeInTheDocument();
     expect(screen.getByText("PSBT Interop Lab 0.7.0")).toBeInTheDocument();
     expect(screen.getByText(/available now as version 0\.7\.0/i)).toBeInTheDocument();
   });
@@ -41,18 +47,18 @@ describe("PSBT Interop Lab website", () => {
     render(<App />);
 
     expect(
-      screen.getByRole("heading", { name: /from one command to a policy-accepted transaction/i }),
+      screen.getByRole("heading", { name: /six safety proofs, one replayable artifact/i }),
     ).toBeInTheDocument();
-    expect(screen.getByText(/evidence from a real v0\.7\.0 quickstart/i)).toBeInTheDocument();
+    expect(screen.getByText(/evidence from the real v0\.7\.0 P1 gate/i)).toBeInTheDocument();
     expect(
-      screen.getByRole("img", { name: /v0\.7\.0 quickstart terminal output/i }),
+      screen.getByRole("img", { name: /v0\.7\.0 P1 safety proof terminal output/i }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("img", { name: /v0\.7\.0 generated quickstart report/i }),
+      screen.getByRole("img", { name: /v0\.7\.0 generated P1 safety report/i }),
     ).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /open the complete walkthrough/i })).toHaveAttribute(
       "href",
-      "/docs#walkthrough-verify-your-first-real-handoff",
+      "/docs#walkthrough-verify-the-p1-safety-gate",
     );
   });
 

@@ -1,5 +1,12 @@
 import type { PsbtFixture } from "../core/fixtures.js";
+import {
+  classifyAdapterParserResponse,
+  classifyLabParser,
+  type ParserOutcome,
+  parserOutcomeMatches,
+} from "../fuzz/differential.js";
 import type { AdapterOperation, AdapterRole } from "../protocol/types.js";
+import { applyPsbtMutations } from "../psbt/mutation.js";
 import type { CoreFinalizeResult, ScenarioExecutionContext } from "../scenarios/context.js";
 import type {
   AdapterCapabilityRequirement,
@@ -46,6 +53,20 @@ function compileRequirements(
 ): AdapterCapabilityRequirement[] {
   const requirements = new Map<string, MutableRequirement>();
   for (const step of scenario.steps) {
+    if (step.operation === "compare-parsers") {
+      for (const adapter of step.adapters) {
+        const requirement = requirements.get(adapter) ?? {
+          adapter,
+          operations: [],
+          roles: [],
+          features: [],
+        };
+        uniquePush(requirement.operations, "native-parse");
+        uniquePush(requirement.roles, "parser");
+        requirements.set(adapter, requirement);
+      }
+      continue;
+    }
     if (!("adapter" in step)) continue;
     const requirement = requirements.get(step.adapter) ?? {
       adapter: step.adapter,
@@ -99,7 +120,7 @@ function validateTypedDataflow(scenario: UserScenarioSpec): void {
       step.id,
       step.operation === "core-finalize"
         ? "finalized"
-        : step.operation === "core-policy-check"
+        : step.operation === "core-policy-check" || step.operation === "compare-parsers"
           ? "terminal"
           : "psbt",
     );
@@ -195,6 +216,45 @@ async function executeScenario(
   await context.checkpoint(scenario.id, "fixture", fixture.initialPsbt);
 
   for (const step of scenario.steps) {
+    if (step.operation === "mutate") {
+      const before = psbtValue(values, step.input);
+      const mutated = applyPsbtMutations(before, step.recipes);
+      assertions.push({
+        name: step.id,
+        passed: mutated !== before,
+        summary:
+          mutated !== before
+            ? `Applied ${step.recipes.length} deterministic PSBT mutation recipe(s)`
+            : "Mutation recipes did not change the PSBT",
+      });
+      values.set(step.id, { kind: "psbt", value: mutated });
+      await context.checkpoint(scenario.id, step.id, mutated);
+      continue;
+    }
+    if (step.operation === "compare-parsers") {
+      const psbt = psbtValue(values, step.input);
+      const outcomes: Record<string, ParserOutcome> = { lab: classifyLabParser(psbt) };
+      for (const adapter of step.adapters) {
+        outcomes[adapter] = classifyAdapterParserResponse(
+          await context.request(adapter, "native-parse", { psbt }),
+        );
+      }
+      for (const [implementation, expected] of Object.entries(step.expected)) {
+        const actual = outcomes[implementation];
+        const expectedOutcome =
+          typeof expected === "string" ? { classification: expected } : expected;
+        assertions.push({
+          name: `${step.id}-${implementation}`,
+          passed: parserOutcomeMatches(actual, expected),
+          likelyImplementation: implementation,
+          summary: actual
+            ? `${implementation} returned ${actual.classification}; expected ${expectedOutcome.classification}`
+            : `${implementation} produced no parser outcome`,
+        });
+      }
+      values.set(step.id, { kind: "terminal" });
+      continue;
+    }
     if (
       step.operation === "roundtrip" ||
       step.operation === "sign" ||

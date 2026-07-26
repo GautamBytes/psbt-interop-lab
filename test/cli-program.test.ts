@@ -28,10 +28,26 @@ describe("CLI program", () => {
       "run",
       "matrix",
       "parse-matrix",
+      "fuzz",
       "stop",
       "replay",
       "compare",
     ]);
+  });
+
+  test("offers bounded seeded differential fuzzing and regression promotion", () => {
+    const fuzz = createProgram().commands.find((command) => command.name() === "fuzz");
+    const parseMatrix = createProgram().commands.find(
+      (command) => command.name() === "parse-matrix",
+    );
+
+    expect(fuzz?.options.find((option) => option.long === "--seed")?.defaultValue).toBe(0);
+    expect(fuzz?.options.find((option) => option.long === "--cases")?.defaultValue).toBe(64);
+    expect(fuzz?.options.some((option) => option.long === "--fixture")).toBe(true);
+    expect(fuzz?.options.some((option) => option.long === "--promote")).toBe(true);
+    expect(parseMatrix?.options.some((option) => option.long === "--suite-manifest")).toBe(true);
+    expect(() => fuzz?.parseOptions(["--cases", "0"])).toThrow(/between 1 and 512/i);
+    expect(() => fuzz?.parseOptions(["--seed", "4294967296"])).toThrow(/32-bit/i);
   });
 
   test("offers a bounded quickstart with reusable images and optional Core retention", () => {

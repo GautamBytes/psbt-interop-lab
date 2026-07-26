@@ -32,13 +32,29 @@ export const RUST_ADAPTER_CONTRACT = {
   operations: ["hello", "native-parse", "roundtrip", "sign", "finalize-inputs"],
   roles: ["parser", "signer", "finalizer"],
   psbtVersions: [0],
-  scriptTypes: ["p2wpkh", "p2sh-p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
+  scriptTypes: [
+    "p2pkh",
+    "p2wpkh",
+    "p2sh-p2wpkh",
+    "p2sh-p2wsh",
+    "p2wsh",
+    "p2tr-keypath",
+    "p2tr-scriptpath",
+  ],
   operationScriptTypes: {
-    roundtrip: ["p2wpkh", "p2sh-p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
-    sign: ["p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
+    roundtrip: [
+      "p2pkh",
+      "p2wpkh",
+      "p2sh-p2wpkh",
+      "p2sh-p2wsh",
+      "p2wsh",
+      "p2tr-keypath",
+      "p2tr-scriptpath",
+    ],
+    sign: ["p2pkh", "p2wpkh", "p2sh-p2wsh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
     "finalize-inputs": ["p2wsh", "p2tr-scriptpath"],
   },
-  features: ["fixture-commitment-sha256"],
+  features: ["fixture-commitment-sha256", "sighash-matrix-v1", "adversarial-signer-inputs-v1"],
 } as const satisfies ExpectedAdapterContract;
 
 export const GO_ADAPTER_CONTRACT = {
@@ -83,16 +99,16 @@ export const BITCOINJS_ADAPTER_CONTRACT = {
   ],
   roles: ["parser", "signer", "combiner", "finalizer"],
   psbtVersions: [0],
-  scriptTypes: ["p2wpkh", "p2sh-p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
+  scriptTypes: ["p2wpkh", "p2sh-p2wpkh", "p2sh-p2wsh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
   operationScriptTypes: {
-    inspect: ["p2wpkh", "p2sh-p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
-    roundtrip: ["p2wpkh", "p2sh-p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
-    sign: ["p2wpkh", "p2wsh", "p2tr-keypath"],
-    combine: ["p2wsh"],
+    inspect: ["p2wpkh", "p2sh-p2wpkh", "p2sh-p2wsh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
+    roundtrip: ["p2wpkh", "p2sh-p2wpkh", "p2sh-p2wsh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
+    sign: ["p2wpkh", "p2sh-p2wsh", "p2wsh", "p2tr-keypath"],
+    combine: ["p2wpkh", "p2sh-p2wsh", "p2wsh", "p2tr-keypath"],
     finalize: ["p2wsh"],
     "finalize-inputs": ["p2wsh"],
   },
-  features: ["fixture-commitment-sha256"],
+  features: ["fixture-commitment-sha256", "combiner-conflicts-v1"],
 } as const satisfies ExpectedAdapterContract;
 
 export const BDK_ADAPTER_CONTRACT = {

@@ -53,6 +53,10 @@ const MULTISIG_WITNESS_SCRIPT = bitcoin.script.compile([
 const MULTISIG_SCRIPT_PUBKEY = bitcoin.payments.p2wsh({
   redeem: { output: MULTISIG_WITNESS_SCRIPT },
 }).output;
+const MULTISIG_REDEEM_SCRIPT = MULTISIG_SCRIPT_PUBKEY;
+const NESTED_MULTISIG_SCRIPT_PUBKEY = bitcoin.payments.p2sh({
+  redeem: { output: MULTISIG_REDEEM_SCRIPT },
+}).output;
 const TAPROOT_SCRIPT_PUBKEY = bitcoin.payments.p2tr({
   internalPubkey: TEST_X_ONLY_PUBLIC_KEY,
 }).output;
@@ -79,6 +83,15 @@ const SIGNING_POLICIES = new Map([
     {
       kind: "p2wsh-2-of-3",
       scriptPubKey: MULTISIG_SCRIPT_PUBKEY,
+      witnessScript: MULTISIG_WITNESS_SCRIPT,
+    },
+  ],
+  [
+    "p2sh-p2wsh-2-of-3",
+    {
+      kind: "p2sh-p2wsh-2-of-3",
+      scriptPubKey: NESTED_MULTISIG_SCRIPT_PUBKEY,
+      redeemScript: MULTISIG_REDEEM_SCRIPT,
       witnessScript: MULTISIG_WITNESS_SCRIPT,
     },
   ],
@@ -421,19 +434,33 @@ function hasAnyTaprootMetadata(input) {
 }
 
 function validateProfileMetadata(input, policy) {
-  if (input.finalScriptSig || input.redeemScript) return false;
+  if (input.finalScriptSig) return false;
   switch (policy.kind) {
     case "p2wsh-single-key":
     case "p2wsh-2-of-3":
       return (
+        input.redeemScript === undefined &&
+        input.witnessScript !== undefined &&
+        sameBytes(input.witnessScript, policy.witnessScript) &&
+        !hasAnyTaprootMetadata(input)
+      );
+    case "p2sh-p2wsh-2-of-3":
+      return (
+        input.redeemScript !== undefined &&
+        sameBytes(input.redeemScript, policy.redeemScript) &&
         input.witnessScript !== undefined &&
         sameBytes(input.witnessScript, policy.witnessScript) &&
         !hasAnyTaprootMetadata(input)
       );
     case "p2wpkh":
-      return input.witnessScript === undefined && !hasAnyTaprootMetadata(input);
+      return (
+        input.redeemScript === undefined &&
+        input.witnessScript === undefined &&
+        !hasAnyTaprootMetadata(input)
+      );
     case "p2tr-keypath":
       return (
+        input.redeemScript === undefined &&
         input.witnessScript === undefined &&
         input.tapInternalKey !== undefined &&
         sameBytes(input.tapInternalKey, TEST_X_ONLY_PUBLIC_KEY) &&
@@ -510,7 +537,7 @@ function sign(psbt, fixtureId) {
   const policy = SIGNING_POLICIES.get(fixtureId);
   if (!policy) throw new Error("fixture signing policy is missing");
   const signer =
-    policy.kind === "p2wsh-2-of-3"
+    policy.kind === "p2wsh-2-of-3" || policy.kind === "p2sh-p2wsh-2-of-3"
       ? deterministicSigner(SECOND_PRIVATE_KEY)
       : policy.kind === "p2tr-keypath"
         ? taprootSigner()
@@ -574,16 +601,30 @@ function handleHello(id, digest, payload) {
     ],
     roles: ["parser", "signer", "combiner", "finalizer"],
     psbtVersions: [0],
-    scriptTypes: ["p2wpkh", "p2sh-p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
+    scriptTypes: [
+      "p2wpkh",
+      "p2sh-p2wpkh",
+      "p2sh-p2wsh",
+      "p2wsh",
+      "p2tr-keypath",
+      "p2tr-scriptpath",
+    ],
     operationScriptTypes: {
-      inspect: ["p2wpkh", "p2sh-p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
-      roundtrip: ["p2wpkh", "p2sh-p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
-      sign: ["p2wpkh", "p2wsh", "p2tr-keypath"],
-      combine: ["p2wsh"],
+      inspect: ["p2wpkh", "p2sh-p2wpkh", "p2sh-p2wsh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
+      roundtrip: [
+        "p2wpkh",
+        "p2sh-p2wpkh",
+        "p2sh-p2wsh",
+        "p2wsh",
+        "p2tr-keypath",
+        "p2tr-scriptpath",
+      ],
+      sign: ["p2wpkh", "p2sh-p2wsh", "p2wsh", "p2tr-keypath"],
+      combine: ["p2wpkh", "p2sh-p2wsh", "p2wsh", "p2tr-keypath"],
       finalize: ["p2wsh"],
       "finalize-inputs": ["p2wsh"],
     },
-    features: ["fixture-commitment-sha256"],
+    features: ["fixture-commitment-sha256", "combiner-conflicts-v1"],
   });
 }
 
@@ -609,6 +650,7 @@ function handleNativeParse(id, digest, payload) {
     const psbt = bitcoin.Psbt.fromBuffer(bytes, { network: bitcoin.networks.regtest });
     return success(id, digest, {
       nativeParser: "bitcoinjs-lib",
+      psbtVersion: 0,
       inputs: psbt.inputCount,
       outputs: psbt.txOutputs.length,
     });
@@ -708,6 +750,63 @@ function handleSign(id, digest, payload, config) {
   }
 }
 
+function rawPsbtMaps(parsed) {
+  const bytes = parsed.bytes;
+  let offset = 5;
+  const maps = [];
+  const mapCount = 1 + parsed.psbt.inputCount + parsed.psbt.txOutputs.length;
+  for (let mapIndex = 0; mapIndex < mapCount; mapIndex += 1) {
+    const entries = new Map();
+    while (true) {
+      const [keyLength, keyOffset] = readCompactSize(bytes, offset);
+      offset = keyOffset;
+      if (keyLength === 0) break;
+      if (keyLength > bytes.length - offset) throw new Error("truncated PSBT key");
+      const key = bytes.subarray(offset, offset + keyLength);
+      offset += keyLength;
+      const [valueLength, valueOffset] = readCompactSize(bytes, offset);
+      offset = valueOffset;
+      if (valueLength > bytes.length - offset) throw new Error("truncated PSBT value");
+      const value = bytes.subarray(offset, offset + valueLength);
+      offset += valueLength;
+      const keyHex = Buffer.from(key).toString("hex");
+      if (entries.has(keyHex)) throw new Error("duplicate PSBT key");
+      entries.set(keyHex, Buffer.from(value).toString("hex"));
+    }
+    maps.push(entries);
+  }
+  if (offset !== bytes.length) throw new Error("unexpected trailing PSBT data");
+  return maps;
+}
+
+function hasConflictingPsbtValues(parsed) {
+  const unsignedTransaction = Buffer.from(parsed[0].psbt.data.globalMap.unsignedTx.toBuffer());
+  if (
+    parsed
+      .slice(1)
+      .some(
+        (candidate) =>
+          !unsignedTransaction.equals(
+            Buffer.from(candidate.psbt.data.globalMap.unsignedTx.toBuffer()),
+          ),
+      )
+  ) {
+    return false;
+  }
+  const combinedMaps = rawPsbtMaps(parsed[0]).map((entries) => new Map(entries));
+  for (const candidate of parsed.slice(1)) {
+    const candidateMaps = rawPsbtMaps(candidate);
+    for (let mapIndex = 0; mapIndex < candidateMaps.length; mapIndex += 1) {
+      for (const [key, value] of candidateMaps[mapIndex]) {
+        const existing = combinedMaps[mapIndex].get(key);
+        if (existing !== undefined && existing !== value) return true;
+        combinedMaps[mapIndex].set(key, value);
+      }
+    }
+  }
+  return false;
+}
+
 function handleCombine(id, digest, payload) {
   if (
     !hasExactFields(payload, ["psbts"]) ||
@@ -734,6 +833,15 @@ function handleCombine(id, digest, payload) {
       "Every PSBT must be canonical PSBTv0 base64 within the adapter limit",
     );
   try {
+    if (hasConflictingPsbtValues(parsed)) {
+      return failure(
+        id,
+        digest,
+        "rejected",
+        "combine.conflict",
+        "PSBTs contain different values for the same map key",
+      );
+    }
     const [first, ...rest] = parsed;
     first.psbt.combine(...rest.map((value) => value.psbt));
     const encoded = encodedPsbt(first.psbt);

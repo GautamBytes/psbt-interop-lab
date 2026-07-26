@@ -23,20 +23,31 @@ const SINGLE_KEY_WITNESS_SCRIPT = `21${FIXTURE_PUBLIC_KEYS.scalar1}ac`;
 const MULTISIG_WITNESS_SCRIPT =
   `5221${FIXTURE_PUBLIC_KEYS.scalar1}21${FIXTURE_PUBLIC_KEYS.scalar2}` +
   `21${FIXTURE_PUBLIC_KEYS.scalar3}53ae`;
+const MULTISIG_WITNESS_PROGRAM = `0020${createHash("sha256")
+  .update(Buffer.from(MULTISIG_WITNESS_SCRIPT, "hex"))
+  .digest("hex")}`;
 const TAPROOT_SINGLE_KEY_LEAF_SCRIPT = `20${FIXTURE_PUBLIC_KEYS.scalar2.slice(2)}ac`;
 const EXPECTED_REDEEM_SCRIPTS = {
   "p2sh-p2wpkh": P2WPKH_REDEEM_SCRIPT,
+  "p2sh-p2wsh-2-of-3": MULTISIG_WITNESS_PROGRAM,
 } as const satisfies Partial<Record<FixtureDescriptorId, string>>;
 const EXPECTED_WITNESS_SCRIPTS = {
+  "p2sh-p2wsh-2-of-3": MULTISIG_WITNESS_SCRIPT,
   "p2wsh-single-key": SINGLE_KEY_WITNESS_SCRIPT,
   "p2wsh-2-of-3": MULTISIG_WITNESS_SCRIPT,
 } as const satisfies Partial<Record<FixtureDescriptorId, string>>;
 const EXPECTED_SCRIPT_PUBKEYS = {
+  p2pkh: `76a914${createHash("ripemd160")
+    .update(createHash("sha256").update(Buffer.from(FIXTURE_PUBLIC_KEYS.scalar1, "hex")).digest())
+    .digest("hex")}88ac`,
   p2wpkh: `0014${createHash("ripemd160")
     .update(createHash("sha256").update(Buffer.from(FIXTURE_PUBLIC_KEYS.scalar1, "hex")).digest())
     .digest("hex")}`,
   "p2sh-p2wpkh": `a914${createHash("ripemd160")
     .update(createHash("sha256").update(Buffer.from(P2WPKH_REDEEM_SCRIPT, "hex")).digest())
+    .digest("hex")}87`,
+  "p2sh-p2wsh-2-of-3": `a914${createHash("ripemd160")
+    .update(createHash("sha256").update(Buffer.from(MULTISIG_WITNESS_PROGRAM, "hex")).digest())
     .digest("hex")}87`,
   "p2wsh-single-key": `0020${createHash("sha256")
     .update(Buffer.from(SINGLE_KEY_WITNESS_SCRIPT, "hex"))
@@ -248,8 +259,8 @@ function parseDescriptorInfo(value: unknown): DescriptorInfo {
 }
 
 function parseAddress(value: unknown, label: string): string {
-  if (typeof value !== "string" || !/^(?:bcrt1[qp]|2)[A-Za-z0-9]+$/.test(value)) {
-    throw new Error(`${label} did not return one regtest witness address`);
+  if (typeof value !== "string" || !/^(?:bcrt1[qp]|[2mn])[A-Za-z0-9]+$/.test(value)) {
+    throw new Error(`${label} did not return one regtest address`);
   }
   return value;
 }
@@ -261,21 +272,24 @@ function parseValidatedScriptPubKey(
 ): string {
   const object = assertObject(value, `validateaddress ${id}`);
   const scriptPubKey = object["scriptPubKey"];
-  const isNestedSegwit = id === "p2sh-p2wpkh";
+  const isNestedSegwit = id === "p2sh-p2wpkh" || id === "p2sh-p2wsh-2-of-3";
+  const isLegacy = id === "p2pkh";
   const isTaproot = id === "p2tr-keypath" || id === "p2tr-scriptpath";
   const witnessVersion = isTaproot ? 1 : 0;
-  const expectedScriptPattern = isNestedSegwit
-    ? /^a914[0-9a-f]{40}87$/i
-    : isTaproot
-      ? /^5120[0-9a-f]{64}$/i
-      : id === "p2wpkh"
-        ? /^0014[0-9a-f]{40}$/i
-        : /^0020[0-9a-f]{64}$/i;
+  const expectedScriptPattern = isLegacy
+    ? /^76a914[0-9a-f]{40}88ac$/i
+    : isNestedSegwit
+      ? /^a914[0-9a-f]{40}87$/i
+      : isTaproot
+        ? /^5120[0-9a-f]{64}$/i
+        : id === "p2wpkh"
+          ? /^0014[0-9a-f]{40}$/i
+          : /^0020[0-9a-f]{64}$/i;
   if (
     object["isvalid"] !== true ||
     object["address"] !== address ||
-    object["iswitness"] !== !isNestedSegwit ||
-    (!isNestedSegwit && object["witness_version"] !== witnessVersion) ||
+    object["iswitness"] !== !(isLegacy || isNestedSegwit) ||
+    (!(isLegacy || isNestedSegwit) && object["witness_version"] !== witnessVersion) ||
     typeof scriptPubKey !== "string" ||
     !expectedScriptPattern.test(scriptPubKey)
   ) {
@@ -768,38 +782,76 @@ function assertDecodedFixture(
   }
   for (const [index, rawInput] of decoded["inputs"].entries()) {
     const input = assertObject(rawInput, `Fixture ${plan.id} input ${index}`);
-    const witnessUtxo = assertObject(
-      input["witness_utxo"],
-      `Fixture ${plan.id} input ${index} witness UTXO`,
-    );
     const outpoint = outpoints[index];
     const descriptorId = plan.inputDescriptorIds[index];
     const scriptType = plan.scriptTypes[index] ?? plan.scriptTypes[0];
     const inputMap = inputMaps[index];
-    if (
-      !outpoint ||
-      !inputMap ||
-      !descriptorId ||
-      (typeof witnessUtxo["amount"] !== "string" && typeof witnessUtxo["amount"] !== "number") ||
-      btcToSats(witnessUtxo["amount"]) !== outpoint.amountSats
-    ) {
-      throw new Error(`Fixture ${plan.id} input ${index} has invalid witness UTXO metadata`);
+    if (!outpoint || !inputMap || !descriptorId || !scriptType) {
+      throw new Error(`Fixture ${plan.id} input ${index} lacks declared fixture metadata`);
     }
-    if (
-      parseDecodedScript(
-        witnessUtxo["scriptPubKey"],
-        `Fixture ${plan.id} input ${index} witness UTXO scriptPubKey`,
-      ) !== descriptors[descriptorId].scriptPubKey
-    ) {
-      throw new Error(
-        `Fixture ${plan.id} input ${index} witness UTXO script does not match descriptor`,
+    if (scriptType === "p2pkh") {
+      const previous = assertObject(
+        input["non_witness_utxo"],
+        `Fixture ${plan.id} input ${index} non-witness UTXO`,
       );
+      const previousOutputs = previous["vout"];
+      const previousOutput =
+        Array.isArray(previousOutputs) && outpoint.vout < previousOutputs.length
+          ? assertObject(
+              previousOutputs[outpoint.vout],
+              `Fixture ${plan.id} input ${index} non-witness output`,
+            )
+          : undefined;
+      const nonWitnessEntries = inputMap.entries.filter(
+        (entry) => entry.keyType === 0x00 && entry.keyData.byteLength === 0,
+      );
+      if (
+        previous["txid"] !== outpoint.txid ||
+        !previousOutput ||
+        nonWitnessEntries.length !== 1 ||
+        (typeof previousOutput["value"] !== "string" &&
+          typeof previousOutput["value"] !== "number") ||
+        btcToSats(previousOutput["value"]) !== outpoint.amountSats
+      ) {
+        throw new Error(`Fixture ${plan.id} input ${index} has invalid non-witness UTXO metadata`);
+      }
+      if (
+        parseDecodedScript(
+          previousOutput["scriptPubKey"],
+          `Fixture ${plan.id} input ${index} non-witness UTXO scriptPubKey`,
+        ) !== descriptors[descriptorId].scriptPubKey
+      ) {
+        throw new Error(
+          `Fixture ${plan.id} input ${index} non-witness UTXO script does not match descriptor`,
+        );
+      }
+    } else {
+      const witnessUtxo = assertObject(
+        input["witness_utxo"],
+        `Fixture ${plan.id} input ${index} witness UTXO`,
+      );
+      if (
+        (typeof witnessUtxo["amount"] !== "string" && typeof witnessUtxo["amount"] !== "number") ||
+        btcToSats(witnessUtxo["amount"]) !== outpoint.amountSats
+      ) {
+        throw new Error(`Fixture ${plan.id} input ${index} has invalid witness UTXO metadata`);
+      }
+      if (
+        parseDecodedScript(
+          witnessUtxo["scriptPubKey"],
+          `Fixture ${plan.id} input ${index} witness UTXO scriptPubKey`,
+        ) !== descriptors[descriptorId].scriptPubKey
+      ) {
+        throw new Error(
+          `Fixture ${plan.id} input ${index} witness UTXO script does not match descriptor`,
+        );
+      }
     }
     const expectedWitnessScript =
       EXPECTED_WITNESS_SCRIPTS[descriptorId as keyof typeof EXPECTED_WITNESS_SCRIPTS];
     const expectedRedeemScript =
       EXPECTED_REDEEM_SCRIPTS[descriptorId as keyof typeof EXPECTED_REDEEM_SCRIPTS];
-    if (scriptType === "p2wsh" && !expectedWitnessScript) {
+    if ((scriptType === "p2wsh" || scriptType === "p2sh-p2wsh") && !expectedWitnessScript) {
       throw new Error(`Fixture ${plan.id} input ${index} has no declared witness script`);
     }
     if (

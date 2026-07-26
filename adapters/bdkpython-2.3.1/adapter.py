@@ -174,6 +174,7 @@ def handle_request(value, digest):
             digest,
             {
                 "nativeParser": "bdkpython",
+                "psbtVersion": 0,
                 "inputs": len(psbt.input()),
                 "outputs": len(psbt.output()),
             },

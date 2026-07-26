@@ -12,7 +12,11 @@ import {
   prepareFixtures,
 } from "../core/fixtures.js";
 import type { CoreRpc } from "../core/rpc.js";
-import { type CompiledUserFixturePlan, compileUserFixturePlans } from "../custom/fixtures.js";
+import {
+  type CompiledUserFixturePlan,
+  compileUserFixturePlans,
+  compileUserParserFixtures,
+} from "../custom/fixtures.js";
 import type { CustomSuiteManifest } from "../custom/manifest.js";
 import { compileUserScenarios } from "../custom/scenarios.js";
 import { AdapterProcess, type AdapterProcessOptions } from "../protocol/adapter-process.js";
@@ -23,9 +27,11 @@ import {
   generateJsonReport,
   generateMarkdownReport,
 } from "../runner/report.js";
+import { createAdversarialSignerScenario } from "./adversarial-signers.js";
 import { classifyRegression, createBdkRegressionScenario } from "./bdk-regression.js";
 import { createBip370VectorScenario } from "./bip370.js";
 import { createBip371VectorScenario } from "./bip371.js";
+import { createCombinerConflictScenario } from "./combiner-conflicts.js";
 import { type CorePolicyResult, ScenarioExecutionContext } from "./context.js";
 import {
   assertAdapterHello,
@@ -58,6 +64,7 @@ import {
 } from "./psbtv2-interop.js";
 import { createPsbtv2TaprootHandoffScenarios } from "./psbtv2-taproot.js";
 import { createScriptProfileRoundtripScenario } from "./script-profile-roundtrip.js";
+import { createSighashMatrixScenario } from "./sighash-matrix.js";
 import {
   createTaprootScriptPathCanaryScenario,
   createTaprootScriptPathHandoffScenarios,
@@ -164,6 +171,11 @@ export const PROOF_SCENARIOS: readonly ProofScenarioSummary[] = [
     category: "cross-library-signing",
   },
   {
+    id: "p2pkh-sign-rust-bitcoin",
+    title: "Legacy P2PKH signing through rust-bitcoin",
+    category: "legacy-signing",
+  },
+  {
     id: "p2tr-keypath-sign-rust-bitcoin",
     title: "Taproot key-path signing through rust-bitcoin",
     category: "taproot-key-path",
@@ -182,6 +194,31 @@ export const PROOF_SCENARIOS: readonly ProofScenarioSummary[] = [
     id: "same-input-2-of-3-multisig",
     title: "Cross-library 2-of-3 multisig signing",
     category: "cross-library-multisig",
+  },
+  {
+    id: "nested-p2sh-p2wsh-2-of-3-multisig",
+    title: "Nested P2SH-P2WSH cross-library 2-of-3 signing",
+    category: "cross-library-multisig",
+  },
+  {
+    id: "ecdsa-sighash-matrix-rust-bitcoin",
+    title: "ECDSA sighash matrix through rust-bitcoin",
+    category: "sighash-safety",
+  },
+  {
+    id: "taproot-sighash-matrix-rust-bitcoin",
+    title: "Taproot sighash matrix through rust-bitcoin",
+    category: "sighash-safety",
+  },
+  {
+    id: "adversarial-signer-inputs-rust-bitcoin",
+    title: "Adversarial signer inputs through rust-bitcoin",
+    category: "signer-safety",
+  },
+  {
+    id: "combiner-conflicts-bitcoinjs-lib",
+    title: "Combiner conflict rejection through bitcoinjs-lib",
+    category: "combiner-safety",
   },
   {
     id: "four-library-roundtrip-chain",
@@ -467,6 +504,19 @@ export const PROOF_SCENARIO_REGISTRATIONS: readonly ProofScenarioRegistration[] 
       }),
     ),
   ),
+  registerScenario(
+    "p2pkh-sign-rust-bitcoin",
+    { core: true, fixtures: ["p2pkh"], adapters: ["rust-bitcoin"] },
+    (fixtures) =>
+      createHappyPathScenario(requiredFixture(fixtures, "p2pkh"), {
+        adapter: "rust-bitcoin",
+        id: "p2pkh-sign-rust-bitcoin",
+        title: "Legacy P2PKH signing through rust-bitcoin",
+        category: "legacy-signing",
+        scriptType: "p2pkh",
+        signatureKeyTypes: [0x02],
+      }),
+  ),
   ...(
     [
       [
@@ -504,6 +554,78 @@ export const PROOF_SCENARIO_REGISTRATIONS: readonly ProofScenarioRegistration[] 
       adapters: ["rust-bitcoin", "bitcoinjs-lib"],
     },
     (fixtures) => createSameInputMultisigScenario(requiredFixture(fixtures, "p2wsh-2-of-3")),
+  ),
+  registerScenario(
+    "nested-p2sh-p2wsh-2-of-3-multisig",
+    {
+      core: true,
+      fixtures: ["p2sh-p2wsh-2-of-3"],
+      adapters: ["rust-bitcoin", "bitcoinjs-lib"],
+    },
+    (fixtures) => createSameInputMultisigScenario(requiredFixture(fixtures, "p2sh-p2wsh-2-of-3")),
+  ),
+  registerScenario(
+    "ecdsa-sighash-matrix-rust-bitcoin",
+    {
+      core: true,
+      fixtures: ["sighash-p2wpkh"],
+      adapters: ["rust-bitcoin"],
+    },
+    (fixtures) =>
+      createSighashMatrixScenario(requiredFixture(fixtures, "sighash-p2wpkh"), {
+        adapter: "rust-bitcoin",
+        family: "ecdsa",
+      }),
+  ),
+  registerScenario(
+    "taproot-sighash-matrix-rust-bitcoin",
+    {
+      core: true,
+      fixtures: ["sighash-p2tr-keypath"],
+      adapters: ["rust-bitcoin"],
+    },
+    (fixtures) =>
+      createSighashMatrixScenario(requiredFixture(fixtures, "sighash-p2tr-keypath"), {
+        adapter: "rust-bitcoin",
+        family: "taproot",
+      }),
+  ),
+  registerScenario(
+    "adversarial-signer-inputs-rust-bitcoin",
+    {
+      core: true,
+      fixtures: ["p2wpkh", "p2pkh", "p2sh-p2wsh-2-of-3", "p2wsh-2-of-3", "p2tr-keypath"],
+      adapters: ["rust-bitcoin"],
+    },
+    (fixtures) =>
+      createAdversarialSignerScenario(
+        {
+          p2wpkh: requiredFixture(fixtures, "p2wpkh"),
+          p2pkh: requiredFixture(fixtures, "p2pkh"),
+          nested: requiredFixture(fixtures, "p2sh-p2wsh-2-of-3"),
+          p2wsh: requiredFixture(fixtures, "p2wsh-2-of-3"),
+          taproot: requiredFixture(fixtures, "p2tr-keypath"),
+        },
+        "rust-bitcoin",
+      ),
+  ),
+  registerScenario(
+    "combiner-conflicts-bitcoinjs-lib",
+    {
+      core: true,
+      fixtures: ["p2wpkh", "p2sh-p2wsh-2-of-3", "p2wsh-2-of-3", "p2tr-keypath"],
+      adapters: ["bitcoinjs-lib"],
+    },
+    (fixtures) =>
+      createCombinerConflictScenario(
+        {
+          p2wpkh: requiredFixture(fixtures, "p2wpkh"),
+          nested: requiredFixture(fixtures, "p2sh-p2wsh-2-of-3"),
+          p2wsh: requiredFixture(fixtures, "p2wsh-2-of-3"),
+          taproot: requiredFixture(fixtures, "p2tr-keypath"),
+        },
+        "bitcoinjs-lib",
+      ),
   ),
   registerScenario(
     "four-library-roundtrip-chain",
@@ -934,8 +1056,16 @@ const COMMON_COMMITMENT_FIXTURES: readonly BuiltInFixtureId[] = [
 ];
 const RUST_COMMITMENT_FIXTURES: readonly BuiltInFixtureId[] = [
   ...COMMON_COMMITMENT_FIXTURES,
+  "p2pkh",
+  "p2sh-p2wsh-2-of-3",
   "p2tr-scriptpath",
   "intent-rich-p2wpkh",
+  "sighash-p2wpkh",
+  "sighash-p2tr-keypath",
+];
+const BITCOINJS_COMMITMENT_FIXTURES: readonly BuiltInFixtureId[] = [
+  ...COMMON_COMMITMENT_FIXTURES,
+  "p2sh-p2wsh-2-of-3",
 ];
 const BDK_CURRENT_COMMITMENT_FIXTURES: readonly BuiltInFixtureId[] = [
   "happy-path",
@@ -991,11 +1121,13 @@ function adapterOptions(
   const commitmentIds =
     id === "rust-bitcoin"
       ? RUST_COMMITMENT_FIXTURES
-      : id === "bdk-wallet-current"
-        ? BDK_CURRENT_COMMITMENT_FIXTURES
-        : id === "rust-psbt-v2" || id === "libwally"
-          ? PSBTV2_COMMITMENT_FIXTURES
-          : COMMON_COMMITMENT_FIXTURES;
+      : id === "bitcoinjs-lib"
+        ? BITCOINJS_COMMITMENT_FIXTURES
+        : id === "bdk-wallet-current"
+          ? BDK_CURRENT_COMMITMENT_FIXTURES
+          : id === "rust-psbt-v2" || id === "libwally"
+            ? PSBTV2_COMMITMENT_FIXTURES
+            : COMMON_COMMITMENT_FIXTURES;
   const commitments = commitmentIds.flatMap((fixtureId) => {
     const fixture = preparedFixture(fixtures, fixtureId);
     return fixture ? [fixture] : [];
@@ -1111,7 +1243,10 @@ export async function runProofWithDependencies(
       !selection.filtered && options.customSuite && fixtures
         ? compileUserScenarios(
             options.customSuite.scenarios,
-            new Map(Object.entries(fixtures.custom)),
+            new Map([
+              ...Object.entries(fixtures.custom),
+              ...compileUserParserFixtures(options.customSuite.parserFixtures ?? []),
+            ]),
           )
         : [];
     const builtInCatalog = dependencies.createCatalog(

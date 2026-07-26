@@ -30,17 +30,24 @@ const MULTISIG_WITNESS_SCRIPT = bitcoin.script.compile([
   bitcoin.opcodes.OP_3,
   bitcoin.opcodes.OP_CHECKMULTISIG,
 ]);
+const MULTISIG_REDEEM_SCRIPT = bitcoin.payments.p2wsh({
+  redeem: { output: MULTISIG_WITNESS_SCRIPT },
+}).output;
 const PROFILE_SCRIPT_PUBKEYS = {
   p2wpkh: bitcoin.payments.p2wpkh({ pubkey: TEST_PUBLIC_KEY }).output,
   "p2wsh-2-of-3": bitcoin.payments.p2wsh({
     redeem: { output: MULTISIG_WITNESS_SCRIPT },
   }).output,
+  "p2sh-p2wsh-2-of-3": bitcoin.payments.p2sh({
+    redeem: { output: MULTISIG_REDEEM_SCRIPT },
+  }).output,
   "p2tr-keypath": bitcoin.payments.p2tr({ internalPubkey: TEST_X_ONLY_PUBLIC_KEY }).output,
 };
-const PROFILE_FIXTURE_IDS = ["p2wpkh", "p2wsh-2-of-3", "p2tr-keypath"];
+const PROFILE_FIXTURE_IDS = ["p2wpkh", "p2wsh-2-of-3", "p2sh-p2wsh-2-of-3", "p2tr-keypath"];
 const EXACT_PROFILE_SCRIPT_HEX = {
   p2wpkh: "0014751e76e8199196d454941c45d1b3a323f1433bd6",
   "p2wsh-2-of-3": "002012c2ffbc6ec1cf5d746dfbd49b1063356212ea55f43023ffc0145934af20c572",
+  "p2sh-p2wsh-2-of-3": "a914c95ef7c9117a56571c2ddc44e5fd8ba29d45989387",
   "p2tr-keypath": "5120da4710964f7852695de2da025290e24af6d8c281de5a0b902b7135fd9fd74d21",
 };
 const EXACT_MULTISIG_WITNESS_SCRIPT_HEX =
@@ -129,7 +136,10 @@ function profilePsbt(fixtureId, { includeNonWitnessUtxo = false } = {}) {
     index: 0,
     witnessUtxo: { script, value: PROFILE_FUNDING_VALUE },
     ...(includeNonWitnessUtxo ? { nonWitnessUtxo: funding.toBuffer() } : {}),
-    ...(fixtureId === "p2wsh-2-of-3" ? { witnessScript: MULTISIG_WITNESS_SCRIPT } : {}),
+    ...(fixtureId === "p2wsh-2-of-3" || fixtureId === "p2sh-p2wsh-2-of-3"
+      ? { witnessScript: MULTISIG_WITNESS_SCRIPT }
+      : {}),
+    ...(fixtureId === "p2sh-p2wsh-2-of-3" ? { redeemScript: MULTISIG_REDEEM_SCRIPT } : {}),
     ...(fixtureId === "p2tr-keypath" ? { tapInternalKey: TEST_X_ONLY_PUBLIC_KEY } : {}),
   };
   const psbt = new bitcoin.Psbt({ network: bitcoin.networks.regtest });
@@ -186,16 +196,30 @@ test("hello advertises only proven PSBTv0 operations and script types", () => {
     ],
     roles: ["parser", "signer", "combiner", "finalizer"],
     psbtVersions: [0],
-    scriptTypes: ["p2wpkh", "p2sh-p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
+    scriptTypes: [
+      "p2wpkh",
+      "p2sh-p2wpkh",
+      "p2sh-p2wsh",
+      "p2wsh",
+      "p2tr-keypath",
+      "p2tr-scriptpath",
+    ],
     operationScriptTypes: {
-      inspect: ["p2wpkh", "p2sh-p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
-      roundtrip: ["p2wpkh", "p2sh-p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
-      sign: ["p2wpkh", "p2wsh", "p2tr-keypath"],
-      combine: ["p2wsh"],
+      inspect: ["p2wpkh", "p2sh-p2wpkh", "p2sh-p2wsh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
+      roundtrip: [
+        "p2wpkh",
+        "p2sh-p2wpkh",
+        "p2sh-p2wsh",
+        "p2wsh",
+        "p2tr-keypath",
+        "p2tr-scriptpath",
+      ],
+      sign: ["p2wpkh", "p2sh-p2wsh", "p2wsh", "p2tr-keypath"],
+      combine: ["p2wpkh", "p2sh-p2wsh", "p2wsh", "p2tr-keypath"],
       finalize: ["p2wsh"],
       "finalize-inputs": ["p2wsh"],
     },
-    features: ["fixture-commitment-sha256"],
+    features: ["fixture-commitment-sha256", "combiner-conflicts-v1"],
   });
   assertSchemaShape(result);
 });
@@ -203,7 +227,12 @@ test("hello advertises only proven PSBTv0 operations and script types", () => {
 test("native-parse invokes bitcoinjs-lib without fixture policy", () => {
   const accepted = response(request("native-parse", { psbt: fixturePsbt().toBase64() }));
   assert.equal(accepted.status, "ok");
-  assert.equal(accepted.output.nativeParser, "bitcoinjs-lib");
+  assert.deepEqual(accepted.output, {
+    nativeParser: "bitcoinjs-lib",
+    psbtVersion: 0,
+    inputs: 1,
+    outputs: 1,
+  });
 
   const rejected = response(
     request("native-parse", { psbt: Buffer.from("not a psbt").toString("base64") }),
@@ -463,6 +492,36 @@ test("scalar 2 contributes its deterministic signature to the exact ordered 2-of
   assertSchemaShape(result);
 });
 
+test("scalar 2 signs the exact nested P2SH-P2WSH 2-of-3 profile", () => {
+  const { psbt } = profilePsbt("p2sh-p2wsh-2-of-3");
+  const expected = psbt.clone();
+  expected.signInput(0, deterministicSigner(SECOND_PRIVATE_KEY));
+
+  const result = signProfile(psbt, "p2sh-p2wsh-2-of-3");
+
+  assert.equal(result.status, "ok");
+  const signed = bitcoin.Psbt.fromBase64(result.output.psbt);
+  assert.equal(
+    Buffer.from(signed.data.inputs[0].witnessUtxo.script).toString("hex"),
+    EXACT_PROFILE_SCRIPT_HEX["p2sh-p2wsh-2-of-3"],
+  );
+  assert.equal(
+    Buffer.from(signed.data.inputs[0].redeemScript).toString("hex"),
+    Buffer.from(MULTISIG_REDEEM_SCRIPT).toString("hex"),
+  );
+  assert.deepEqual(
+    partialSignatureHex(signed.data.inputs[0]),
+    partialSignatureHex(expected.data.inputs[0]),
+  );
+  assert.equal(
+    signed.validateSignaturesOfInput(0, (publicKey, hash, signature) =>
+      ecc.verify(hash, publicKey, signature),
+    ),
+    true,
+  );
+  assertSchemaShape(result);
+});
+
 test("TapTweak-adjusted scalar 1 signs the exact key-path Taproot profile with Schnorr", () => {
   const { psbt } = profilePsbt("p2tr-keypath");
   const expected = psbt.clone();
@@ -671,8 +730,30 @@ test("combines compatible PSBTs and rejects inconsistent candidates", () => {
   );
   assert.equal(mismatched.status, "rejected");
   assert.equal(mismatched.error.class, "combine.failed");
+
+  const left = profilePsbt("p2wpkh").psbt;
+  const conflictingUtxo = left.clone();
+  conflictingUtxo.data.inputs[0].witnessUtxo.value += 1n;
+  const utxoConflict = response(
+    request("combine", { psbts: [left.toBase64(), conflictingUtxo.toBase64()] }),
+  );
+  assert.equal(utxoConflict.status, "rejected");
+  assert.equal(utxoConflict.error.class, "combine.conflict");
+
+  const all = left.clone();
+  all.updateInput(0, { sighashType: bitcoin.Transaction.SIGHASH_ALL });
+  const none = left.clone();
+  none.updateInput(0, { sighashType: bitcoin.Transaction.SIGHASH_NONE });
+  const sighashConflict = response(
+    request("combine", { psbts: [all.toBase64(), none.toBase64()] }),
+  );
+  assert.equal(sighashConflict.status, "rejected");
+  assert.equal(sighashConflict.error.class, "combine.conflict");
+
   assertSchemaShape(combined);
   assertSchemaShape(mismatched);
+  assertSchemaShape(utxoConflict);
+  assertSchemaShape(sighashConflict);
 });
 
 test("finalize-inputs validates strict unique indexes and only finalizes selected inputs", () => {

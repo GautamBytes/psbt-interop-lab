@@ -50,7 +50,15 @@ class AdapterTests(unittest.TestCase):
             request("native-parse", {"psbt": MINIMAL_PSBT}), DIGEST
         )
         self.assertEqual(accepted["status"], "ok")
-        self.assertEqual(accepted["output"]["nativeParser"], "bdkpython")
+        self.assertEqual(
+            accepted["output"],
+            {
+                "nativeParser": "bdkpython",
+                "psbtVersion": 0,
+                "inputs": 1,
+                "outputs": 1,
+            },
+        )
 
         rejected = handle_request(
             request("native-parse", {"psbt": "bm90IGEgcHNidA=="}), DIGEST

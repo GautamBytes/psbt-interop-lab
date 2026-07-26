@@ -1,0 +1,76 @@
+{
+  "schema": "psbt-lab.suite/0.2",
+  "fixtures": [],
+  "parserFixtures": [
+    {
+      "id": "bip174-minimal-base",
+      "psbt": "cHNidP8BADwCAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/////wD/////AQAAAAAAAAAAAAAAAAAAAAA=",
+      "sha256": "sha256:1c8e14a4d2f70496b46bb9df06f72a8c938b378b7160cf4806336bf24ba89130"
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "truncated-map-regression",
+      "title": "Truncated PSBT map rejection",
+      "fixture": "bip174-minimal-base",
+      "steps": [
+        {
+          "id": "truncated",
+          "operation": "mutate",
+          "input": "fixture",
+          "recipes": [
+            {
+              "kind": "truncate",
+              "byteLength": 10
+            }
+          ]
+        },
+        {
+          "id": "compare",
+          "operation": "compare-parsers",
+          "input": "truncated",
+          "adapters": ["bundled-js"],
+          "expected": {
+            "lab": {
+              "classification": "rejected"
+            },
+            "bundled-js": {
+              "classification": "rejected"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "structural-facts-regression",
+      "title": "Accepted PSBT structural facts",
+      "fixture": "bip174-minimal-base",
+      "steps": [
+        {
+          "id": "compare",
+          "operation": "compare-parsers",
+          "input": "fixture",
+          "adapters": ["bundled-js"],
+          "expected": {
+            "lab": {
+              "classification": "accepted",
+              "facts": {
+                "psbtVersion": 0,
+                "inputs": 1,
+                "outputs": 1
+              }
+            },
+            "bundled-js": {
+              "classification": "accepted",
+              "facts": {
+                "psbtVersion": 0,
+                "inputs": 1,
+                "outputs": 1
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

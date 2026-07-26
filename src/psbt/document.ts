@@ -990,3 +990,26 @@ export class PsbtDocument {
 export function parsePsbtDocument(encoded: string, limits: PsbtDocumentLimits = {}): PsbtDocument {
   return PsbtDocument.parse(encoded, limits);
 }
+
+export function requireUniquePsbtEntryValue(
+  encoded: string,
+  location: PsbtMapLocation,
+  keyType: number,
+): Buffer {
+  const map = parsePsbtDocument(encoded).maps.find(
+    (candidate) =>
+      candidate.location.kind === location.kind &&
+      (candidate.location.kind === "global" ||
+        (location.kind !== "global" && candidate.location.index === location.index)),
+  );
+  const entries = map?.entries.filter(
+    (entry) => entry.keyType === keyType && entry.keyData.byteLength === 0,
+  );
+  if (entries?.length !== 1 || !entries[0]) {
+    throw new PsbtDocumentError(
+      `PSBT must contain exactly one key type ${keyType} at the selected map`,
+      { location, keyType },
+    );
+  }
+  return Buffer.from(entries[0].value);
+}

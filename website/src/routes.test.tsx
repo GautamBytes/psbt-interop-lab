@@ -174,6 +174,11 @@ describe("website documentation routes", () => {
     ["/files/src/custom/suite-manifest.schema.json", "Custom suite schema", /p2tr-scriptpath/],
     ["/files/examples/custom-suite.json", "Custom suite example", /nested-to-taproot/],
     [
+      "/files/examples/parser-regression-suite.json",
+      "Parser regression suite example",
+      /truncated-map-regression/,
+    ],
+    [
       "/files/examples/wallet-ci-adapter",
       "Wallet CI adapter example",
       /external wallet CI contract/,
@@ -220,10 +225,10 @@ describe("website documentation routes", () => {
     render(<App />);
 
     const cliProof = screen.getByRole("img", {
-      name: /v0\.7\.0 quickstart terminal output/i,
+      name: /v0\.7\.0 P1 safety proof terminal output/i,
     });
     const reportProof = screen.getByRole("img", {
-      name: /v0\.7\.0 generated quickstart report/i,
+      name: /v0\.7\.0 generated P1 safety report/i,
     });
 
     expect(cliProof).toHaveAttribute("src", expect.stringMatching(/cli-finding-and-replay/));
@@ -231,13 +236,13 @@ describe("website documentation routes", () => {
     expect(cliProof.getAttribute("src")).not.toMatch(/^https?:/);
     expect(reportProof.getAttribute("src")).not.toMatch(/^https?:/);
     expect(
-      screen.getByText(/v0\.7\.0 report includes per-request adapter cells/i),
+      screen.getByText(/preserves the selected scenarios, outcomes, Core height/i),
     ).toBeInTheDocument();
   });
 
   it("maps the public npm walkthrough image URL to the bundled website asset", () => {
     const publicSource =
-      "https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/d4e3eb97200abe400af00124a07b8a0d6b813371/docs/assets/walkthrough/cli-finding-and-replay.png";
+      "https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/19d6f874b2efd66fba6aa5d142a5d7d0280816c0/docs/assets/walkthrough/cli-finding-and-replay.png";
 
     const resolved = resolveDocumentImageSrc(publicSource, "");
 

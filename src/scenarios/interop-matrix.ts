@@ -314,9 +314,14 @@ export function createParallelCombineScenario(
 export function createSameInputMultisigScenario(
   fixture: PsbtFixture,
 ): ScenarioDefinition<ScenarioExecutionContext> {
+  const nested = fixture.id === "p2sh-p2wsh-2-of-3";
+  const scenarioId = nested ? "nested-p2sh-p2wsh-2-of-3-multisig" : "same-input-2-of-3-multisig";
+  const scriptType = nested ? "p2sh-p2wsh" : "p2wsh";
   return {
-    id: "same-input-2-of-3-multisig",
-    title: "Cross-library 2-of-3 multisig signing",
+    id: scenarioId,
+    title: nested
+      ? "Nested P2SH-P2WSH cross-library 2-of-3 signing"
+      : "Cross-library 2-of-3 multisig signing",
     category: "cross-library-multisig",
     summary:
       "Rust and JavaScript add distinct signatures to independent copies of one 2-of-3 input before combining and Core validation.",
@@ -326,7 +331,7 @@ export function createSameInputMultisigScenario(
         operations: ["sign"],
         roles: ["signer"],
         psbtVersions: [0],
-        scriptTypes: ["p2wsh"],
+        scriptTypes: [scriptType],
         features: ["fixture-commitment-sha256"],
       },
       {
@@ -334,16 +339,19 @@ export function createSameInputMultisigScenario(
         operations: ["sign", "combine"],
         roles: ["signer", "combiner"],
         psbtVersions: [0],
-        scriptTypes: ["p2wsh"],
+        scriptTypes: [scriptType],
         features: ["fixture-commitment-sha256"],
       },
     ],
     async run(context) {
-      if (fixture.id !== "p2wsh-2-of-3" || fixture.inputCount !== 1) {
-        throw new Error("Same-input multisig requires the single-input p2wsh-2-of-3 fixture");
+      if (
+        (fixture.id !== "p2wsh-2-of-3" && fixture.id !== "p2sh-p2wsh-2-of-3") ||
+        fixture.inputCount !== 1
+      ) {
+        throw new Error("Same-input multisig requires a single-input 2-of-3 fixture");
       }
       const assertions: ScenarioAssertionEvidence[] = [];
-      await context.checkpoint("same-input-2-of-3-multisig", "core-created", fixture.initialPsbt);
+      await context.checkpoint(scenarioId, "core-created", fixture.initialPsbt);
 
       const rustResponse = await context.request("rust-bitcoin", "sign", {
         psbt: fixture.initialPsbt,
@@ -416,7 +424,7 @@ export function createSameInputMultisigScenario(
         ]),
       );
       assertions.push(exactFieldUnionEvidence([rustSigned, bitcoinjsSigned], combined));
-      await context.checkpoint("same-input-2-of-3-multisig", "combined", combined);
+      await context.checkpoint(scenarioId, "combined", combined);
 
       const finalized = await context.finalizeWithCore(combined);
       const policy = await context.policyCheck(finalized);
