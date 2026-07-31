@@ -110,11 +110,7 @@ export function Sections() {
               const headingId = `coverage-${group.id}`;
 
               return (
-                <section
-                  className="coverage-group"
-                  key={group.id}
-                  aria-labelledby={headingId}
-                >
+                <section className="coverage-group" key={group.id} aria-labelledby={headingId}>
                   <span className="coverage-group__label">{group.label}</span>
                   <h3 id={headingId}>{group.title}</h3>
                   <ul>

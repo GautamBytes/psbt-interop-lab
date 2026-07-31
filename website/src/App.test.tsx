@@ -53,22 +53,10 @@ describe("PSBT Interop Lab website", () => {
     render(<App />);
 
     const groups = [
-      [
-        "Transaction coverage",
-        "Legacy P2PKH, nested SegWit, P2WSH, and Taproot fixtures",
-      ],
-      [
-        "Adversarial safety",
-        "Cryptographically measured ECDSA and Taproot sighash mutations",
-      ],
-      [
-        "Protocol frontiers",
-        "BIP373 MuSig2 nonce exchange, partial verification, and aggregation",
-      ],
-      [
-        "Developer workflow",
-        "Wallet CI Action with external-only, JUnit, and SARIF output",
-      ],
+      ["Transaction coverage", "Legacy P2PKH, nested SegWit, P2WSH, and Taproot fixtures"],
+      ["Adversarial safety", "Cryptographically measured ECDSA and Taproot sighash mutations"],
+      ["Protocol frontiers", "BIP373 MuSig2 nonce exchange, partial verification, and aggregation"],
+      ["Developer workflow", "Wallet CI Action with external-only, JUnit, and SARIF output"],
     ] as const;
 
     for (const [heading, representativeClaim] of groups) {
