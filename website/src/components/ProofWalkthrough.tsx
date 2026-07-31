@@ -2,6 +2,7 @@ import { ArrowSquareOut } from "@phosphor-icons/react/ArrowSquareOut";
 import cliProof from "../../../docs/assets/walkthrough/cli-finding-and-replay.png";
 import reportProof from "../../../docs/assets/walkthrough/compatibility-report.png";
 import { SiteLink } from "./SiteLink";
+import { ZoomableImage } from "./ZoomableImage";
 
 const facts = [
   {
@@ -41,14 +42,13 @@ export function ProofWalkthrough() {
 
         <div className="proof-media">
           <figure>
-            <a href={cliProof} aria-label="Open full-size CLI proof">
-              <img
-                src={cliProof}
-                alt="Complete matrix terminal output"
-                loading="lazy"
-                decoding="async"
-              />
-            </a>
+            <ZoomableImage
+              triggerClassName="proof-media__trigger"
+              src={cliProof}
+              alt="Complete matrix terminal output"
+              loading="lazy"
+              decoding="async"
+            />
             <figcaption>
               <span>01</span>
               <strong>Run the complete matrix</strong>
@@ -57,14 +57,13 @@ export function ProofWalkthrough() {
           </figure>
 
           <figure>
-            <a href={reportProof} aria-label="Open full-size generated report">
-              <img
-                src={reportProof}
-                alt="Complete matrix generated report"
-                loading="lazy"
-                decoding="async"
-              />
-            </a>
+            <ZoomableImage
+              triggerClassName="proof-media__trigger"
+              src={reportProof}
+              alt="Complete matrix generated report"
+              loading="lazy"
+              decoding="async"
+            />
             <figcaption>
               <span>02</span>
               <strong>Inspect the report</strong>

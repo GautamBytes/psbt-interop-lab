@@ -238,6 +238,24 @@ describe("website documentation routes", () => {
     expect(screen.getByText(/all 47 bundled scenarios visible/i)).toBeInTheDocument();
   });
 
+  it("opens documentation screenshots in the shared image viewer", async () => {
+    const user = userEvent.setup();
+    window.history.replaceState({}, "", "/docs");
+    render(<App />);
+
+    await user.click(
+      screen.getByRole("button", {
+        name: /open full-size complete matrix terminal output/i,
+      }),
+    );
+
+    expect(
+      screen.getByRole("dialog", {
+        name: /complete matrix terminal output full-size preview/i,
+      }),
+    ).toBeInTheDocument();
+  });
+
   it("maps the public npm walkthrough image URL to the bundled website asset", () => {
     const publicSource =
       "https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/41732b2e6fd789f8385281e810f13118fb6c83a7/docs/assets/walkthrough/cli-finding-and-replay.png";

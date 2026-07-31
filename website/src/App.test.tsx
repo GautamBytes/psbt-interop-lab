@@ -90,6 +90,52 @@ describe("PSBT Interop Lab website", () => {
     );
   });
 
+  it("opens proof screenshots in a dismissible image viewer", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    const trigger = screen.getByRole("button", {
+      name: /open full-size complete matrix terminal output/i,
+    });
+    await user.click(trigger);
+
+    const dialog = screen.getByRole("dialog", {
+      name: /complete matrix terminal output full-size preview/i,
+    });
+    expect(dialog).toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole("button", { name: "Close image preview" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+  });
+
+  it("closes an enlarged screenshot from the backdrop or Escape, but not the image", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    const trigger = screen.getByRole("button", {
+      name: /open full-size complete matrix generated report/i,
+    });
+    await user.click(trigger);
+
+    const openDialog = screen.getByRole("dialog");
+    const previewImage = within(openDialog).getByRole("img", {
+      name: /complete matrix generated report/i,
+    });
+    await user.click(previewImage);
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    await user.click(trigger);
+    const dialog = screen.getByRole("dialog");
+    const backdrop = dialog.parentElement;
+    if (!backdrop) throw new Error("Missing image preview backdrop");
+    await user.click(backdrop);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
   it("copies the pinned install command", async () => {
     const user = userEvent.setup();
     render(<App />);

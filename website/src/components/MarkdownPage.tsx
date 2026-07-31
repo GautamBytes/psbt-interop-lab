@@ -10,6 +10,7 @@ import { findRepositoryResourceBySourcePath } from "../pages/repository-resource
 import { MarkdownCodeBlock } from "./MarkdownCodeBlock";
 import { MermaidDiagram } from "./MermaidDiagram";
 import { SiteLink } from "./SiteLink";
+import { ZoomableImage } from "./ZoomableImage";
 
 interface MarkdownPageProps {
   document: WebsiteDocument;
@@ -150,9 +151,14 @@ export function MarkdownPage({ document }: MarkdownPageProps) {
       const resolved = resolveDocumentImageSrc(src, document.baseDir);
       const label = alt || "Documentation image";
       return (
-        <a className="markdown-proof-image" href={resolved} aria-label={`Open full-size ${label}`}>
-          <img {...props} src={resolved} alt={alt ?? ""} loading="lazy" decoding="async" />
-        </a>
+        <ZoomableImage
+          {...props}
+          triggerClassName="markdown-proof-image"
+          src={resolved}
+          alt={label}
+          loading="lazy"
+          decoding="async"
+        />
       );
     },
     table: ({ children, node, ...props }) => {

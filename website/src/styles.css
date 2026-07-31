@@ -1130,7 +1130,17 @@ svg {
   margin: 0;
 }
 
-.proof-media figure > a {
+.image-preview-trigger {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: inherit;
+  cursor: zoom-in;
+}
+
+.proof-media__trigger {
   display: block;
   overflow: hidden;
   border: 1px solid var(--border-strong);
@@ -1149,8 +1159,78 @@ svg {
   transition: transform 180ms ease;
 }
 
-.proof-media a:hover img {
+.proof-media__trigger:hover img {
   transform: scale(1.012);
+}
+
+.proof-media__trigger:focus-visible,
+.markdown-proof-image:focus-visible {
+  outline: 2px solid var(--orange);
+  outline-offset: 4px;
+}
+
+.image-preview-backdrop {
+  position: fixed;
+  z-index: 120;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 28px;
+  background: rgba(3, 5, 7, 0.92);
+  cursor: zoom-out;
+}
+
+.image-preview-dialog {
+  position: relative;
+  display: grid;
+  max-width: 100%;
+  max-height: 100%;
+  cursor: default;
+}
+
+.image-preview-full {
+  display: block;
+  max-width: calc(100vw - 56px);
+  max-height: calc(100vh - 56px);
+  border: 1px solid #343c44;
+  background: #0b0d0f;
+  object-fit: contain;
+  border-radius: 6px;
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.5);
+}
+
+.image-preview-close {
+  position: absolute;
+  z-index: 1;
+  top: 12px;
+  right: 12px;
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  background: rgba(7, 9, 11, 0.9);
+  color: #ffffff;
+  cursor: pointer;
+  border-radius: 6px;
+  backdrop-filter: blur(10px);
+}
+
+.image-preview-close:hover {
+  border-color: var(--orange);
+  background: var(--orange);
+  color: var(--orange-ink);
+}
+
+.image-preview-close:focus-visible {
+  outline: 2px solid var(--orange);
+  outline-offset: 3px;
+}
+
+.image-preview-close svg {
+  width: 20px;
+  height: 20px;
 }
 
 .proof-media figcaption {
@@ -1838,6 +1918,7 @@ svg {
 
 .markdown-proof-image {
   display: block;
+  width: 100%;
   margin: 26px 0 34px;
   overflow: hidden;
   border: 1px solid var(--border-strong);
@@ -1850,6 +1931,22 @@ svg {
   display: block;
   width: 100%;
   height: auto;
+}
+
+@media (max-width: 640px) {
+  .image-preview-backdrop {
+    padding: 12px;
+  }
+
+  .image-preview-full {
+    max-width: calc(100vw - 24px);
+    max-height: calc(100vh - 24px);
+  }
+
+  .image-preview-close {
+    top: 8px;
+    right: 8px;
+  }
 }
 
 .markdown-body code {
