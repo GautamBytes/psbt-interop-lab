@@ -71,19 +71,69 @@ describe("PSBT Interop Lab website", () => {
     render(<App />);
 
     expect(
-      screen.getByRole("heading", { name: /two protocol frontiers, one replayable artifact/i }),
+      screen.getByRole("heading", { name: /the complete matrix, one replayable artifact/i }),
     ).toBeInTheDocument();
-    expect(screen.getByText(/evidence from the v0\.8\.0 release proof/i)).toBeInTheDocument();
+    expect(screen.getByText(/evidence from the complete 47-scenario matrix/i)).toBeInTheDocument();
     expect(
-      screen.getByRole("img", { name: /v0\.8\.0 release proof terminal output/i }),
+      screen.getByRole("img", { name: /complete matrix terminal output/i }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("img", { name: /v0\.8\.0 generated protocol report/i }),
+      screen.getByRole("img", { name: /complete matrix generated report/i }),
     ).toBeInTheDocument();
+    expect(
+      screen.getByText(/47 bundled scenarios across 9 integration stacks/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/2 \/ 2 protocol scenarios passed/i)).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: /open the complete walkthrough/i })).toHaveAttribute(
       "href",
-      "/docs#walkthrough-verify-the-release-proof",
+      "/docs#walkthrough-verify-the-complete-matrix",
     );
+  });
+
+  it("opens proof screenshots in a dismissible image viewer", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    const trigger = screen.getByRole("button", {
+      name: /open full-size complete matrix terminal output/i,
+    });
+    await user.click(trigger);
+
+    const dialog = screen.getByRole("dialog", {
+      name: /complete matrix terminal output full-size preview/i,
+    });
+    expect(dialog).toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole("button", { name: "Close image preview" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+  });
+
+  it("closes an enlarged screenshot from the backdrop or Escape, but not the image", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    const trigger = screen.getByRole("button", {
+      name: /open full-size complete matrix generated report/i,
+    });
+    await user.click(trigger);
+
+    const openDialog = screen.getByRole("dialog");
+    const previewImage = within(openDialog).getByRole("img", {
+      name: /complete matrix generated report/i,
+    });
+    await user.click(previewImage);
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    await user.click(trigger);
+    const dialog = screen.getByRole("dialog");
+    const backdrop = dialog.parentElement;
+    if (!backdrop) throw new Error("Missing image preview backdrop");
+    await user.click(backdrop);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
   it("copies the pinned install command", async () => {

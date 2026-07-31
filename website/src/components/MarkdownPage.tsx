@@ -10,6 +10,7 @@ import { findRepositoryResourceBySourcePath } from "../pages/repository-resource
 import { MarkdownCodeBlock } from "./MarkdownCodeBlock";
 import { MermaidDiagram } from "./MermaidDiagram";
 import { SiteLink } from "./SiteLink";
+import { ZoomableImage } from "./ZoomableImage";
 
 interface MarkdownPageProps {
   document: WebsiteDocument;
@@ -83,7 +84,7 @@ function normalizeRepoPath(baseDir: string, href: string): string {
 }
 
 const publicWalkthroughAssetBase =
-  "https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/1d744f90b0d4facfb6846a83d665af3329fadd0e/docs/assets/walkthrough/";
+  "https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/41732b2e6fd789f8385281e810f13118fb6c83a7/docs/assets/walkthrough/";
 
 const bundledImages: Readonly<Record<string, string>> = {
   "docs/assets/walkthrough/cli-finding-and-replay.png": cliProof,
@@ -150,9 +151,14 @@ export function MarkdownPage({ document }: MarkdownPageProps) {
       const resolved = resolveDocumentImageSrc(src, document.baseDir);
       const label = alt || "Documentation image";
       return (
-        <a className="markdown-proof-image" href={resolved} aria-label={`Open full-size ${label}`}>
-          <img {...props} src={resolved} alt={alt ?? ""} loading="lazy" decoding="async" />
-        </a>
+        <ZoomableImage
+          {...props}
+          triggerClassName="markdown-proof-image"
+          src={resolved}
+          alt={label}
+          loading="lazy"
+          decoding="async"
+        />
       );
     },
     table: ({ children, node, ...props }) => {

@@ -78,31 +78,21 @@ To work from a source checkout instead, install pnpm 10.30.2, run
 `pnpm install --frozen-lockfile`, and replace `psbt-lab` above with `node dist/cli.js` after
 `pnpm build`.
 
-## Walkthrough: Verify the Release Proof
+## Walkthrough: Verify the Complete Matrix
 
-This real v0.8.0 release run exercises the two protocol workflows introduced in v0.8.0. The first
-preserves BIP373 fields through rust-bitcoin and bitcoinjs-lib before two isolated Rust signer
-processes exchange CSPRNG-generated, session-bound nonces, produce partial signatures, aggregate a
-MuSig2 signature, and hand the spend to Bitcoin Core. The second drives a separate HWI-compatible
-simulator process through rejection and approval paths while enforcing its key-origin policy:
+This real v0.8.0 run executes every bundled workflow against the pinned integration stacks and an
+isolated Bitcoin Core regtest node:
 
 ```bash
-node dist/cli.js run \
-  --scenario bip373-musig2-keypath \
-  --scenario hwi-simulator-p2wpkh
+psbt-lab matrix
 ```
 
-![v0.8.0 release proof terminal output](https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/1d744f90b0d4facfb6846a83d665af3329fadd0e/docs/assets/walkthrough/cli-finding-and-replay.png)
+![Complete matrix terminal output](https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/41732b2e6fd789f8385281e810f13118fb6c83a7/docs/assets/walkthrough/cli-finding-and-replay.png)
 
-The captured repeated run uses `--no-build` because its required pinned Docker images were already
-present. Omit that flag on the first run so the CLI builds them before executing the same proof.
-
-The filtered command is the focused v0.8.0 release proof, not the complete compatibility matrix. It proves the
-new BIP373 preservation, nonce-reuse refusal, partial-signature verification, aggregate signing,
-simulated confirmation, key-origin enforcement, Bitcoin Core oracle, artifact, and replay paths.
-It does not claim physical-device security, vendor firmware coverage, or independent MuSig2
-implementations; the two signers intentionally run as separate processes backed by the same pinned
-Rust crate.
+The verified run completed all 47 bundled scenarios. The terminal proof keeps every scenario ID
+visible and records the real run ID, Core height, outcome, artifact path, and 91 replay-verified
+checkpoints. One known btcsuite duplicate-key compatibility finding remains visible while the
+scenario passes because the lab correctly detected and classified that behavior.
 
 Open `artifacts/<run-id>/report.html` for the complete result, or verify later that the recorded
 evidence still matches its manifest:
@@ -111,16 +101,14 @@ evidence still matches its manifest:
 psbt-lab replay artifacts/<run-id>
 ```
 
-![v0.8.0 generated protocol report](https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/1d744f90b0d4facfb6846a83d665af3329fadd0e/docs/assets/walkthrough/compatibility-report.png)
+![Complete matrix generated report](https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/41732b2e6fd789f8385281e810f13118fb6c83a7/docs/assets/walkthrough/compatibility-report.png)
 
-The report screenshot above comes directly from the generated, self-contained HTML artifact. The
-CLI screenshot is a typeset summary of the same real run, with the installed binary name used and
-long descriptions plus the absolute artifact path condensed. It preserves the selected scenarios,
-outcomes, Core height, run ID, and six-checkpoint replay result. The v0.8.0 report includes
-per-request adapter cells; full matrix reports also include stable conformance rule IDs, normative
-levels, authoritative sources, expected-versus-observed behavior, severity, repairability,
-confidence, exact evidence, adapter failure cells, and replay-verified artifact comparison. Run
-`psbt-lab matrix` when the focused gate passes and complete cross-library coverage is required.
+The report screenshot comes directly from that run's generated, self-contained HTML artifact. The
+CLI screenshot is a compact rendering of the same report and replay result, with all 47 bundled
+scenarios visible. The report includes per-request adapter cells, stable conformance rule IDs,
+normative levels, authoritative sources, expected-versus-observed behavior, severity,
+repairability, confidence, exact evidence, adapter failure cells, and replay-verified artifact
+comparison.
 
 ## External Adapters
 

@@ -2,19 +2,20 @@ import { ArrowSquareOut } from "@phosphor-icons/react/ArrowSquareOut";
 import cliProof from "../../../docs/assets/walkthrough/cli-finding-and-replay.png";
 import reportProof from "../../../docs/assets/walkthrough/compatibility-report.png";
 import { SiteLink } from "./SiteLink";
+import { ZoomableImage } from "./ZoomableImage";
 
 const facts = [
   {
-    label: "Release proof",
-    value: "2 / 2 protocol scenarios passed",
+    label: "Complete run",
+    value: "47 / 47 bundled scenarios passed",
   },
   {
     label: "Coverage",
-    value: "BIP373 MuSig2 and HWI-compatible simulator",
+    value: "47 bundled scenarios across 9 integration stacks",
   },
   {
     label: "Replay",
-    value: "6 checkpoints verified from the same artifact",
+    value: "91 checkpoints verified from the same artifact",
   },
 ] as const;
 
@@ -24,17 +25,16 @@ export function ProofWalkthrough() {
       <div className="page-shell">
         <header className="proof-heading">
           <div>
-            <span className="eyebrow">Evidence from the v0.8.0 release proof</span>
-            <h2 id="proof-title">Two protocol frontiers, one replayable artifact.</h2>
+            <span className="eyebrow">Evidence from the complete 47-scenario matrix | v0.8.0</span>
+            <h2 id="proof-title">The complete matrix, one replayable artifact.</h2>
           </div>
           <div>
             <p>
-              This filtered release run preserves BIP373 fields through independent PSBT parsers,
-              completes a two-process MuSig2 signing session, and exercises an HWI-compatible
-              confirmation and key-origin policy. The generated report records every adapter cell,
-              Core-backed outcome, and six replay-verified checkpoints from the same run.
+              This complete run executes every bundled workflow against pinned implementations and
+              Bitcoin Core on regtest. All 47 scenarios passed, one known parser compatibility
+              finding remained visible, and the same artifact replay-verified 91 checkpoints.
             </p>
-            <SiteLink className="inline-link" href="/docs#walkthrough-verify-the-release-proof">
+            <SiteLink className="inline-link" href="/docs#walkthrough-verify-the-complete-matrix">
               Open the complete walkthrough <ArrowSquareOut aria-hidden="true" />
             </SiteLink>
           </div>
@@ -42,34 +42,32 @@ export function ProofWalkthrough() {
 
         <div className="proof-media">
           <figure>
-            <a href={cliProof} aria-label="Open full-size CLI proof">
-              <img
-                src={cliProof}
-                alt="v0.8.0 release proof terminal output"
-                loading="lazy"
-                decoding="async"
-              />
-            </a>
+            <ZoomableImage
+              triggerClassName="proof-media__trigger"
+              src={cliProof}
+              alt="Complete matrix terminal output"
+              loading="lazy"
+              decoding="async"
+            />
             <figcaption>
               <span>01</span>
-              <strong>Run the release proof</strong>
-              <small>Two focused scenarios covering MuSig2 and simulated hardware signing.</small>
+              <strong>Run the complete matrix</strong>
+              <small>All 47 scenario outcomes and the replay result from one real run.</small>
             </figcaption>
           </figure>
 
           <figure>
-            <a href={reportProof} aria-label="Open full-size generated report">
-              <img
-                src={reportProof}
-                alt="v0.8.0 generated protocol report"
-                loading="lazy"
-                decoding="async"
-              />
-            </a>
+            <ZoomableImage
+              triggerClassName="proof-media__trigger"
+              src={reportProof}
+              alt="Complete matrix generated report"
+              loading="lazy"
+              decoding="async"
+            />
             <figcaption>
               <span>02</span>
               <strong>Inspect the report</strong>
-              <small>Direct capture of the two-scenario, self-contained HTML artifact.</small>
+              <small>Direct capture of the 47-scenario, self-contained HTML artifact.</small>
             </figcaption>
           </figure>
         </div>

@@ -225,24 +225,40 @@ describe("website documentation routes", () => {
     render(<App />);
 
     const cliProof = screen.getByRole("img", {
-      name: /v0\.8\.0 release proof terminal output/i,
+      name: /complete matrix terminal output/i,
     });
     const reportProof = screen.getByRole("img", {
-      name: /v0\.8\.0 generated protocol report/i,
+      name: /complete matrix generated report/i,
     });
 
     expect(cliProof).toHaveAttribute("src", expect.stringMatching(/cli-finding-and-replay/));
     expect(reportProof).toHaveAttribute("src", expect.stringMatching(/compatibility-report/));
     expect(cliProof.getAttribute("src")).not.toMatch(/^https?:/);
     expect(reportProof.getAttribute("src")).not.toMatch(/^https?:/);
+    expect(screen.getByText(/all 47 bundled scenarios visible/i)).toBeInTheDocument();
+  });
+
+  it("opens documentation screenshots in the shared image viewer", async () => {
+    const user = userEvent.setup();
+    window.history.replaceState({}, "", "/docs");
+    render(<App />);
+
+    await user.click(
+      screen.getByRole("button", {
+        name: /open full-size complete matrix terminal output/i,
+      }),
+    );
+
     expect(
-      screen.getByText(/preserves the selected scenarios, outcomes, Core height/i),
+      screen.getByRole("dialog", {
+        name: /complete matrix terminal output full-size preview/i,
+      }),
     ).toBeInTheDocument();
   });
 
   it("maps the public npm walkthrough image URL to the bundled website asset", () => {
     const publicSource =
-      "https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/1d744f90b0d4facfb6846a83d665af3329fadd0e/docs/assets/walkthrough/cli-finding-and-replay.png";
+      "https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/41732b2e6fd789f8385281e810f13118fb6c83a7/docs/assets/walkthrough/cli-finding-and-replay.png";
 
     const resolved = resolveDocumentImageSrc(publicSource, "");
 
