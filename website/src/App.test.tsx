@@ -71,18 +71,22 @@ describe("PSBT Interop Lab website", () => {
     render(<App />);
 
     expect(
-      screen.getByRole("heading", { name: /two protocol frontiers, one replayable artifact/i }),
+      screen.getByRole("heading", { name: /the complete matrix, one replayable artifact/i }),
     ).toBeInTheDocument();
-    expect(screen.getByText(/evidence from the v0\.8\.0 release proof/i)).toBeInTheDocument();
+    expect(screen.getByText(/evidence from the complete 47-scenario matrix/i)).toBeInTheDocument();
     expect(
-      screen.getByRole("img", { name: /v0\.8\.0 release proof terminal output/i }),
+      screen.getByRole("img", { name: /complete matrix terminal output/i }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("img", { name: /v0\.8\.0 generated protocol report/i }),
+      screen.getByRole("img", { name: /complete matrix generated report/i }),
     ).toBeInTheDocument();
+    expect(
+      screen.getByText(/47 bundled scenarios across 9 integration stacks/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/2 \/ 2 protocol scenarios passed/i)).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: /open the complete walkthrough/i })).toHaveAttribute(
       "href",
-      "/docs#walkthrough-verify-the-release-proof",
+      "/docs#walkthrough-verify-the-complete-matrix",
     );
   });
 

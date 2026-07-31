@@ -225,19 +225,17 @@ describe("website documentation routes", () => {
     render(<App />);
 
     const cliProof = screen.getByRole("img", {
-      name: /v0\.8\.0 release proof terminal output/i,
+      name: /complete matrix terminal output/i,
     });
     const reportProof = screen.getByRole("img", {
-      name: /v0\.8\.0 generated protocol report/i,
+      name: /complete matrix generated report/i,
     });
 
     expect(cliProof).toHaveAttribute("src", expect.stringMatching(/cli-finding-and-replay/));
     expect(reportProof).toHaveAttribute("src", expect.stringMatching(/compatibility-report/));
     expect(cliProof.getAttribute("src")).not.toMatch(/^https?:/);
     expect(reportProof.getAttribute("src")).not.toMatch(/^https?:/);
-    expect(
-      screen.getByText(/preserves the selected scenarios, outcomes, Core height/i),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/all 47 bundled scenarios visible/i)).toBeInTheDocument();
   });
 
   it("maps the public npm walkthrough image URL to the bundled website asset", () => {
