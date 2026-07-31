@@ -49,6 +49,36 @@ describe("PSBT Interop Lab website", () => {
     expect(screen.getByText(/available now as version 0\.8\.0/i)).toBeInTheDocument();
   });
 
+  it("groups the complete coverage surface into four scannable areas", () => {
+    render(<App />);
+
+    const groups = [
+      [
+        "Transaction coverage",
+        "Legacy P2PKH, nested SegWit, P2WSH, and Taproot fixtures",
+      ],
+      [
+        "Adversarial safety",
+        "Cryptographically measured ECDSA and Taproot sighash mutations",
+      ],
+      [
+        "Protocol frontiers",
+        "BIP373 MuSig2 nonce exchange, partial verification, and aggregation",
+      ],
+      [
+        "Developer workflow",
+        "Wallet CI Action with external-only, JUnit, and SARIF output",
+      ],
+    ] as const;
+
+    for (const [heading, representativeClaim] of groups) {
+      const group = screen.getByRole("heading", { level: 3, name: heading }).closest("section");
+      expect(group).not.toBeNull();
+      expect(within(group as HTMLElement).getAllByRole("listitem")).toHaveLength(4);
+      expect(within(group as HTMLElement).getByText(representativeClaim)).toBeInTheDocument();
+    }
+  });
+
   it("shows a real command-to-report proof walkthrough", () => {
     render(<App />);
 
