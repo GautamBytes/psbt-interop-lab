@@ -13,23 +13,51 @@ import { npmUrl, repositoryUrl, workflowSteps } from "../content";
 import { routes } from "../routes";
 import { SiteLink } from "./SiteLink";
 
-const coverage = [
-  "Legacy P2PKH, nested SegWit, P2WSH, and Taproot fixtures",
-  "Signing, combining, finalization, and policy acceptance",
-  "Cryptographically measured ECDSA and Taproot sighash mutations",
-  "Adversarial signer and deterministic combiner conflicts",
-  "BIP373 MuSig2 nonce exchange, partial verification, and aggregation",
-  "HWI-compatible simulator confirmation and key-origin policy",
-  "Unknown and proprietary metadata preservation",
-  "All official BIP370 and BIP371 valid and invalid vectors",
-  "Native PSBTv2 constructors and bidirectional Taproot handoffs",
-  "Wallet CI Action with external-only, JUnit, and SARIF output",
-  "Target one scenario or category for faster iteration",
-  "Run bounded bundled parser checks without Docker",
-  "Promote exact parser classifications and structural facts",
-  "Capture baselines and compare replay-verified artifacts",
-  "Transaction intent, RBF, locktime, sighash, and derivations",
-  "Malformed native-parser rejection without crashes",
+const coverageGroups = [
+  {
+    id: "transactions",
+    label: "Transaction paths",
+    title: "Transaction coverage",
+    items: [
+      "Legacy P2PKH, nested SegWit, P2WSH, and Taproot fixtures",
+      "Signing, combining, finalization, and policy acceptance",
+      "Transaction intent, RBF, locktime, sighash, and derivations",
+      "Unknown and proprietary metadata preservation",
+    ],
+  },
+  {
+    id: "adversarial",
+    label: "Failure probes",
+    title: "Adversarial safety",
+    items: [
+      "Cryptographically measured ECDSA and Taproot sighash mutations",
+      "Adversarial signer and deterministic combiner conflicts",
+      "Malformed native-parser rejection without crashes",
+      "Promote exact parser classifications and structural facts",
+    ],
+  },
+  {
+    id: "protocols",
+    label: "Modern protocols",
+    title: "Protocol frontiers",
+    items: [
+      "BIP373 MuSig2 nonce exchange, partial verification, and aggregation",
+      "HWI-compatible simulator confirmation and key-origin policy",
+      "All official BIP370 and BIP371 valid and invalid vectors",
+      "Native PSBTv2 constructors and bidirectional Taproot handoffs",
+    ],
+  },
+  {
+    id: "workflow",
+    label: "Maintainer tools",
+    title: "Developer workflow",
+    items: [
+      "Wallet CI Action with external-only, JUnit, and SARIF output",
+      "Target one scenario or category for faster iteration",
+      "Run bounded bundled parser checks without Docker",
+      "Capture baselines and compare replay-verified artifacts",
+    ],
+  },
 ] as const;
 
 export function Sections() {
@@ -77,14 +105,26 @@ export function Sections() {
               Read the full scenario list <ArrowSquareOut aria-hidden="true" />
             </SiteLink>
           </div>
-          <ul className="coverage-list">
-            {coverage.map((item) => (
-              <li key={item}>
-                <CheckCircle aria-hidden="true" weight="fill" />
-                <span>{item}</span>
-              </li>
-            ))}
-          </ul>
+          <div className="coverage-groups">
+            {coverageGroups.map((group) => {
+              const headingId = `coverage-${group.id}`;
+
+              return (
+                <section className="coverage-group" key={group.id} aria-labelledby={headingId}>
+                  <span className="coverage-group__label">{group.label}</span>
+                  <h3 id={headingId}>{group.title}</h3>
+                  <ul>
+                    {group.items.map((item) => (
+                      <li key={item}>
+                        <CheckCircle aria-hidden="true" weight="fill" />
+                        <span>{item}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              );
+            })}
+          </div>
         </div>
       </section>
 
