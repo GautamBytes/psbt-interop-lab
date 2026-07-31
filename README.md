@@ -87,7 +87,7 @@ isolated Bitcoin Core regtest node:
 psbt-lab matrix
 ```
 
-![Complete matrix terminal output](https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/1d744f90b0d4facfb6846a83d665af3329fadd0e/docs/assets/walkthrough/cli-finding-and-replay.png)
+![Complete matrix terminal output](https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/41732b2e6fd789f8385281e810f13118fb6c83a7/docs/assets/walkthrough/cli-finding-and-replay.png)
 
 The verified run completed all 47 bundled scenarios. The terminal proof keeps every scenario ID
 visible and records the real run ID, Core height, outcome, artifact path, and 91 replay-verified
@@ -101,7 +101,7 @@ evidence still matches its manifest:
 psbt-lab replay artifacts/<run-id>
 ```
 
-![Complete matrix generated report](https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/1d744f90b0d4facfb6846a83d665af3329fadd0e/docs/assets/walkthrough/compatibility-report.png)
+![Complete matrix generated report](https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/41732b2e6fd789f8385281e810f13118fb6c83a7/docs/assets/walkthrough/compatibility-report.png)
 
 The report screenshot comes directly from that run's generated, self-contained HTML artifact. The
 CLI screenshot is a compact rendering of the same report and replay result, with all 47 bundled
