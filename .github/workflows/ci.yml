@@ -168,7 +168,7 @@ jobs:
       - run: /tmp/psbt-install/node_modules/.bin/psbt-lab adapter init /tmp/psbt-generated-adapter --name package-smoke
       - run: npm ci --prefix /tmp/psbt-generated-adapter
       - run: npm test --prefix /tmp/psbt-generated-adapter
-      - run: npm run conformance --prefix /tmp/psbt-generated-adapter
+      - run: /tmp/psbt-install/node_modules/.bin/psbt-lab adapter check /tmp/psbt-generated-adapter/adapter-manifest.json
       - run: test -f /tmp/psbt-install/node_modules/psbt-interop-lab/compose.yaml
       - run: test -f /tmp/psbt-install/node_modules/psbt-interop-lab/templates/typescript/package.json.tmpl
       - run: test -f /tmp/psbt-install/node_modules/psbt-interop-lab/adapters/rust-bitcoin/Dockerfile

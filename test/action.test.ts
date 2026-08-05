@@ -21,6 +21,15 @@ describe("GitHub Action", () => {
     );
   });
 
+  test("checks generated adapters with the packed candidate CLI", async () => {
+    const workflow = await readFile(resolve(".github/workflows/ci.yml"), "utf8");
+
+    expect(workflow).toContain(
+      "/tmp/psbt-install/node_modules/.bin/psbt-lab adapter check /tmp/psbt-generated-adapter/adapter-manifest.json",
+    );
+    expect(workflow).not.toContain("npm run conformance --prefix /tmp/psbt-generated-adapter");
+  });
+
   test("declares the v0.8 package, report, build, and upload inputs", async () => {
     const action = await readFile(resolve("action.yml"), "utf8");
 

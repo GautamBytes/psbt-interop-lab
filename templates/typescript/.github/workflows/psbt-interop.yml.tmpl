@@ -24,7 +24,7 @@ jobs:
       - run: npm ci
       - run: npm test
       - name: Run PSBT interoperability matrix
-        uses: GautamBytes/psbt-interop-lab@v{{LAB_VERSION}}
+        uses: GautamBytes/psbt-interop-lab@{{LAB_ACTION_SHA}} # v{{LAB_VERSION}}
         with:
           adapter-manifest: adapter-manifest.json
           package-spec: psbt-interop-lab@{{LAB_VERSION}}

@@ -6,7 +6,12 @@ import type { AdapterTemplate, GeneratedFile } from "./model.js";
 const TEMPLATE_SUFFIX = ".tmpl";
 const PLACEHOLDER = /\{\{([A-Z_]+)\}\}/g;
 const UNRESOLVED_PLACEHOLDER = /\{\{[^{}]+\}\}/;
-const ALLOWED_PLACEHOLDERS = new Set(["ADAPTER_NAME", "PACKAGE_NAME", "LAB_VERSION"]);
+const ALLOWED_PLACEHOLDERS = new Set([
+  "ADAPTER_NAME",
+  "PACKAGE_NAME",
+  "LAB_ACTION_SHA",
+  "LAB_VERSION",
+]);
 
 function renderContents(contents: string, values: Readonly<Record<string, string>>): string {
   const rendered = contents.replace(PLACEHOLDER, (_match, key: string) => {

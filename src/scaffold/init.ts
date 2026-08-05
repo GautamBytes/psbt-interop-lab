@@ -1,5 +1,5 @@
 import { resolve } from "node:path";
-import { VERSION } from "../version.js";
+import { RELEASE_ACTION_SHA, VERSION } from "../version.js";
 import type { AdapterInitOptions, AdapterInitResult } from "./model.js";
 import { resolveAdapterTemplate } from "./registry.js";
 import { renderAdapterTemplate } from "./render.js";
@@ -18,6 +18,7 @@ export async function initializeAdapterProject(
   const files = await renderAdapterTemplate(template, {
     ADAPTER_NAME: options.name,
     PACKAGE_NAME: `psbt-adapter-${options.name}`,
+    LAB_ACTION_SHA: RELEASE_ACTION_SHA,
     LAB_VERSION: VERSION,
   });
   await writeGeneratedProject(directory, files);

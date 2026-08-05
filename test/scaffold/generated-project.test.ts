@@ -111,7 +111,19 @@ describe("generated TypeScript adapter project", () => {
       typescript: "7.0.2",
     });
     expect(workflow).toContain("actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10");
-    expect(workflow).toContain("GautamBytes/psbt-interop-lab@v0.8.0");
+    expect(workflow).toContain(
+      "GautamBytes/psbt-interop-lab@4f313809a8b640f0f73f376711411b4506b01ab2 # v0.8.0",
+    );
+    expect(workflow).not.toContain("GautamBytes/psbt-interop-lab@v0.8.0");
     expect(workflow).toContain("adapter-manifest: adapter-manifest.json");
+  });
+
+  test("uses a bounded streaming parser for adapter input", async () => {
+    const generated = await generatedProject();
+    const adapter = await readFile(join(generated.directory, "src/adapter.ts"), "utf8");
+
+    expect(adapter).not.toContain('from "node:readline"');
+    expect(adapter).toContain("discardingOversizedLine");
+    expect(adapter).toContain('"protocol.line_too_large"');
   });
 });

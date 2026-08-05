@@ -22,6 +22,12 @@ function request(operation, payload) {
 }
 
 async function exchange(value) {
+  const responses = await exchangeMany([value]);
+  assert.equal(responses.length, 1);
+  return responses[0];
+}
+
+async function exchangeMany(values) {
   const child = spawn(process.execPath, [ADAPTER], {
     cwd: PROJECT_DIRECTORY,
     shell: false,
@@ -39,19 +45,48 @@ async function exchange(value) {
   });
   const timeout = setTimeout(() => child.kill("SIGKILL"), 10_000);
   try {
-    child.stdin.end(`${JSON.stringify(value)}\n`);
+    child.stdin.end(`${values.map((value) => JSON.stringify(value)).join("\n")}\n`);
     const [code, signal] = await once(child, "close");
     assert.equal(signal, null);
     assert.equal(code, 0);
     assert.equal(stderr, "");
-    const lines = stdout.trim().split("\n");
-    assert.equal(lines.length, 1);
-    return JSON.parse(lines[0]);
+    return stdout
+      .trim()
+      .split("\n")
+      .filter((line) => line.length > 0)
+      .map((line) => JSON.parse(line));
   } finally {
     clearTimeout(timeout);
     if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
   }
 }
+
+test("rejects a null payload without terminating the adapter", async () => {
+  const malformed = {
+    protocol: "psbt-lab.adapter/0.2",
+    id: "malformed-1",
+    operation: "hello",
+    payload: null,
+  };
+  const responses = await exchangeMany([malformed, request("hello", {})]);
+
+  assert.equal(responses.length, 2);
+  assert.equal(responses[0].status, "rejected");
+  assert.equal(responses[0].error.class, "protocol.invalid_request");
+  assert.equal(responses[1].status, "ok");
+});
+
+test("discards an oversized line and continues with the next request", async () => {
+  const responses = await exchangeMany([
+    "x".repeat(4 * 1024 * 1024 + 1),
+    request("hello", {}),
+  ]);
+
+  assert.equal(responses.length, 2);
+  assert.equal(responses[0].status, "rejected");
+  assert.equal(responses[0].error.class, "protocol.line_too_large");
+  assert.equal(responses[1].status, "ok");
+});
 
 test("declares parser capabilities and generated identity", async () => {
   const response = await exchange(request("hello", {}));
