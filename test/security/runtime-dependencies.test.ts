@@ -66,9 +66,7 @@ describe("published runtime dependency boundary", () => {
     expect(cli).toContain('"musig2-scure-signer-2": "musig2-signer-2"');
     expect(workflow).toContain("working-directory: adapters/musig2-scure");
     expect(workflow).toContain("npm audit --omit=dev");
-    expect(workflow).toContain(
-      "node_modules/psbt-interop-lab/adapters/musig2-scure/Dockerfile",
-    );
+    expect(workflow).toContain("node_modules/psbt-interop-lab/adapters/musig2-scure/Dockerfile");
   });
 
   test("pins Go vulnerability scanning in CI", () => {

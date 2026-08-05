@@ -572,12 +572,7 @@ export const PROOF_SCENARIO_REGISTRATIONS: readonly ProofScenarioRegistration[] 
     {
       core: true,
       fixtures: ["p2tr-musig2"],
-      adapters: [
-        "rust-bitcoin",
-        "bitcoinjs-lib",
-        "musig2-rust-signer-1",
-        "musig2-scure-signer-2",
-      ],
+      adapters: ["rust-bitcoin", "bitcoinjs-lib", "musig2-rust-signer-1", "musig2-scure-signer-2"],
     },
     (fixtures) => createMusig2Scenario(requiredFixture(fixtures, "p2tr-musig2")),
   ),
@@ -1188,8 +1183,7 @@ function adapterOptions(
     const fixture = preparedFixture(fixtures, fixtureId);
     return fixture ? [fixture] : [];
   });
-  const signerSelector =
-    id === "musig2-rust-signer-1" ? "1" : undefined;
+  const signerSelector = id === "musig2-rust-signer-1" ? "1" : undefined;
   if (commitments.length === 0) {
     return signerSelector ? { env: { PSBT_LAB_MUSIG2_SIGNER: signerSelector } } : {};
   }
