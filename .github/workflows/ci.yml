@@ -166,6 +166,7 @@ jobs:
       - run: /tmp/psbt-install/node_modules/.bin/psbt-lab self-test
       - run: /tmp/psbt-install/node_modules/.bin/psbt-lab adapter --help
       - run: /tmp/psbt-install/node_modules/.bin/psbt-lab fuzz --help
+      - run: /tmp/psbt-install/node_modules/.bin/psbt-lab history --help
       - run: /tmp/psbt-install/node_modules/.bin/psbt-lab adapter init /tmp/psbt-generated-adapter --name package-smoke
       - run: npm ci --prefix /tmp/psbt-generated-adapter
       - run: npm test --prefix /tmp/psbt-generated-adapter

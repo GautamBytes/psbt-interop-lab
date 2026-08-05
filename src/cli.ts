@@ -30,6 +30,12 @@ import { formatParseMatrix, runParseMatrix } from "./local/parse-matrix.js";
 import { createLocalRuntimeProvider } from "./local/provider.js";
 import { writeCiReports } from "./runner/ci-reports.js";
 import { compareRuns } from "./runner/compare.js";
+import { buildCompatibilityHistory, historyHasLatestRegression } from "./runner/history.js";
+import {
+  formatCompatibilityHistory,
+  serializeCompatibilityHistory,
+  writeCompatibilityHistoryBundle,
+} from "./runner/history-report.js";
 import { verifyReplay } from "./runner/replay.js";
 import { combineRuntimeProviders } from "./runtime/combine.js";
 import { createExternalRuntimeProvider } from "./runtime/external-provider.js";
@@ -672,6 +678,32 @@ export function createProgram(): Command {
         process.exitCode = 1;
       }
     });
+
+  program
+    .command("history <artifact-directories...>")
+    .description("Build an ordered compatibility history from replayable run artifacts")
+    .option("--output <directory>", "Write history.json and history.md to a new directory")
+    .option("--json", "Print the versioned JSON report")
+    .option("--fail-on-regression", "Fail when the newest transition contains a regression")
+    .action(
+      async (
+        directories: string[],
+        options: { output?: string; json?: boolean; failOnRegression?: boolean },
+      ) => {
+        const report = await buildCompatibilityHistory(
+          directories.map((directory) => resolve(directory)),
+        );
+        if (options.output !== undefined) {
+          await writeCompatibilityHistoryBundle(resolve(options.output), report);
+        }
+        process.stdout.write(
+          options.json ? serializeCompatibilityHistory(report) : formatCompatibilityHistory(report),
+        );
+        if (options.failOnRegression && historyHasLatestRegression(report)) {
+          process.exitCode = 1;
+        }
+      },
+    );
 
   return program;
 }

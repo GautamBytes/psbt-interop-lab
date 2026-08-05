@@ -32,6 +32,7 @@ describe("CLI program", () => {
       "stop",
       "replay",
       "compare",
+      "history",
     ]);
   });
 
@@ -54,6 +55,15 @@ describe("CLI program", () => {
     expect(parseMatrix?.options.some((option) => option.long === "--adapter-manifest")).toBe(true);
     expect(() => fuzz?.parseOptions(["--cases", "0"])).toThrow(/between 1 and 512/i);
     expect(() => fuzz?.parseOptions(["--seed", "4294967296"])).toThrow(/32-bit/i);
+  });
+
+  test("offers ordered compatibility history export and an opt-in regression gate", () => {
+    const history = createProgram().commands.find((command) => command.name() === "history");
+
+    expect(history?.registeredArguments[0]?.variadic).toBe(true);
+    expect(history?.options.some((option) => option.long === "--output")).toBe(true);
+    expect(history?.options.some((option) => option.long === "--json")).toBe(true);
+    expect(history?.options.some((option) => option.long === "--fail-on-regression")).toBe(true);
   });
 
   test("offers a bounded quickstart with reusable images and optional Core retention", () => {

@@ -11,7 +11,7 @@ import type {
   RunManifest,
   ScenarioRecord,
 } from "./artifacts.js";
-import { loadVerifiedReplay } from "./replay.js";
+import { loadVerifiedReplay, type VerifiedReplay } from "./replay.js";
 
 export type RunComparisonChange =
   | {
@@ -68,11 +68,13 @@ export interface RunComparison {
   readonly changed: boolean;
   readonly base: {
     readonly runId: string;
+    readonly completedAt: string;
     readonly outcome: RunManifest["outcome"];
     readonly verifiedCheckpoints: number;
   };
   readonly head: {
     readonly runId: string;
+    readonly completedAt: string;
     readonly outcome: RunManifest["outcome"];
     readonly verifiedCheckpoints: number;
   };
@@ -88,12 +90,19 @@ export interface RunComparison {
   readonly changes: readonly RunComparisonChange[];
 }
 
+function isCanonicalIsoTimestamp(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) && new Date(timestamp).toISOString() === value;
+}
+
 function assertRunManifest(value: unknown): asserts value is RunManifest {
   if (
     typeof value !== "object" ||
     value === null ||
     (value as Partial<RunManifest>).schema !== "psbt-lab.run/0.1" ||
     typeof (value as Partial<RunManifest>).runId !== "string" ||
+    !isCanonicalIsoTimestamp((value as Partial<RunManifest>).completedAt) ||
     ((value as Partial<RunManifest>).outcome !== "passed" &&
       (value as Partial<RunManifest>).outcome !== "failed") ||
     !Array.isArray((value as Partial<RunManifest>).adapters) ||
@@ -475,14 +484,9 @@ function compareScenarios(
   return changes;
 }
 
-export async function compareRuns(
-  baseDirectory: string,
-  headDirectory: string,
-): Promise<RunComparison> {
-  const [base, head] = await Promise.all([
-    loadVerifiedManifest(baseDirectory),
-    loadVerifiedManifest(headDirectory),
-  ]);
+export function compareVerifiedReplays(base: VerifiedReplay, head: VerifiedReplay): RunComparison {
+  assertRunManifest(base.manifest);
+  assertRunManifest(head.manifest);
   const changes: RunComparisonChange[] = [];
   if (base.manifest.outcome !== head.manifest.outcome) {
     changes.push({
@@ -514,15 +518,28 @@ export async function compareRuns(
     changed: changes.length > 0,
     base: {
       runId: base.manifest.runId,
+      completedAt: base.manifest.completedAt,
       outcome: base.manifest.outcome,
       verifiedCheckpoints: base.verifiedCheckpoints,
     },
     head: {
       runId: head.manifest.runId,
+      completedAt: head.manifest.completedAt,
       outcome: head.manifest.outcome,
       verifiedCheckpoints: head.verifiedCheckpoints,
     },
     summary,
     changes,
   };
+}
+
+export async function compareRuns(
+  baseDirectory: string,
+  headDirectory: string,
+): Promise<RunComparison> {
+  const [base, head] = await Promise.all([
+    loadVerifiedManifest(baseDirectory),
+    loadVerifiedManifest(headDirectory),
+  ]);
+  return compareVerifiedReplays(base, head);
 }

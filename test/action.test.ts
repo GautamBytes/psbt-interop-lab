@@ -36,6 +36,12 @@ describe("GitHub Action", () => {
     expect(workflow).toContain("/tmp/psbt-install/node_modules/.bin/psbt-lab fuzz --help");
   });
 
+  test("checks compatibility-history help from the packed candidate CLI", async () => {
+    const workflow = await readFile(resolve(".github/workflows/ci.yml"), "utf8");
+
+    expect(workflow).toContain("/tmp/psbt-install/node_modules/.bin/psbt-lab history --help");
+  });
+
   test("declares the v0.8 package, report, build, and upload inputs", async () => {
     const action = await readFile(resolve("action.yml"), "utf8");
 
