@@ -102,6 +102,22 @@ describe("createParserIssueBundle", () => {
     expect(allOutput).not.toContain("/private/wallet/path");
     expect(manifestText).not.toMatch(/createdAt|timestamp/i);
   });
+
+  test("keeps adversarial implementation metadata inside a Markdown code span", () => {
+    const bundle = createParserIssueBundle({
+      ...input(),
+      implementations: {
+        wallet: {
+          ...IMPLEMENTATION,
+          name: "wallet``` [forged](https://example.invalid)",
+        },
+      },
+    });
+    const issue = bundle.find(({ path }) => path === "issue.md")?.contents;
+
+    expect(issue).toContain("```` wallet``` [forged](https://example.invalid) ````");
+    expect(issue).not.toContain("wallet\\`\\`\\`");
+  });
 });
 
 describe("writeParserIssueBundle", () => {

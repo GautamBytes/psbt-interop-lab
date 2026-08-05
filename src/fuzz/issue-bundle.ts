@@ -57,7 +57,11 @@ function normalizedImplementations(
 }
 
 function markdownCode(value: string): string {
-  return `\`${value.replace(/[\r\n]+/g, " ").replace(/`/g, "\\`")}\``;
+  const normalized = value.replace(/[\r\n]+/g, " ");
+  const backtickRuns = normalized.match(/`+/g) ?? [];
+  if (backtickRuns.length === 0) return `\`${normalized}\``;
+  const fence = "`".repeat(Math.max(...backtickRuns.map((run) => run.length)) + 1);
+  return `${fence} ${normalized} ${fence}`;
 }
 
 function factSummary(outcome: ParserExpectedOutcome): string {
