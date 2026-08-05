@@ -4,7 +4,7 @@ import { realpathSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { Command } from "commander";
+import { Command, Option } from "commander";
 import { detectorCanariesPassed, runDetectorCanaries } from "./canaries.js";
 import {
   type DoctorCheck,
@@ -22,6 +22,7 @@ import { loadAdapterManifest } from "./conformance/manifest.js";
 import { CoreRpc } from "./core/rpc.js";
 import { loadCustomSuiteManifest } from "./custom/manifest.js";
 import { runDifferentialFuzz } from "./fuzz/differential.js";
+import { writeParserIssueBundle } from "./fuzz/issue-bundle.js";
 import { promoteDifferentialCase } from "./fuzz/promotion.js";
 import { runParserRegressionSuite } from "./fuzz/regression.js";
 import { LOCAL_PARSE_FIXTURES } from "./local/fixtures.js";
@@ -30,6 +31,9 @@ import { createLocalRuntimeProvider } from "./local/provider.js";
 import { writeCiReports } from "./runner/ci-reports.js";
 import { compareRuns } from "./runner/compare.js";
 import { verifyReplay } from "./runner/replay.js";
+import { combineRuntimeProviders } from "./runtime/combine.js";
+import { createExternalRuntimeProvider } from "./runtime/external-provider.js";
+import type { RuntimeProvider } from "./runtime/provider.js";
 import { initializeAdapterProject } from "./scaffold/init.js";
 import {
   assertProofSelectionCompatibility,
@@ -62,6 +66,23 @@ const DOCTOR_IMAGES = [
 ] as const;
 
 const QUICKSTART_IMAGES = DOCTOR_IMAGES.slice(0, 2);
+
+async function createParserRuntime(adapterManifestPath?: string): Promise<RuntimeProvider> {
+  const externalManifest =
+    adapterManifestPath === undefined ? undefined : await loadAdapterManifest(adapterManifestPath);
+  const local = await createLocalRuntimeProvider({
+    packageDirectory: PROJECT_DIRECTORY,
+    manifestPath: LOCAL_RUNTIME_MANIFEST,
+  });
+  if (externalManifest === undefined) return local;
+  try {
+    const external = createExternalRuntimeProvider(externalManifest, "{}");
+    return combineRuntimeProviders([local, external]);
+  } catch (error) {
+    await local.close();
+    throw error;
+  }
+}
 
 function parseUnsigned32(value: string): number {
   const parsed = Number(value);
@@ -497,51 +518,59 @@ export function createProgram(): Command {
     .command("parse-matrix")
     .description("Run deterministic parser and roundtrip fixtures without Docker or Bitcoin Core")
     .option("--runtime <runtime>", "Parser runtime provider", "local")
+    .option("--adapter-manifest <path>", "Add trusted external parsers to the runtime")
     .option("--suite-manifest <path>", "Run a parser-only custom regression suite")
     .option("--json", "Print machine-readable output")
-    .action(async (options: { runtime: string; suiteManifest?: string; json?: boolean }) => {
-      if (options.runtime !== "local") {
-        throw new Error(
-          `Unknown parser runtime ${options.runtime}; the available runtime is local`,
-        );
-      }
-      if (options.suiteManifest) {
-        const manifest = await loadCustomSuiteManifest(options.suiteManifest);
-        const report = await runParserRegressionSuite({
-          manifest,
-          createProvider: () =>
-            createLocalRuntimeProvider({
-              packageDirectory: PROJECT_DIRECTORY,
-              manifestPath: LOCAL_RUNTIME_MANIFEST,
-            }),
-        });
+    .action(
+      async (options: {
+        runtime: string;
+        adapterManifest?: string;
+        suiteManifest?: string;
+        json?: boolean;
+      }) => {
+        if (options.runtime !== "local") {
+          throw new Error(
+            `Unknown parser runtime ${options.runtime}; the available runtime is local`,
+          );
+        }
+        if (options.suiteManifest) {
+          const manifest = await loadCustomSuiteManifest(options.suiteManifest);
+          const report = await runParserRegressionSuite({
+            manifest,
+            createProvider: () => createParserRuntime(options.adapterManifest),
+          });
+          process.stdout.write(
+            options.json
+              ? `${JSON.stringify(report, null, 2)}\n`
+              : `Parser regressions: ${report.outcome.toUpperCase()} (${report.scenarios.length} scenarios)\n`,
+          );
+          if (report.outcome === "failed") process.exitCode = 1;
+          return;
+        }
+        const provider = await createParserRuntime(options.adapterManifest);
+        const report = await runParseMatrix(provider);
         process.stdout.write(
-          options.json
-            ? `${JSON.stringify(report, null, 2)}\n`
-            : `Parser regressions: ${report.outcome.toUpperCase()} (${report.scenarios.length} scenarios)\n`,
+          options.json ? `${JSON.stringify(report, null, 2)}\n` : `${formatParseMatrix(report)}\n`,
         );
         if (report.outcome === "failed") process.exitCode = 1;
-        return;
-      }
-      const provider = await createLocalRuntimeProvider({
-        packageDirectory: PROJECT_DIRECTORY,
-        manifestPath: LOCAL_RUNTIME_MANIFEST,
-      });
-      const report = await runParseMatrix(provider);
-      process.stdout.write(
-        options.json ? `${JSON.stringify(report, null, 2)}\n` : `${formatParseMatrix(report)}\n`,
-      );
-      if (report.outcome === "failed") process.exitCode = 1;
-    });
+      },
+    );
 
   program
     .command("fuzz")
     .description("Run bounded seeded differential parser fuzzing without Bitcoin Core")
     .option("--runtime <runtime>", "Parser runtime provider", "local")
+    .option("--adapter-manifest <path>", "Add trusted external parsers to the runtime")
     .option("--fixture <id>", "Frozen parser fixture id", LOCAL_PARSE_FIXTURES[0]?.id)
     .option("--seed <uint32>", "Unsigned 32-bit mutation seed", parseUnsigned32, 0)
     .option("--cases <count>", "Number of bounded mutation cases", parseFuzzCases, 64)
     .option("--promote <path>", "Write the first minimized divergence as a custom suite")
+    .addOption(
+      new Option(
+        "--issue-bundle <directory>",
+        "Write the first minimized divergence as an upstream issue bundle",
+      ).conflicts("promote"),
+    )
     .option("--json", "Print machine-readable output")
     .action(
       async (options: {
@@ -549,7 +578,9 @@ export function createProgram(): Command {
         fixture: string;
         seed: number;
         cases: number;
+        adapterManifest?: string;
         promote?: string;
+        issueBundle?: string;
         json?: boolean;
       }) => {
         if (options.runtime !== "local") {
@@ -563,32 +594,41 @@ export function createProgram(): Command {
             `Unknown parser fixture ${options.fixture}; available fixtures: ${LOCAL_PARSE_FIXTURES.map(({ id }) => id).join(", ")}`,
           );
         }
-        const provider = await createLocalRuntimeProvider({
-          packageDirectory: PROJECT_DIRECTORY,
-          manifestPath: LOCAL_RUNTIME_MANIFEST,
-        });
+        const provider = await createParserRuntime(options.adapterManifest);
         const result = await runDifferentialFuzz({
           provider,
           fixture,
           seed: options.seed,
           cases: options.cases,
         });
-        if (options.promote) {
+        if (options.promote || options.issueBundle) {
           const interesting = result.interesting[0];
           if (!interesting) {
             throw new Error("No differential case was found to promote");
           }
-          const suite = promoteDifferentialCase({
-            fixture,
-            seed: result.seed,
-            caseIndex: interesting.index,
-            recipes: interesting.minimizedRecipes,
-            outcomes: interesting.minimizedOutcomes,
-          });
-          await writeFile(resolve(options.promote), `${JSON.stringify(suite, null, 2)}\n`, {
-            encoding: "utf8",
-            mode: 0o600,
-          });
+          if (options.promote) {
+            const suite = promoteDifferentialCase({
+              fixture,
+              seed: result.seed,
+              caseIndex: interesting.index,
+              recipes: interesting.minimizedRecipes,
+              outcomes: interesting.minimizedOutcomes,
+            });
+            await writeFile(resolve(options.promote), `${JSON.stringify(suite, null, 2)}\n`, {
+              encoding: "utf8",
+              mode: 0o600,
+            });
+          } else if (options.issueBundle) {
+            await writeParserIssueBundle(resolve(options.issueBundle), {
+              fixture,
+              runtime: result.runtime,
+              seed: result.seed,
+              caseIndex: interesting.index,
+              recipes: interesting.minimizedRecipes,
+              outcomes: interesting.minimizedOutcomes,
+              implementations: result.implementations,
+            });
+          }
         }
         process.stdout.write(
           options.json

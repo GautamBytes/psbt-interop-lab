@@ -9,12 +9,13 @@ const lines = createInterface({ input: process.stdin, crlfDelay: Number.POSITIVE
 for await (const line of lines) {
   const request = JSON.parse(line);
 
-  if (mode === "conformant" || mode === "parser-only") {
+  if (mode === "conformant" || mode === "parser-only" || mode === "permissive-parser") {
     const implementation = {
-      name: "fake-wallet",
+      name: mode === "permissive-parser" ? "permissive-wallet-parser" : "fake-wallet",
       version: "1.0.0",
-      artifactDigest: `sha256:${"b".repeat(64)}`,
-      sourceRevision: "fake-wallet-v1.0.0",
+      artifactDigest: `sha256:${mode === "permissive-parser" ? "c".repeat(64) : "b".repeat(64)}`,
+      sourceRevision:
+        mode === "permissive-parser" ? "permissive-wallet-parser-v1" : "fake-wallet-v1.0.0",
     };
     if (request.operation === "hello") {
       process.stdout.write(
@@ -32,6 +33,23 @@ for await (const line of lines) {
             psbtVersions: [0],
             scriptTypes: ["p2wsh"],
             operationScriptTypes: mode === "conformant" ? { roundtrip: ["p2wsh"] } : {},
+          },
+        })}\n`,
+      );
+      continue;
+    }
+    if (mode === "permissive-parser" && request.operation === "native-parse") {
+      process.stdout.write(
+        `${JSON.stringify({
+          protocol: "psbt-lab.adapter/0.2",
+          id: request.id,
+          status: "ok",
+          implementation,
+          output: {
+            nativeParser: implementation.name,
+            psbtVersion: 0,
+            inputs: 0,
+            outputs: 0,
           },
         })}\n`,
       );

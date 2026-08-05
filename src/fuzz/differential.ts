@@ -4,6 +4,7 @@ import { parseAdapterHelloCapabilities } from "../protocol/schema.js";
 import {
   ADAPTER_PROTOCOL,
   type AdapterHelloCapabilities,
+  type AdapterImplementation,
   type AdapterResponse,
 } from "../protocol/types.js";
 import { parsePsbtDocument } from "../psbt/document.js";
@@ -51,6 +52,7 @@ export interface InterestingDifferentialCase extends DifferentialFuzzCase {
 
 export interface DifferentialFuzzResult {
   readonly runtime: string;
+  readonly implementations: Readonly<Record<string, AdapterImplementation>>;
   readonly fixture: Pick<LocalParseFixture, "id" | "psbtVersion" | "sha256">;
   readonly seed: number;
   readonly requestedCases: number;
@@ -68,9 +70,11 @@ export interface DifferentialFuzzOptions {
 interface ReadyParser {
   readonly adapter: AvailableRuntimeAdapter;
   readonly capabilities: AdapterHelloCapabilities;
+  readonly implementation: AdapterImplementation;
 }
 
 interface ParserEvaluator {
+  readonly implementations: Readonly<Record<string, AdapterImplementation>>;
   readonly evaluate: (psbt: string) => Promise<Record<string, ParserOutcome>>;
 }
 
@@ -79,7 +83,8 @@ function identityMatches(adapter: AvailableRuntimeAdapter, response: AdapterResp
     response.implementation.name === adapter.expected.name &&
     response.implementation.version === adapter.expected.version &&
     response.implementation.sourceRevision === adapter.expected.sourceRevision &&
-    response.implementation.artifactDigest === adapter.expected.artifactDigest
+    (adapter.expected.artifactDigest === undefined ||
+      response.implementation.artifactDigest === adapter.expected.artifactDigest)
   );
 }
 
@@ -224,7 +229,7 @@ async function negotiateParser(
     ) {
       return unavailableOutcome("adapter does not declare native parser support");
     }
-    return { adapter, capabilities };
+    return { adapter, capabilities, implementation: response.implementation };
   } catch (error) {
     await adapter.process.restart?.().catch(() => undefined);
     return processFailureOutcome(error, "adapter negotiation failed");
@@ -269,17 +274,19 @@ async function adapterOutcome(
 async function createParserEvaluator(provider: RuntimeProvider): Promise<ParserEvaluator> {
   const runtimeAdapters = await provider.adapters();
   const negotiated = new Map<string, ReadyParser | ParserOutcome>();
+  const implementations: Record<string, AdapterImplementation> = {};
   for (const [index, adapter] of runtimeAdapters.entries()) {
-    negotiated.set(
-      adapter.id,
+    const parser =
       adapter.availability === "unsupported"
         ? unavailableOutcome(adapter.reason)
-        : await negotiateParser(adapter, index),
-    );
+        : await negotiateParser(adapter, index);
+    negotiated.set(adapter.id, parser);
+    if (isReadyParser(parser)) implementations[adapter.id] = parser.implementation;
   }
 
   let requestCounter = 0;
   return {
+    implementations,
     async evaluate(psbt) {
       const outcomes: Record<string, ParserOutcome> = { lab: classifyLabParser(psbt) };
       for (const [id, parser] of negotiated) {
@@ -340,6 +347,7 @@ export async function runDifferentialFuzz(
     }
     return {
       runtime: options.provider.runtime,
+      implementations: evaluator.implementations,
       fixture: {
         id: options.fixture.id,
         psbtVersion: options.fixture.psbtVersion,

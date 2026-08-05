@@ -30,6 +30,26 @@ describe("release documentation", () => {
     expect(existsSync(join(process.cwd(), "docs/superpowers/specs"))).toBe(false);
   });
 
+  it("documents neutral, replayable parser issue bundles", () => {
+    const readme = read("README.md");
+    const adapters = read("docs/adapters.md");
+    const futureWork = read("docs/future-work.md");
+
+    for (const document of [readme, adapters]) {
+      expect(document).toContain("--issue-bundle parser-issue");
+      expect(document).toContain("manifest.json");
+      expect(document).toContain("regression-suite.json");
+      expect(document).toContain("issue.md");
+      expect(document.replace(/\s+/g, " ")).toMatch(
+        /has not assigned fault|does not assign fault/i,
+      );
+      expect(document).toContain("public test");
+    }
+    expect(futureWork).not.toContain(
+      "Attach promoted parser regressions to upstream-ready issue templates",
+    );
+  });
+
   it("keeps every raw repository resource imported by the website in Vercel builds", () => {
     const importedResources = [
       read("website/src/pages/documents.ts"),

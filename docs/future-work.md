@@ -1,9 +1,9 @@
 # Future Work
 
 PSBT Interop Lab already provides a working interoperability matrix, external adapter enrollment,
-deterministic custom suites, bounded differential fuzzing with regression promotion, official
-BIP370 vectors, and field-level diagnoses. Future work should be driven by real wallet and library
-maintainers using those foundations.
+deterministic custom suites, bounded differential fuzzing with regression promotion and neutral
+upstream issue bundles, official BIP370 vectors, and field-level diagnoses. Future work should be
+driven by real wallet and library maintainers using those foundations.
 
 ## Broader Compatibility
 
@@ -24,7 +24,6 @@ maintainers using those foundations.
 
 - Publish recurring baseline comparisons as versioned regression reports.
 - Add corpus scheduling and coverage feedback while preserving deterministic, bounded campaigns.
-- Attach promoted parser regressions to upstream-ready issue templates with implementation metadata.
 
 ## Developer Integration
 

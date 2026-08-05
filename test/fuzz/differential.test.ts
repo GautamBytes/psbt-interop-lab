@@ -142,6 +142,7 @@ describe("runDifferentialFuzz", () => {
     });
 
     expect(result.seed).toBe(42);
+    expect(result.implementations).toEqual({ permissive: IMPLEMENTATION });
     expect(result.cases).toHaveLength(24);
     expect(result.interesting.length).toBeGreaterThan(0);
     expect(result.interesting[0]).toMatchObject({
