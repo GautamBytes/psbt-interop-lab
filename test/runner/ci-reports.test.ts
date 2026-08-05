@@ -97,7 +97,7 @@ describe("CI reports", () => {
     const report = JSON.parse(generateSarifReport(manifest())) as {
       version: string;
       runs: Array<{
-        tool: { driver: { rules: Array<{ id: string }> } };
+        tool: { driver: { version: string; rules: Array<{ id: string }> } };
         results: Array<{
           ruleId: string;
           message: { text: string };
@@ -107,6 +107,7 @@ describe("CI reports", () => {
     };
 
     expect(report.version).toBe("2.1.0");
+    expect(report.runs[0]?.tool.driver.version).toBe("0.9.0");
     expect(report.runs[0]?.tool.driver.rules.map(({ id }) => id)).toEqual([
       "bip174.map-keys.unique",
       "psbt-lab.assertion.taproot-fields-preserved",

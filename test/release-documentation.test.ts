@@ -19,10 +19,22 @@ describe("release documentation", () => {
       "website/src/components/Sections.tsx",
     ];
 
-    expect(packageVersion).toBe("0.8.0");
+    expect(packageVersion).toBe("0.9.0");
     for (const path of publicFiles) {
       expect(read(path), path).toContain(packageVersion);
     }
+  });
+
+  it("records the v0.9.0 release capabilities in the packaged changelog", () => {
+    const packageJson = JSON.parse(read("package.json")) as { files: string[] };
+    const changelog = read("CHANGELOG.md");
+
+    expect(packageJson.files).toContain("CHANGELOG.md");
+    expect(changelog).toContain("## [0.9.0] - 2026-08-05");
+    expect(changelog).toContain("TypeScript adapter project initializer");
+    expect(changelog).toContain("upstream issue bundles");
+    expect(changelog).toContain("compatibility history");
+    expect(changelog).toContain("independent Rust and TypeScript MuSig2");
   });
 
   it("does not ship internal implementation plans or design discussions", () => {

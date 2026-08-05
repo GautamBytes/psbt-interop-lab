@@ -45,8 +45,8 @@ describe("PSBT Interop Lab website", () => {
     expect(
       screen.getByText(/HWI-compatible simulator confirmation and key-origin policy/i),
     ).toBeInTheDocument();
-    expect(screen.getByText("PSBT Interop Lab 0.8.0")).toBeInTheDocument();
-    expect(screen.getByText(/available now as version 0\.8\.0/i)).toBeInTheDocument();
+    expect(screen.getByText("PSBT Interop Lab 0.9.0")).toBeInTheDocument();
+    expect(screen.getByText(/available now as version 0\.9\.0/i)).toBeInTheDocument();
   });
 
   it("groups the complete coverage surface into four scannable areas", () => {
@@ -143,7 +143,7 @@ describe("PSBT Interop Lab website", () => {
     await user.click(screen.getByRole("button", { name: "Copy install command" }));
 
     expect(screen.getByText(installCommand)).toBeInTheDocument();
-    expect(installCommand).toContain("psbt-interop-lab@0.8.0");
+    expect(installCommand).toContain("psbt-interop-lab@0.9.0");
     expect(screen.getByText("Install command copied")).toBeInTheDocument();
   });
 

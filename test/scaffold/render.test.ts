@@ -29,7 +29,7 @@ function templateAt(root: string) {
 const values = {
   ADAPTER_NAME: "wallet",
   PACKAGE_NAME: "psbt-adapter-wallet",
-  LAB_VERSION: "0.8.0",
+  LAB_VERSION: "0.9.0",
 };
 
 describe("adapter template registry", () => {
@@ -62,7 +62,7 @@ describe("renderAdapterTemplate", () => {
     await expect(renderAdapterTemplate(templateAt(root), values)).resolves.toEqual([
       {
         path: "a",
-        contents: "psbt-adapter-wallet 0.8.0 wallet\n",
+        contents: "psbt-adapter-wallet 0.9.0 wallet\n",
       },
       { path: "z/b", contents: "wallet\n" },
     ]);

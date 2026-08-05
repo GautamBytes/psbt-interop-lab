@@ -188,7 +188,8 @@ jobs:
       - run: /tmp/psbt-install/node_modules/.bin/psbt-lab fuzz --help
       - run: /tmp/psbt-install/node_modules/.bin/psbt-lab history --help
       - run: /tmp/psbt-install/node_modules/.bin/psbt-lab adapter init /tmp/psbt-generated-adapter --name package-smoke
-      - run: npm ci --prefix /tmp/psbt-generated-adapter
+      - run: npm install --prefix /tmp/psbt-generated-adapter /tmp/psbt-package/psbt-interop-lab-0.9.0.tgz --save-dev --ignore-scripts
+      - run: npm ci --prefix /tmp/psbt-generated-adapter --ignore-scripts
       - run: npm test --prefix /tmp/psbt-generated-adapter
       - run: /tmp/psbt-install/node_modules/.bin/psbt-lab adapter check /tmp/psbt-generated-adapter/adapter-manifest.json
       - run: test -f /tmp/psbt-install/node_modules/psbt-interop-lab/compose.yaml
@@ -280,7 +281,7 @@ jobs:
       - run: python -m unittest -v test_adapter.py
 
   feature-docker-proof:
-    name: v0.8 feature Docker proof
+    name: v0.9 feature Docker proof
     if: >-
       github.event_name == 'pull_request' &&
       (github.event.pull_request.stack == null ||
@@ -305,7 +306,7 @@ jobs:
         uses: ./
         with:
           adapter-manifest: examples/wallet-ci-adapter/adapter-manifest.json
-          package-spec: /tmp/psbt-package/psbt-interop-lab-0.8.0.tgz
+          package-spec: /tmp/psbt-package/psbt-interop-lab-0.9.0.tgz
           artifacts: artifacts/external-wallet
           junit: artifacts/external-wallet.xml
           sarif: artifacts/external-wallet.sarif

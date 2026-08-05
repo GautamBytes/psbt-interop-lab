@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { chmod, type FileHandle, mkdir, open, rename, unlink } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import type { ScenarioResult } from "../scenarios/definition.js";
+import { VERSION } from "../version.js";
 import type { RunManifest } from "./artifacts.js";
 import { redactSensitiveText } from "./report.js";
 
@@ -221,7 +222,7 @@ export function generateSarifReport(manifest: RunManifest): string {
           tool: {
             driver: {
               name: "PSBT Interop Lab",
-              version: "0.8.0",
+              version: VERSION,
               informationUri: "https://github.com/GautamBytes/psbt-interop-lab",
               rules: [...rules.values()],
             },
