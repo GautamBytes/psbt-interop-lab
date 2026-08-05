@@ -50,6 +50,26 @@ describe("release documentation", () => {
     );
   });
 
+  it("documents ordered, replay-verified compatibility history", () => {
+    const readme = read("README.md");
+    const architecture = read("docs/architecture.md");
+    const futureWork = read("docs/future-work.md");
+
+    for (const document of [readme, architecture]) {
+      expect(document).toContain("psbt-lab history");
+      expect(document).toContain("--fail-on-regression");
+      expect(document).toMatch(/oldest.to.newest/i);
+      expect(document).toMatch(/replay.verif/i);
+      for (const classification of ["unchanged", "regression", "improvement", "mixed", "changed"]) {
+        expect(document).toContain(classification);
+      }
+    }
+    expect(futureWork).not.toContain(
+      "Publish recurring baseline comparisons as versioned regression reports",
+    );
+    expect(futureWork).toMatch(/scheduled|publish/i);
+  });
+
   it("keeps every raw repository resource imported by the website in Vercel builds", () => {
     const importedResources = [
       read("website/src/pages/documents.ts"),

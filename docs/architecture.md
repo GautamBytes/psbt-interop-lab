@@ -264,6 +264,16 @@ entering those operations through the full matrix path.
 `psbt-lab compare <base> <head>` checks whether a later run changed scenario outcomes, findings,
 adapter cells, or checkpoint facts after replay-verifying both artifact directories.
 
+`psbt-lab history <oldest> <...> <newest>` extends that comparison model across two or more
+artifact directories supplied in oldest-to-newest order. It replay-verifies every run, compares
+adjacent pairs, and classifies transitions as `unchanged`, `regression`, `improvement`, `mixed`, or
+`changed`. The report records directional signals only for run outcomes, scenario outcomes,
+assertion outcomes, and finding presence; coverage and structural differences stay neutral because
+their direction is ambiguous. `--fail-on-regression` gates only a newest `regression` or `mixed`
+transition. Optional output is an exclusive new directory containing deterministic `history.json`
+and `history.md` files; caller paths, raw PSBTs, and checkpoint paths are not copied into either
+report.
+
 ## Extension Points
 
 `psbt-lab adapter check <manifest>` validates the external onboarding boundary. A strict versioned

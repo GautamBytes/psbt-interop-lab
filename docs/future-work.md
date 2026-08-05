@@ -22,7 +22,6 @@ driven by real wallet and library maintainers using those foundations.
 
 ## Better Diagnostics
 
-- Publish recurring baseline comparisons as versioned regression reports.
 - Add corpus scheduling and coverage feedback while preserving deterministic, bounded campaigns.
 
 ## Developer Integration
@@ -31,7 +30,8 @@ driven by real wallet and library maintainers using those foundations.
   maintainers validate the generated-project workflow.
 - Validate the reusable action against additional independent wallet repositories and native
   adapter implementations.
-- Publish versioned compatibility reports and reusable test vectors.
+- Publish generated compatibility-history bundles through an opt-in scheduled workflow after
+  maintainers choose retention and release policy.
 - Publish optional prebuilt adapter images after demand justifies the release and attestation work.
 - Produce reproducible upstream bug reports and contribute practical fixes where maintainers want
   them.

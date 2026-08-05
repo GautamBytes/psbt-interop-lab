@@ -54,6 +54,8 @@ psbt-lab parse-matrix --runtime local
 psbt-lab fuzz --runtime local --seed 42 --cases 64
 psbt-lab baseline
 psbt-lab compare artifacts/<baseline-run-id> artifacts/<candidate-run-id>
+psbt-lab history artifacts/<oldest-run-id> artifacts/<middle-run-id> artifacts/<newest-run-id> \
+  --output compatibility-history --fail-on-regression
 psbt-lab replay artifacts/<run-id>
 ```
 
@@ -64,6 +66,13 @@ JavaScript parser and reports native adapters without a published local binary a
 Use `matrix` for the complete Core-backed, cross-library signing and finalization proof.
 `baseline` records the standard comparison snapshot, and `compare` replay-verifies both artifact
 directories before reporting scenario status, finding, adapter-cell, and checkpoint changes.
+`history` accepts two or more artifact directories in oldest-to-newest order, replay-verifies every
+run, and classifies each adjacent transition as `unchanged`, `regression`, `improvement`, `mixed`,
+or `changed`. It can write deterministic `history.json` and `history.md` files into a new output
+directory. `--fail-on-regression` exits unsuccessfully only when the newest transition is a
+`regression` or `mixed`, so a resolved historical regression does not keep a current CI run red.
+Coverage, adapter, capability, checkpoint, skipped-status, and modified-finding differences remain
+neutral `changed` signals because they do not establish a safe direction by themselves.
 Deterministic checkpoints compare exact wire facts. Entropy-bearing MuSig2 checkpoints explicitly
 compare field structure so fresh nonces and signatures do not create false regressions; replay still
 verifies the exact SHA256 of every stored PSBT.
