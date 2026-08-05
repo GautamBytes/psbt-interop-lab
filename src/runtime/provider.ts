@@ -11,9 +11,9 @@ export interface AvailableRuntimeAdapter {
   readonly availability: "available";
   readonly process: RuntimeAdapterProcess;
   readonly timeoutMs: number;
-  readonly expected: Required<
-    Pick<AdapterImplementation, "name" | "version" | "sourceRevision" | "artifactDigest">
-  >;
+  readonly expected: Pick<AdapterImplementation, "name" | "version"> &
+    Required<Pick<AdapterImplementation, "sourceRevision">> &
+    Partial<Pick<AdapterImplementation, "artifactDigest">>;
 }
 
 export interface UnsupportedRuntimeAdapter {
