@@ -116,7 +116,7 @@ evidence still matches its manifest:
 psbt-lab replay artifacts/<run-id>
 ```
 
-![Complete matrix generated report](https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/main/docs/assets/walkthrough/compatibility-report.png)
+![Complete matrix generated report](https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/d29ac0fe83ce23e54a57707dc67c4d316b2b140d/docs/assets/walkthrough/compatibility-report.png)
 
 The report screenshot comes directly from that run's generated, self-contained HTML artifact. The
 capture shows the same 47-scenario outcome from the fresh v0.9.0 run. The report includes
@@ -125,7 +125,7 @@ normative levels, authoritative sources, expected-versus-observed behavior, seve
 repairability, confidence, exact evidence, adapter failure cells, and replay-verified artifact
 comparison.
 
-![BIP373 MuSig2 report evidence](https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/main/docs/assets/walkthrough/musig2-report.png)
+![BIP373 MuSig2 report evidence](https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/d29ac0fe83ce23e54a57707dc67c4d316b2b140d/docs/assets/walkthrough/musig2-report.png)
 
 The MuSig2 capture follows independent Rust and TypeScript signer processes through nonce exchange,
 partial-signature verification, aggregation, and Taproot finalization. The red nonce-reuse cell is

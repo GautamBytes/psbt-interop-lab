@@ -149,8 +149,30 @@ describe("release documentation", () => {
     expect(imageSources).toHaveLength(2);
     for (const source of imageSources) {
       expect(source).toMatch(
-        /^https:\/\/raw\.githubusercontent\.com\/GautamBytes\/psbt-interop-lab\/(?:main|[0-9a-f]{40})\//,
+        /^https:\/\/raw\.githubusercontent\.com\/GautamBytes\/psbt-interop-lab\/[0-9a-f]{40}\//,
       );
     }
+  });
+
+  it("pins every public walkthrough reference to one immutable revision", () => {
+    const publicFiles = [
+      "README.md",
+      "website/index.html",
+      "website/src/components/MarkdownPage.tsx",
+    ];
+    const revisions = publicFiles.flatMap((path) => {
+      const source = read(path);
+      expect(source, path).not.toContain(
+        "raw.githubusercontent.com/GautamBytes/psbt-interop-lab/main/docs/assets/walkthrough/",
+      );
+      return [
+        ...source.matchAll(
+          /raw\.githubusercontent\.com\/GautamBytes\/psbt-interop-lab\/([0-9a-f]{40})\/docs\/assets\/walkthrough\//g,
+        ),
+      ].map((match) => match[1]);
+    });
+
+    expect(revisions.length).toBeGreaterThanOrEqual(4);
+    expect(new Set(revisions)).toEqual(new Set(["d29ac0fe83ce23e54a57707dc67c4d316b2b140d"]));
   });
 });
