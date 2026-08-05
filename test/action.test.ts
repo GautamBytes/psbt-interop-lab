@@ -4,6 +4,23 @@ import { describe, expect, test } from "vitest";
 import { actionConfiguration, buildMatrixArguments } from "../scripts/run-action.mjs";
 
 describe("GitHub Action", () => {
+  test("ships adapter templates in the npm release", async () => {
+    const packageManifest = JSON.parse(await readFile(resolve("package.json"), "utf8")) as {
+      files?: string[];
+    };
+
+    expect(packageManifest.files).toContain("templates");
+  });
+
+  test("runs the expensive feature proof only for unstacked or top-layer pull requests", async () => {
+    const workflow = await readFile(resolve(".github/workflows/ci.yml"), "utf8");
+
+    expect(workflow).toContain("github.event.pull_request.stack == null");
+    expect(workflow).toContain(
+      "github.event.pull_request.stack.position == github.event.pull_request.stack.size",
+    );
+  });
+
   test("declares the v0.8 package, report, build, and upload inputs", async () => {
     const action = await readFile(resolve("action.yml"), "utf8");
 

@@ -116,6 +116,22 @@ Wallet and library maintainers can point the CLI at their own local JSONL adapte
 the built-in matrix:
 
 ```bash
+psbt-lab adapter init ./wallet-adapter --name example-wallet
+cd ./wallet-adapter
+npm ci
+npm test
+npm run conformance
+```
+
+The initializer generates a pinned TypeScript and bitcoinjs-lib parser adapter, process-level
+tests, a conformance manifest, and a GitHub Actions workflow. It only writes a new directory: it
+does not install dependencies, initialize Git, execute generated code, or overwrite an existing
+path. Use the generated project as a protocol-correct starting point, then replace its parser and
+identity with the wallet or library under test.
+
+Existing adapters can be checked directly:
+
+```bash
 psbt-lab adapter check ./adapters.json
 psbt-lab adapter check ./adapters.json --json
 psbt-lab matrix --adapter-manifest ./adapters.json

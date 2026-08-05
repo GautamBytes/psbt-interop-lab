@@ -13,6 +13,7 @@
     "src/conformance/adapter-manifest.schema.json",
     "src/custom/suite-manifest.schema.json",
     "scripts",
+    "templates",
     "compose.yaml",
     "docker",
     "adapters/bdkpython-2.3.1/Dockerfile",
