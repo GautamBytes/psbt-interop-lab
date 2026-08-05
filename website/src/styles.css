@@ -616,6 +616,89 @@ svg {
   height: 18px;
 }
 
+.audience-paths {
+  padding-block: 40px 48px;
+}
+
+.audience-paths__heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 18px;
+}
+
+.audience-paths__heading .eyebrow {
+  margin: 0;
+}
+
+.audience-paths__heading h2 {
+  max-width: 620px;
+  margin: 0;
+  font-size: clamp(24px, 2.6vw, 34px);
+  line-height: 1.12;
+  text-align: right;
+}
+
+.audience-paths__grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border: 1px solid var(--border-strong);
+  background: var(--surface-solid);
+  border-radius: 8px;
+}
+
+.audience-path {
+  display: grid;
+  min-height: 190px;
+  grid-template-rows: auto 1fr auto;
+  gap: 18px;
+  padding: 24px;
+  border-right: 1px solid var(--border);
+  transition:
+    background-color 160ms ease,
+    color 160ms ease;
+}
+
+.audience-path:last-child {
+  border-right: 0;
+}
+
+.audience-path:hover {
+  background: var(--surface-hover);
+}
+
+.audience-path > svg {
+  width: 25px;
+  height: 25px;
+  color: var(--orange);
+}
+
+.audience-path span {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+}
+
+.audience-path strong {
+  font-size: 17px;
+}
+
+.audience-path small {
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.audience-path em {
+  color: var(--orange);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
 .report-section {
   position: relative;
   z-index: 2;
@@ -2355,6 +2438,32 @@ svg {
     gap: 16px 30px;
   }
 
+  .audience-paths__heading {
+    display: block;
+  }
+
+  .audience-paths__heading .eyebrow {
+    margin-bottom: 10px;
+  }
+
+  .audience-paths__heading h2 {
+    text-align: left;
+  }
+
+  .audience-paths__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .audience-path {
+    min-height: 0;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .audience-path:last-child {
+    border-bottom: 0;
+  }
+
   .report-section {
     padding-bottom: 56px;
   }
@@ -2606,6 +2715,14 @@ svg {
 
   .hero__metrics span {
     justify-content: center;
+  }
+
+  .audience-paths {
+    padding-block: 30px 38px;
+  }
+
+  .audience-path {
+    padding: 20px;
   }
 
   .report-console__header {

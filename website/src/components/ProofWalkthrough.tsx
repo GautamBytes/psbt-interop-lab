@@ -1,21 +1,22 @@
 import { ArrowSquareOut } from "@phosphor-icons/react/ArrowSquareOut";
-import cliProof from "../../../docs/assets/walkthrough/cli-finding-and-replay.png";
 import reportProof from "../../../docs/assets/walkthrough/compatibility-report.png";
+import musig2Proof from "../../../docs/assets/walkthrough/musig2-report.png";
+import { releaseFacts } from "../release";
 import { SiteLink } from "./SiteLink";
 import { ZoomableImage } from "./ZoomableImage";
 
 const facts = [
   {
     label: "Complete run",
-    value: "47 / 47 bundled scenarios passed",
+    value: `${releaseFacts.scenarioCount} / ${releaseFacts.scenarioCount} bundled scenarios passed`,
   },
   {
     label: "Coverage",
-    value: "47 bundled scenarios across 9 integration stacks",
+    value: `${releaseFacts.scenarioCount} bundled scenarios across ${releaseFacts.integrationStackCount} integration stacks`,
   },
   {
     label: "Replay",
-    value: "91 checkpoints verified from the same artifact",
+    value: `${releaseFacts.replayCheckpointCount} checkpoints verified from the same artifact`,
   },
 ] as const;
 
@@ -26,15 +27,17 @@ export function ProofWalkthrough() {
         <header className="proof-heading">
           <div>
             <span className="eyebrow">
-              Evidence from the complete 47-scenario matrix | v0.8.0 capture, retained in v0.9.0
+              Evidence from the complete {releaseFacts.scenarioCount}-scenario matrix | v
+              {releaseFacts.version} capture
             </span>
             <h2 id="proof-title">The complete matrix, one replayable artifact.</h2>
           </div>
           <div>
             <p>
               This complete run executes every bundled workflow against pinned implementations and
-              Bitcoin Core on regtest. All 47 scenarios passed, one known parser compatibility
-              finding remained visible, and the same artifact replay-verified 91 checkpoints.
+              Bitcoin Core on regtest. All {releaseFacts.scenarioCount} scenarios passed, one known
+              parser compatibility finding remained visible, and the same artifact replay-verified{" "}
+              {releaseFacts.replayCheckpointCount} checkpoints.
             </p>
             <SiteLink className="inline-link" href="/docs#walkthrough-verify-the-complete-matrix">
               Open the complete walkthrough <ArrowSquareOut aria-hidden="true" />
@@ -46,30 +49,35 @@ export function ProofWalkthrough() {
           <figure>
             <ZoomableImage
               triggerClassName="proof-media__trigger"
-              src={cliProof}
-              alt="Complete matrix terminal output"
-              loading="lazy"
-              decoding="async"
-            />
-            <figcaption>
-              <span>01</span>
-              <strong>Run the complete matrix</strong>
-              <small>All 47 scenario outcomes and the replay result from one real run.</small>
-            </figcaption>
-          </figure>
-
-          <figure>
-            <ZoomableImage
-              triggerClassName="proof-media__trigger"
               src={reportProof}
               alt="Complete matrix generated report"
               loading="lazy"
               decoding="async"
             />
             <figcaption>
+              <span>01</span>
+              <strong>Inspect the v{releaseFacts.version} report</strong>
+              <small>
+                Direct capture of the {releaseFacts.scenarioCount}-scenario, self-contained HTML
+                artifact.
+              </small>
+            </figcaption>
+          </figure>
+          <figure>
+            <ZoomableImage
+              triggerClassName="proof-media__trigger"
+              src={musig2Proof}
+              alt="BIP373 MuSig2 report evidence"
+              loading="lazy"
+              decoding="async"
+            />
+            <figcaption>
               <span>02</span>
-              <strong>Inspect the report</strong>
-              <small>Direct capture of the 47-scenario, self-contained HTML artifact.</small>
+              <strong>Trace independent MuSig2 signers</strong>
+              <small>
+                The expected nonce-reuse refusal appears as a red negative canary inside the passed
+                scenario.
+              </small>
             </figcaption>
           </figure>
         </div>

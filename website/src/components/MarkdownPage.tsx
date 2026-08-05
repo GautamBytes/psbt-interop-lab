@@ -2,8 +2,8 @@ import { ArrowSquareOut } from "@phosphor-icons/react/ArrowSquareOut";
 import { isValidElement, type ReactNode } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import cliProof from "../../../docs/assets/walkthrough/cli-finding-and-replay.png";
 import reportProof from "../../../docs/assets/walkthrough/compatibility-report.png";
+import musig2Proof from "../../../docs/assets/walkthrough/musig2-report.png";
 import { repositoryUrl } from "../content";
 import { findDocumentBySourcePath, type WebsiteDocument } from "../pages/documents";
 import { findRepositoryResourceBySourcePath } from "../pages/repository-resources";
@@ -84,13 +84,13 @@ function normalizeRepoPath(baseDir: string, href: string): string {
 }
 
 const publicWalkthroughAssetBase =
-  "https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/41732b2e6fd789f8385281e810f13118fb6c83a7/docs/assets/walkthrough/";
+  "https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/main/docs/assets/walkthrough/";
 
 const bundledImages: Readonly<Record<string, string>> = {
-  "docs/assets/walkthrough/cli-finding-and-replay.png": cliProof,
   "docs/assets/walkthrough/compatibility-report.png": reportProof,
-  [`${publicWalkthroughAssetBase}cli-finding-and-replay.png`]: cliProof,
+  "docs/assets/walkthrough/musig2-report.png": musig2Proof,
   [`${publicWalkthroughAssetBase}compatibility-report.png`]: reportProof,
+  [`${publicWalkthroughAssetBase}musig2-report.png`]: musig2Proof,
 };
 
 export function resolveDocumentImageSrc(src: string | undefined, baseDir: string): string {

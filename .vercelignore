@@ -1,6 +1,7 @@
 *
 
 !README.md
+!CONTRIBUTING.md
 !SECURITY.md
 !psbt-interop-lab-threat-model.md
 !vercel.json
@@ -10,6 +11,7 @@
 !docs/architecture.md
 !docs/conformance-policy.md
 !docs/future-work.md
+!docs/releasing.md
 !docs/sources.md
 !docs/assets
 !docs/assets/walkthrough

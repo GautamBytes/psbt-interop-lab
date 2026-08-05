@@ -24,6 +24,8 @@ describe("website documentation routes", () => {
 
   it.each([
     ["/docs", "PSBT Interop Lab", /local developer tool for finding interoperability failures/i],
+    ["/docs/contributing", "Contributing", /focused compatibility scenarios/i],
+    ["/docs/releasing", "Release Process", /npm and GitHub release access/i],
     ["/adapter-kit", "External Adapter Guide", /enroll conforming adapters in the full matrix/i],
     ["/security", "Security Model", /boundary is kept intentionally smaller/i],
     ["/docs/architecture", "Architecture", /proof suite answers one concrete question/i],
@@ -85,6 +87,17 @@ describe("website documentation routes", () => {
     });
 
     expect(screen.getByRole("heading", { level: 1, name: "Security Model" })).toBeInTheDocument();
+  });
+
+  it("updates browser metadata for first-party documentation routes", () => {
+    window.history.replaceState({}, "", "/adapter-kit");
+    render(<App />);
+
+    expect(document.title).toBe("Adapter kit | PSBT Interop Lab");
+    expect(document.querySelector('meta[name="description"]')).toHaveAttribute(
+      "content",
+      expect.stringMatching(/connect another wallet or library/i),
+    );
   });
 
   it("does not leak Markdown parser metadata into the DOM", () => {
@@ -224,18 +237,19 @@ describe("website documentation routes", () => {
     window.history.replaceState({}, "", "/docs");
     render(<App />);
 
-    const cliProof = screen.getByRole("img", {
-      name: /complete matrix terminal output/i,
-    });
     const reportProof = screen.getByRole("img", {
       name: /complete matrix generated report/i,
     });
+    const musig2Proof = screen.getByRole("img", {
+      name: /bip373 musig2 report evidence/i,
+    });
 
-    expect(cliProof).toHaveAttribute("src", expect.stringMatching(/cli-finding-and-replay/));
     expect(reportProof).toHaveAttribute("src", expect.stringMatching(/compatibility-report/));
-    expect(cliProof.getAttribute("src")).not.toMatch(/^https?:/);
     expect(reportProof.getAttribute("src")).not.toMatch(/^https?:/);
-    expect(screen.getByText(/all 47 bundled scenarios visible/i)).toBeInTheDocument();
+    expect(musig2Proof).toHaveAttribute("src", expect.stringMatching(/musig2-report/));
+    expect(musig2Proof.getAttribute("src")).not.toMatch(/^https?:/);
+    expect(screen.getByText(/fresh v0\.9\.0 run/i)).toBeInTheDocument();
+    expect(screen.getByText(/expected negative canary/i)).toBeInTheDocument();
   });
 
   it("opens documentation screenshots in the shared image viewer", async () => {
@@ -245,24 +259,24 @@ describe("website documentation routes", () => {
 
     await user.click(
       screen.getByRole("button", {
-        name: /open full-size complete matrix terminal output/i,
+        name: /open full-size complete matrix generated report/i,
       }),
     );
 
     expect(
       screen.getByRole("dialog", {
-        name: /complete matrix terminal output full-size preview/i,
+        name: /complete matrix generated report full-size preview/i,
       }),
     ).toBeInTheDocument();
   });
 
   it("maps the public npm walkthrough image URL to the bundled website asset", () => {
     const publicSource =
-      "https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/41732b2e6fd789f8385281e810f13118fb6c83a7/docs/assets/walkthrough/cli-finding-and-replay.png";
+      "https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/main/docs/assets/walkthrough/compatibility-report.png";
 
     const resolved = resolveDocumentImageSrc(publicSource, "");
 
-    expect(resolved).toMatch(/cli-finding-and-replay/);
+    expect(resolved).toMatch(/compatibility-report/);
     expect(resolved).not.toMatch(/^https?:/);
   });
 

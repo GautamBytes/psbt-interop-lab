@@ -1,6 +1,8 @@
 export const routes = {
   home: "/",
   docs: "/docs",
+  contributing: "/docs/contributing",
+  releasing: "/docs/releasing",
   architecture: "/docs/architecture",
   conformancePolicy: "/docs/conformance-policy",
   futureWork: "/docs/future-work",

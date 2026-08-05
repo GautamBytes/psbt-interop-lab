@@ -9,20 +9,16 @@ function read(path: string): string {
 describe("release documentation", () => {
   it("keeps public version references on the package version", () => {
     const packageVersion = JSON.parse(read("package.json")).version as string;
-    const publicFiles = [
-      "README.md",
-      "src/version.ts",
-      "website/src/App.tsx",
-      "website/src/content.ts",
-      "website/AGENTS.md",
-      "website/src/components/ProofWalkthrough.tsx",
-      "website/src/components/Sections.tsx",
-    ];
+    const publicFiles = ["README.md", "src/version.ts", "website/AGENTS.md"];
 
     expect(packageVersion).toBe("0.9.0");
     for (const path of publicFiles) {
       expect(read(path), path).toContain(packageVersion);
     }
+    expect(read("website/src/release.ts")).toContain(
+      'import packageMetadata from "../../package.json"',
+    );
+    expect(read("website/src/release.ts")).toContain("version: packageMetadata.version");
   });
 
   it("records the v0.9.0 release capabilities in the packaged changelog", () => {
@@ -35,6 +31,12 @@ describe("release documentation", () => {
     expect(changelog).toContain("upstream issue bundles");
     expect(changelog).toContain("compatibility history");
     expect(changelog).toContain("independent Rust and TypeScript MuSig2");
+  });
+
+  it("ships the contributor guide referenced by the packaged README", () => {
+    const packageJson = JSON.parse(read("package.json")) as { files: string[] };
+
+    expect(packageJson.files).toContain("CONTRIBUTING.md");
   });
 
   it("does not ship internal implementation plans or design discussions", () => {
@@ -147,7 +149,7 @@ describe("release documentation", () => {
     expect(imageSources).toHaveLength(2);
     for (const source of imageSources) {
       expect(source).toMatch(
-        /^https:\/\/raw\.githubusercontent\.com\/GautamBytes\/psbt-interop-lab\/[0-9a-f]{40}\//,
+        /^https:\/\/raw\.githubusercontent\.com\/GautamBytes\/psbt-interop-lab\/(?:main|[0-9a-f]{40})\//,
       );
     }
   });

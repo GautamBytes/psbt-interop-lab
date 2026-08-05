@@ -1,7 +1,9 @@
+import contributing from "../../../CONTRIBUTING.md?raw";
 import adapters from "../../../docs/adapters.md?raw";
 import architecture from "../../../docs/architecture.md?raw";
 import conformancePolicy from "../../../docs/conformance-policy.md?raw";
 import futureWork from "../../../docs/future-work.md?raw";
+import releasing from "../../../docs/releasing.md?raw";
 import sources from "../../../docs/sources.md?raw";
 import threatModel from "../../../psbt-interop-lab-threat-model.md?raw";
 import readme from "../../../README.md?raw";
@@ -28,6 +30,25 @@ export const documents: WebsiteDocument[] = [
     sourcePath: "README.md",
     sourceUrl: `${repositoryUrl}/blob/main/README.md`,
     baseDir: "",
+  },
+  {
+    route: routes.contributing,
+    label: "Contributing",
+    description:
+      "Set up the project and contribute deterministic scenarios, adapters, and diagnostics.",
+    markdown: contributing,
+    sourcePath: "CONTRIBUTING.md",
+    sourceUrl: `${repositoryUrl}/blob/main/CONTRIBUTING.md`,
+    baseDir: "",
+  },
+  {
+    route: routes.releasing,
+    label: "Release process",
+    description: "Prepare, publish, and verify a traceable npm and GitHub release.",
+    markdown: releasing,
+    sourcePath: "docs/releasing.md",
+    sourceUrl: `${repositoryUrl}/blob/main/docs/releasing.md`,
+    baseDir: "docs",
   },
   {
     route: routes.adapterKit,

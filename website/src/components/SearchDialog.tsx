@@ -3,6 +3,8 @@ import { MagnifyingGlass } from "@phosphor-icons/react/MagnifyingGlass";
 import { X } from "@phosphor-icons/react/X";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { docLinks } from "../content";
+import { useModalFocus } from "../hooks/useModalFocus";
+import { documents } from "../pages/documents";
 import { SiteLink } from "./SiteLink";
 
 interface SearchDialogProps {
@@ -13,28 +15,35 @@ interface SearchDialogProps {
 export function SearchDialog({ open, onClose }: SearchDialogProps) {
   const [query, setQuery] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
+  const dialogRef = useRef<HTMLElement>(null);
+
+  useModalFocus({ open, containerRef: dialogRef, initialFocusRef: inputRef, onDismiss: onClose });
 
   useEffect(() => {
     if (!open) return;
     setQuery("");
-    const frame = window.requestAnimationFrame(() => inputRef.current?.focus());
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", handleKeyDown);
-    document.body.classList.add("dialog-open");
-    return () => {
-      window.cancelAnimationFrame(frame);
-      document.removeEventListener("keydown", handleKeyDown);
-      document.body.classList.remove("dialog-open");
-    };
-  }, [open, onClose]);
+  }, [open]);
 
   const matches = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     if (!normalized) return docLinks;
-    return docLinks.filter((link) =>
+    const navigationMatches = docLinks.filter((link) =>
       `${link.label} ${link.detail}`.toLowerCase().includes(normalized),
+    );
+    const documentMatches = documents
+      .filter((document) =>
+        `${document.label} ${document.description} ${document.markdown}`
+          .toLowerCase()
+          .includes(normalized),
+      )
+      .map((document) => ({
+        label: document.label,
+        detail: document.description,
+        href: document.route,
+      }));
+
+    return [...navigationMatches, ...documentMatches].filter(
+      (match, index, all) => all.findIndex((candidate) => candidate.href === match.href) === index,
     );
   }, [query]);
 
@@ -44,6 +53,7 @@ export function SearchDialog({ open, onClose }: SearchDialogProps) {
     // biome-ignore lint/a11y/noStaticElementInteractions: The backdrop is pointer-only; Escape and the close button provide keyboard dismissal.
     <div className="dialog-backdrop" role="presentation" onMouseDown={onClose}>
       <section
+        ref={dialogRef}
         className="search-dialog"
         role="dialog"
         aria-modal="true"

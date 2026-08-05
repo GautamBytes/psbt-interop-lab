@@ -14,6 +14,12 @@ HWI-compatible JSON process simulator backed by bitcoinjs-lib. A frozen bdkpytho
 2.3.1 adapter remains as a real regression specimen. Everything runs on regtest; the tool never
 broadcasts and has no mainnet mode.
 
+Choose the shortest path for your role:
+
+- **Wallet maintainers:** generate an adapter and run the focused [wallet CI path](#external-adapters).
+- **Library maintainers:** exercise native parsing and deterministic [differential fuzzing](#differential-fuzzing).
+- **Protocol reviewers:** inspect the [complete replayable walkthrough](#walkthrough-verify-the-complete-matrix).
+
 ## Quick Start
 
 Requirements:
@@ -91,14 +97,12 @@ To work from a source checkout instead, install pnpm 10.30.2, run
 
 ## Walkthrough: Verify the Complete Matrix
 
-This real v0.8.0 run executes every bundled workflow against the pinned integration stacks and an
+This real v0.9.0 run executes every bundled workflow against the pinned integration stacks and an
 isolated Bitcoin Core regtest node:
 
 ```bash
 psbt-lab matrix
 ```
-
-![Complete matrix terminal output](https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/41732b2e6fd789f8385281e810f13118fb6c83a7/docs/assets/walkthrough/cli-finding-and-replay.png)
 
 The verified run completed all 47 bundled scenarios. The terminal proof keeps every scenario ID
 visible and records the real run ID, Core height, outcome, artifact path, and 91 replay-verified
@@ -112,14 +116,20 @@ evidence still matches its manifest:
 psbt-lab replay artifacts/<run-id>
 ```
 
-![Complete matrix generated report](https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/41732b2e6fd789f8385281e810f13118fb6c83a7/docs/assets/walkthrough/compatibility-report.png)
+![Complete matrix generated report](https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/main/docs/assets/walkthrough/compatibility-report.png)
 
 The report screenshot comes directly from that run's generated, self-contained HTML artifact. The
-CLI screenshot is a compact rendering of the same report and replay result, with all 47 bundled
-scenarios visible. The report includes per-request adapter cells, stable conformance rule IDs,
+capture shows the same 47-scenario outcome from the fresh v0.9.0 run. The report includes
+per-request adapter cells, stable conformance rule IDs,
 normative levels, authoritative sources, expected-versus-observed behavior, severity,
 repairability, confidence, exact evidence, adapter failure cells, and replay-verified artifact
 comparison.
+
+![BIP373 MuSig2 report evidence](https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/main/docs/assets/walkthrough/musig2-report.png)
+
+The MuSig2 capture follows independent Rust and TypeScript signer processes through nonce exchange,
+partial-signature verification, aggregation, and Taproot finalization. The red nonce-reuse cell is
+the expected negative canary: the scenario passes only when the signer refuses the reused session.
 
 ## External Adapters
 
@@ -385,6 +395,7 @@ pnpm test
 pnpm build
 ```
 
-Native adapter checks run in CI and during Docker builds. See
+Native adapter checks run in CI and during Docker builds. Read the
+[contribution guide](CONTRIBUTING.md), [release process](docs/releasing.md),
 [the architecture](docs/architecture.md), [future work](docs/future-work.md), and
 [official source ledger](docs/sources.md). The project is MIT licensed.

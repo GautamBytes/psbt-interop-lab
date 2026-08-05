@@ -8,6 +8,29 @@
       content="Find PSBT interoperability failures across real Bitcoin libraries with deterministic, replayable tests."
     />
     <meta name="theme-color" content="#07090b" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="PSBT Interop Lab" />
+    <meta
+      property="og:description"
+      content="Find PSBT interoperability failures across real Bitcoin libraries with deterministic, replayable tests."
+    />
+    <meta
+      property="og:image"
+      content="https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/main/docs/assets/walkthrough/compatibility-report.png"
+    />
+    <meta name="twitter:card" content="summary_large_image" />
+    <script>
+      (() => {
+        const stored = window.localStorage.getItem("psbt-lab-theme");
+        const theme =
+          stored === "dark" || stored === "light"
+            ? stored
+            : window.matchMedia?.("(prefers-color-scheme: light)").matches
+              ? "light"
+              : "dark";
+        document.documentElement.dataset.theme = theme;
+      })();
+    </script>
     <link rel="icon" href="/hero-protocol-map.png" type="image/png" />
     <title>PSBT Interop Lab</title>
   </head>
