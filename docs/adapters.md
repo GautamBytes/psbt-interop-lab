@@ -149,7 +149,7 @@ trusted local code before replay.
 The manifest `id` is the stable registry and report identity. It may differ from `expected.name`.
 It must not collide with `rust-bitcoin`, `btcsuite-go`, `bitcoinjs-lib`, `bdkpython`,
 `bdk-wallet-current`, `rust-psbt-v2`, `libwally`, `musig2-rust-signer-1`,
-`musig2-rust-signer-2`, `hwi-simulator`, or another ID in the same manifest. Every response must
+`musig2-scure-signer-2`, `hwi-simulator`, or another ID in the same manifest. Every response must
 continue reporting the expected name, version, source revision, and optional pinned artifact
 digest. The configured timeout caps every request.
 

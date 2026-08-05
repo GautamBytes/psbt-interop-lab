@@ -159,10 +159,10 @@ The local components and their repository evidence are:
   JavaScript parser. This is host execution, not a sandbox or full proof runtime.
 - `AdapterProcess.request` in `src/protocol/adapter-process.ts` mediates one bounded JSONL request at
   a time, validates response schemas and IDs, and terminates on timeout or protocol violation.
-- The two `adapters/musig2-rust` processes each own one public deterministic regtest scalar and keep
-  CSPRNG-seeded secret nonces only in bounded, expiring memory. A partial-sign attempt consumes its
-  session before downstream nonce-set, sighash, or signature validation, and a bounded replay cache
-  refuses recent session reuse. Both processes use the same pinned MuSig2 implementation.
+- The independent `adapters/musig2-rust` and `adapters/musig2-scure` processes each own one public
+  deterministic regtest scalar and keep CSPRNG-seeded secret nonces only in bounded, expiring
+  memory. A partial-sign attempt consumes its session before downstream nonce-set, sighash, or
+  signature validation, and a bounded replay cache refuses recent session reuse.
 - `adapters/hwi-simulator` mediates a separate device process with bounded HWI-style JSON, a fixed
   regtest key origin, and explicit simulated approval or refusal.
 - `loadAdapterManifest` and `runAdapterConformance` in `src/conformance/` validate bounded,
@@ -233,7 +233,7 @@ a privileged environment. Those events violate the confirmed trust assumptions.
 | Replay | `src/runner/replay.ts`: `verifyReplay` | Rejects absolute and lexically escaping paths; bounds manifest/files and checkpoint count; reparses each PSBT and verifies its SHA256 against the manifest and stored facts JSON `sha256` | Intermediate symlinks remain trusted. Final-component `O_NOFOLLOW` applies only where Node exposes it. Other facts/outcomes are not recomputed, and mutable hashes are not authenticity. |
 | Artifact writes | `src/runner/artifacts.ts`: `ArtifactRun` | Safe identifiers, contained paths, exclusive temporary files, `fsync`, atomic rename, private modes | The trusted account can read or replace local artifacts; directory contents are not signed. |
 | Containers | `compose.yaml` and `src/scenarios/proof.ts`: `createDockerAdapter` | Read-only roots, dropped capabilities, PID/memory limits, `no-new-privileges`; adapters have no network; Core keeps only its named data volume writable | Docker daemon, kernel, images, and an intentionally attached bridge container are trusted. |
-| MuSig2 signers | `adapters/musig2-rust`: `Musig2Adapter::nonce` and `partial_sign` | Explicit process identity, fixture commitment, OS-CSPRNG nonce seed, BIP327 context binding, bounded expiring live sessions, consume-before-validation, recent-session replay refusal, partial verification, and final BIP340 verification | Both signers use the same pinned crate and public test keys. Host/process compromise can expose nonce state; no cross-library agreement or production custody is claimed. |
+| MuSig2 signers | `adapters/musig2-rust` and `adapters/musig2-scure` nonce, partial-sign, and aggregate operations | Explicit process identity, fixture commitment, OS-CSPRNG nonce seed, BIP327 context binding, bounded expiring live sessions, consume-before-validation, recent-session replay refusal, partial verification, and final BIP340 verification | The independent Rust and TypeScript signers use public test keys. Host/process compromise can expose nonce state; no production custody is claimed. |
 | HWI simulator | `adapters/hwi-simulator`: adapter and device processes | Fixed public regtest key origin, explicit simulated confirmation, signature-only PSBT mutation check, bounded JSON child process | No physical transport, secure element, firmware, PIN, passphrase, or vendor implementation is tested. |
 | GitHub CI | `.github/workflows/ci.yml` | Read-only permission, no persisted checkout credential, pinned actions, ephemeral hosted jobs, timeouts, concurrency cancellation, bounded feature Docker proof on pull requests, complete proof only on main/manual | Pull-request build code has job network/compute and Docker access; GitHub-host isolation and dependency services are external trust. |
 

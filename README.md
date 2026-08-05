@@ -7,8 +7,9 @@ writes replayable compatibility reports.
 
 The current suite integrates Bitcoin Core 31.1, rust-bitcoin 0.32.102, btcsuite PSBT 1.2.0,
 bitcoinjs-lib 7.0.1, BDK Wallet 3.1.0, rust-psbt's PSBTv2 0.3.0 implementation, and libwally
-1.5.4. Version 0.8.0 adds two isolated MuSig2 0.4.1 signer processes and an HWI-compatible JSON
-process simulator backed by bitcoinjs-lib. A frozen bdkpython
+1.5.4. The MuSig2 proof crosses independent Rust `musig2` 0.4.1 and TypeScript Scure 2.2.0 signer
+processes. Version 0.8.0 also adds an HWI-compatible JSON process simulator backed by
+bitcoinjs-lib. A frozen bdkpython
 2.3.1 adapter remains as a real regression specimen. Everything runs on regtest; the tool never
 broadcasts and has no mainnet mode.
 
@@ -258,9 +259,9 @@ The suite currently runs 47 scenarios:
 - Seven deterministic bitcoinjs-lib combiner-conflict probes across UTXOs, scripts, sighash types,
   derivations, ECDSA signatures, and Taproot signatures
 - A BIP373 MuSig2 key-path workflow that preserves ordered participant fields through rust-bitcoin
-  and bitcoinjs-lib, exchanges CSPRNG-generated session-bound public nonces between two isolated
-  signer processes, refuses nonce reuse, verifies both partial signatures, aggregates the BIP340
-  signature, and requires Bitcoin Core policy acceptance
+  and bitcoinjs-lib, exchanges CSPRNG-generated session-bound public nonces between independent
+  Rust `musig2` and TypeScript Scure signers, refuses nonce reuse, verifies both partial signatures,
+  aggregates the BIP340 signature, and requires Bitcoin Core policy acceptance
 - An HWI-compatible simulator workflow that enumerates a separate JSON-speaking device process,
   checks a fixed regtest BIP84 key origin, proves simulated user cancellation, permits only the
   expected signature mutation, and requires Bitcoin Core finalization and policy acceptance

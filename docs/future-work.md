@@ -12,8 +12,6 @@ driven by real wallet and library maintainers using those foundations.
   workflows.
 - Add Taproot script-path threshold leaves and carefully selected legacy profiles beyond the
   deterministic single-leaf signing and finalization paths.
-- Add a second independent MuSig2 implementation so the current two-process state-machine proof
-  becomes a cross-library cryptographic interoperability proof.
 - Add executable workflows for Silent Payments, proof-of-reserves, generic signed message, and
   DNSSEC proof PSBT fields. The diagnostic registry names these fields, but compatibility scenarios
   still need fixtures and adapter support.
