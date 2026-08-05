@@ -90,13 +90,19 @@ export interface RunComparison {
   readonly changes: readonly RunComparisonChange[];
 }
 
+function isCanonicalIsoTimestamp(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) && new Date(timestamp).toISOString() === value;
+}
+
 function assertRunManifest(value: unknown): asserts value is RunManifest {
   if (
     typeof value !== "object" ||
     value === null ||
     (value as Partial<RunManifest>).schema !== "psbt-lab.run/0.1" ||
     typeof (value as Partial<RunManifest>).runId !== "string" ||
-    typeof (value as Partial<RunManifest>).completedAt !== "string" ||
+    !isCanonicalIsoTimestamp((value as Partial<RunManifest>).completedAt) ||
     ((value as Partial<RunManifest>).outcome !== "passed" &&
       (value as Partial<RunManifest>).outcome !== "failed") ||
     !Array.isArray((value as Partial<RunManifest>).adapters) ||

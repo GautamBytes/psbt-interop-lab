@@ -257,7 +257,7 @@ describe("buildCompatibilityHistory", () => {
     const second = await temporaryRun(manifest("same", "2026-07-25T00:00:01.000Z", "passed"));
 
     await expect(buildCompatibilityHistory([first, second])).rejects.toThrow(
-      /duplicate run id same/i,
+      /duplicate run id "same"/i,
     );
   });
 
@@ -271,5 +271,19 @@ describe("buildCompatibilityHistory", () => {
     const later = await temporaryRun(manifest("later", "2026-07-26T00:00:01.000Z", "passed"));
     const earlier = await temporaryRun(manifest("earlier", "2026-07-25T00:00:01.000Z", "passed"));
     await expect(buildCompatibilityHistory([later, earlier])).rejects.toThrow(/oldest-to-newest/i);
+  });
+
+  test("does not reflect terminal control characters in validation errors", async () => {
+    const invalid = await temporaryRun(manifest("bad\u001b[31m\u202e", "not-a-time", "passed"));
+    const valid = await temporaryRun(manifest("valid", "2026-07-25T00:00:01.000Z", "passed"));
+
+    const error = await buildCompatibilityHistory([invalid, valid]).catch((reason: unknown) =>
+      String(reason),
+    );
+
+    expect(error).toContain("\\u001b");
+    expect(error).toContain("\\u{202e}");
+    expect(error).not.toContain("\u001b");
+    expect(error).not.toContain("\u202e");
   });
 });

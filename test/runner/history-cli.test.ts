@@ -67,7 +67,8 @@ describe("compatibility history CLI", () => {
   test("exports ordered history and ignores an older regression when the newest run improves", () => {
     const root = mkdtempSync(resolve(tmpdir(), "psbt-history-cli-"));
     const entrypoint = fileURLToPath(new URL("../../src/cli.ts", import.meta.url));
-    const base = writeRun(root, "base", "2026-07-24T00:00:01.000Z", "passed");
+    const baseRunId = "base\u202eREORDER";
+    const base = writeRun(root, baseRunId, "2026-07-24T00:00:01.000Z", "passed");
     const middle = writeRun(root, "middle", "2026-07-25T00:00:01.000Z", "failed");
     const head = writeRun(root, "head", "2026-07-26T00:00:01.000Z", "passed");
     const output = resolve(root, "history-output");
@@ -96,10 +97,12 @@ describe("compatibility history CLI", () => {
       expect(JSON.parse(result.stdout)).toMatchObject({
         schema: "psbt-lab.compatibility-history/0.1",
         transitions: [
-          { baseRunId: "base", headRunId: "middle", classification: "regression" },
+          { baseRunId, headRunId: "middle", classification: "regression" },
           { baseRunId: "middle", headRunId: "head", classification: "improvement" },
         ],
       });
+      expect(result.stdout).toContain("\\u202eREORDER");
+      expect(result.stdout).not.toContain("\u202e");
       expect(result.stdout).not.toContain(root);
       expect(readdirSync(output).sort()).toEqual(["history.json", "history.md"]);
       expect(readFileSync(resolve(output, "history.md"), "utf8")).toContain("middle` -> `head");

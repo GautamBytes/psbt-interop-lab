@@ -1,10 +1,11 @@
 import type { GeneratedFile } from "../scaffold/model.js";
 import { writeGeneratedProject } from "../scaffold/write.js";
+import { escapeJsonTerminalControls, escapeTerminalControls } from "../system/terminal-text.js";
 import type { RunComparisonChange } from "./compare.js";
 import type { CompatibilityHistoryReport, CompatibilitySignalDirection } from "./history.js";
 
 function markdownCode(value: string | number | undefined): string {
-  const normalized = String(value ?? "unknown").replace(/[\r\n]+/g, " ");
+  const normalized = escapeTerminalControls(String(value ?? "unknown").replace(/[\r\n]+/g, " "));
   const backtickRuns = normalized.match(/`+/g) ?? [];
   if (backtickRuns.length === 0) return `\`${normalized}\``;
   const fence = "`".repeat(Math.max(...backtickRuns.map((run) => run.length)) + 1);
@@ -103,9 +104,13 @@ export function createCompatibilityHistoryBundle(
   report: CompatibilityHistoryReport,
 ): readonly GeneratedFile[] {
   return [
-    { path: "history.json", contents: `${JSON.stringify(report, null, 2)}\n` },
+    { path: "history.json", contents: serializeCompatibilityHistory(report) },
     { path: "history.md", contents: formatCompatibilityHistory(report) },
   ];
+}
+
+export function serializeCompatibilityHistory(report: CompatibilityHistoryReport): string {
+  return `${escapeJsonTerminalControls(JSON.stringify(report, null, 2))}\n`;
 }
 
 export async function writeCompatibilityHistoryBundle(

@@ -46,7 +46,8 @@ function transition(
                 direction: "neutral",
                 change: {
                   kind: "adapter-changed",
-                  adapter: "wallet``` [forged](https://example.invalid)",
+                  adapter:
+                    "wallet``` [forged](https://example.invalid)\u001b[31mFORGED\u001b[0m\u202eREORDER\u061cALM\u200fRLM",
                   before: "1.0.0",
                   after: "2.0.0",
                 },
@@ -98,13 +99,21 @@ describe("compatibility history report", () => {
     if (!json || !markdown) throw new Error("Incomplete compatibility history bundle");
 
     expect(JSON.parse(json)).toEqual(report());
+    expect(json).toContain("\\u202eREORDER");
+    expect(json).toContain("\\u061cALM\\u200fRLM");
+    expect(json).not.toContain("\u202e");
+    expect(json).not.toContain("\u061c");
+    expect(json).not.toContain("\u200f");
     expect(markdown).toContain("# PSBT Compatibility History");
     expect(markdown).toContain("regressions=1 improvements=1 mixed=1 changed=1 unchanged=1");
     for (const classification of ["UNCHANGED", "REGRESSION", "IMPROVEMENT", "MIXED", "CHANGED"]) {
       expect(markdown).toContain(classification);
     }
-    expect(markdown).toContain("```` wallet``` [forged](https://example.invalid) ````");
+    expect(markdown).toContain(
+      "```` wallet``` [forged](https://example.invalid)\\u{1b}[31mFORGED\\u{1b}[0m\\u{202e}REORDER\\u{61c}ALM\\u{200f}RLM ````",
+    );
     expect(markdown).not.toContain("wallet\\`\\`\\`");
+    expect(markdown).not.toContain("\u001b");
     expect(formatCompatibilityHistory(report())).toBe(markdown);
   });
 

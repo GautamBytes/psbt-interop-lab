@@ -33,6 +33,7 @@ import { compareRuns } from "./runner/compare.js";
 import { buildCompatibilityHistory, historyHasLatestRegression } from "./runner/history.js";
 import {
   formatCompatibilityHistory,
+  serializeCompatibilityHistory,
   writeCompatibilityHistoryBundle,
 } from "./runner/history-report.js";
 import { verifyReplay } from "./runner/replay.js";
@@ -696,9 +697,7 @@ export function createProgram(): Command {
           await writeCompatibilityHistoryBundle(resolve(options.output), report);
         }
         process.stdout.write(
-          options.json
-            ? `${JSON.stringify(report, null, 2)}\n`
-            : formatCompatibilityHistory(report),
+          options.json ? serializeCompatibilityHistory(report) : formatCompatibilityHistory(report),
         );
         if (options.failOnRegression && historyHasLatestRegression(report)) {
           process.exitCode = 1;

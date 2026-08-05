@@ -136,6 +136,13 @@ describe("compareRuns", () => {
     await expect(compareRuns(base, head)).rejects.toThrow(/does not match psbt-lab.run\/0.1/i);
   });
 
+  test("rejects non-canonical comparison completion metadata", async () => {
+    const base = await temporaryRun(manifest({ completedAt: "not-a-time" }));
+    const head = await temporaryRun(manifest({ runId: "head-run" }));
+
+    await expect(compareRuns(base, head)).rejects.toThrow(/does not match psbt-lab.run\/0.1/i);
+  });
+
   test("compares already verified snapshots without reading artifact directories again", () => {
     const comparison = compareVerifiedReplays(
       { manifest: manifest(), verifiedCheckpoints: 2 },

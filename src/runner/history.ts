@@ -1,3 +1,4 @@
+import { escapeTerminalControls } from "../system/terminal-text.js";
 import { compareVerifiedReplays, type RunComparisonChange } from "./compare.js";
 import { loadVerifiedReplay, type VerifiedReplay } from "./replay.js";
 
@@ -113,7 +114,9 @@ function transitionClassification(signals: {
 function validateRun(run: CompatibilityHistoryRun): number {
   const completedAt = Date.parse(run.completedAt);
   if (!Number.isFinite(completedAt) || new Date(completedAt).toISOString() !== run.completedAt) {
-    throw new TypeError(`Run ${run.runId} completedAt must be an ISO timestamp`);
+    throw new TypeError(
+      `Run ${escapeTerminalControls(JSON.stringify(run.runId))} completedAt must be an ISO timestamp`,
+    );
   }
   return completedAt;
 }
@@ -161,7 +164,9 @@ export async function buildCompatibilityHistory(
 
     const completedAt = validateRun(head);
     if (runIds.has(head.runId)) {
-      throw new TypeError(`Compatibility history contains duplicate run id ${head.runId}`);
+      throw new TypeError(
+        `Compatibility history contains duplicate run id ${escapeTerminalControls(JSON.stringify(head.runId))}`,
+      );
     }
     if (previousCompletedAt !== undefined && completedAt < previousCompletedAt) {
       throw new TypeError("Compatibility history runs must be provided oldest-to-newest");
