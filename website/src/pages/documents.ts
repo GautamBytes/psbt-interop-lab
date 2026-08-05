@@ -19,6 +19,11 @@ export interface WebsiteDocument {
   sourcePath: string;
   sourceUrl: string;
   baseDir: string;
+  presentation?: {
+    kind: string;
+    audience: string;
+    tone: "guide" | "adapter" | "security" | "reference";
+  };
 }
 
 export const documents: WebsiteDocument[] = [
@@ -30,6 +35,11 @@ export const documents: WebsiteDocument[] = [
     sourcePath: "README.md",
     sourceUrl: `${repositoryUrl}/blob/main/README.md`,
     baseDir: "",
+    presentation: {
+      kind: "Project guide",
+      audience: "Builders & reviewers",
+      tone: "guide",
+    },
   },
   {
     route: routes.contributing,
@@ -59,6 +69,11 @@ export const documents: WebsiteDocument[] = [
     sourcePath: "docs/adapters.md",
     sourceUrl: `${repositoryUrl}/blob/main/docs/adapters.md`,
     baseDir: "docs",
+    presentation: {
+      kind: "Integration guide",
+      audience: "Wallet & library teams",
+      tone: "adapter",
+    },
   },
   {
     route: routes.architecture,
@@ -109,6 +124,11 @@ export const documents: WebsiteDocument[] = [
     sourcePath: "SECURITY.md",
     sourceUrl: `${repositoryUrl}/blob/main/SECURITY.md`,
     baseDir: "",
+    presentation: {
+      kind: "Security reference",
+      audience: "Reviewers & integrators",
+      tone: "security",
+    },
   },
   {
     route: routes.threatModel,

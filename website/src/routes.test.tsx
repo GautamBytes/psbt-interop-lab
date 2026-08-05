@@ -53,6 +53,27 @@ describe("website documentation routes", () => {
     expect(screen.getByText(text)).toBeInTheDocument();
   });
 
+  it.each([
+    ["/docs", "Documentation", "Project guide", "Builders & reviewers", "README.md"],
+    [
+      "/adapter-kit",
+      "Adapter kit",
+      "Integration guide",
+      "Wallet & library teams",
+      "docs/adapters.md",
+    ],
+    ["/security", "Security", "Security reference", "Reviewers & integrators", "SECURITY.md"],
+  ])("presents %s as a scannable field guide", (pathname, label, kind, audience, sourcePath) => {
+    window.history.replaceState({}, "", pathname);
+    render(<App />);
+
+    const overview = screen.getByRole("region", { name: `${label} overview` });
+    expect(within(overview).getByText(kind)).toBeInTheDocument();
+    expect(within(overview).getByText(audience)).toBeInTheDocument();
+    expect(within(overview).getByText(/^\d+ sections$/)).toBeInTheDocument();
+    expect(within(overview).getByText(sourcePath)).toBeInTheDocument();
+  });
+
   it("uses internal primary navigation and changes pages without reloading", async () => {
     const user = userEvent.setup();
     render(<App />);
@@ -87,6 +108,14 @@ describe("website documentation routes", () => {
     });
 
     expect(screen.getByRole("heading", { level: 1, name: "Security Model" })).toBeInTheDocument();
+  });
+
+  it("does not add a second visual number to already-numbered chapters", () => {
+    window.history.replaceState({}, "", "/security/threat-model");
+    render(<App />);
+
+    const heading = screen.getByRole("heading", { level: 2, name: "1. Executive Summary" });
+    expect(heading.querySelector(".markdown-heading__index")).toBeNull();
   });
 
   it("updates browser metadata for first-party documentation routes", () => {
@@ -203,6 +232,17 @@ describe("website documentation routes", () => {
 
     expect(screen.getByRole("heading", { name: heading })).toBeInTheDocument();
     expect(screen.getByText(content)).toBeInTheDocument();
+  });
+
+  it("keeps repository resources in the shared document presentation shell", () => {
+    window.history.replaceState({}, "", "/files/src/conformance/adapter-manifest.schema.json");
+    render(<App />);
+
+    const overview = screen.getByRole("region", { name: "Adapter manifest schema overview" });
+    expect(within(overview).getByText("Repository file")).toBeInTheDocument();
+    expect(
+      within(overview).getByText("src/conformance/adapter-manifest.schema.json"),
+    ).toBeInTheDocument();
   });
 
   it("uses internal links for homepage documentation references", () => {
