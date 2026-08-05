@@ -110,6 +110,7 @@ describe("generated TypeScript adapter project", () => {
       "psbt-interop-lab": "0.8.0",
       typescript: "7.0.2",
     });
+    expect(workflow).toContain("actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10");
     expect(workflow).toContain("GautamBytes/psbt-interop-lab@v0.8.0");
     expect(workflow).toContain("adapter-manifest: adapter-manifest.json");
   });
