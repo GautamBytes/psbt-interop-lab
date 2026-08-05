@@ -16,11 +16,7 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
-function scenario(
-  id: string,
-  outcome: ScenarioRecord["outcome"],
-  passed: boolean,
-): ScenarioRecord {
+function scenario(id: string, outcome: ScenarioRecord["outcome"], passed: boolean): ScenarioRecord {
   return {
     id,
     title: id,
@@ -170,9 +166,7 @@ describe("classifyCompatibilityChange", () => {
 describe("buildCompatibilityHistory", () => {
   test("builds ordered regression and improvement transitions", async () => {
     const base = await temporaryRun(manifest("base", "2026-07-24T00:00:01.000Z", "passed"));
-    const middle = await temporaryRun(
-      manifest("middle", "2026-07-25T00:00:01.000Z", "failed"),
-    );
+    const middle = await temporaryRun(manifest("middle", "2026-07-25T00:00:01.000Z", "failed"));
     const head = await temporaryRun(manifest("head", "2026-07-26T00:00:01.000Z", "passed"));
 
     const history = await buildCompatibilityHistory([base, middle, head]);
@@ -209,7 +203,9 @@ describe("buildCompatibilityHistory", () => {
       manifest("unchanged-head", "2026-07-25T00:00:01.000Z", "passed"),
     );
     const neutralHeadManifest = manifest("neutral-head", "2026-07-26T00:00:01.000Z", "passed");
-    neutralHeadManifest.adapters[0] = { ...neutralHeadManifest.adapters[0]!, version: "2.0.0" };
+    const neutralAdapter = neutralHeadManifest.adapters[0];
+    if (!neutralAdapter) throw new Error("Expected a history test adapter");
+    neutralHeadManifest.adapters[0] = { ...neutralAdapter, version: "2.0.0" };
     const neutralHead = await temporaryRun(neutralHeadManifest);
     const mixedHead = await temporaryRun(
       manifest("mixed-head", "2026-07-27T00:00:01.000Z", "failed", [
@@ -237,22 +233,26 @@ describe("buildCompatibilityHistory", () => {
 
   test("bounds input before reading artifacts", async () => {
     await expect(buildCompatibilityHistory(["one"])).rejects.toThrow(/between 2 and 64/i);
-    await expect(buildCompatibilityHistory(Array.from({ length: 65 }, () => "never-read"))).rejects.toThrow(
-      /between 2 and 64/i,
-    );
+    await expect(
+      buildCompatibilityHistory(Array.from({ length: 65 }, () => "never-read")),
+    ).rejects.toThrow(/between 2 and 64/i);
   });
 
   test("rejects duplicate run ids", async () => {
     const first = await temporaryRun(manifest("same", "2026-07-24T00:00:01.000Z", "passed"));
     const second = await temporaryRun(manifest("same", "2026-07-25T00:00:01.000Z", "passed"));
 
-    await expect(buildCompatibilityHistory([first, second])).rejects.toThrow(/duplicate run id same/i);
+    await expect(buildCompatibilityHistory([first, second])).rejects.toThrow(
+      /duplicate run id same/i,
+    );
   });
 
   test("rejects invalid and decreasing completion timestamps", async () => {
     const invalid = await temporaryRun(manifest("invalid", "not-a-time", "passed"));
     const valid = await temporaryRun(manifest("valid", "2026-07-25T00:00:01.000Z", "passed"));
-    await expect(buildCompatibilityHistory([invalid, valid])).rejects.toThrow(/completedAt.*timestamp/i);
+    await expect(buildCompatibilityHistory([invalid, valid])).rejects.toThrow(
+      /completedAt.*timestamp/i,
+    );
 
     const later = await temporaryRun(manifest("later", "2026-07-26T00:00:01.000Z", "passed"));
     const earlier = await temporaryRun(manifest("earlier", "2026-07-25T00:00:01.000Z", "passed"));

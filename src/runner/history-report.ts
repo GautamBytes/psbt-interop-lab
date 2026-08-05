@@ -1,10 +1,7 @@
 import type { GeneratedFile } from "../scaffold/model.js";
 import { writeGeneratedProject } from "../scaffold/write.js";
 import type { RunComparisonChange } from "./compare.js";
-import type {
-  CompatibilityHistoryReport,
-  CompatibilitySignalDirection,
-} from "./history.js";
+import type { CompatibilityHistoryReport, CompatibilitySignalDirection } from "./history.js";
 
 function markdownCode(value: string | number | undefined): string {
   const normalized = String(value ?? "unknown").replace(/[\r\n]+/g, " ");

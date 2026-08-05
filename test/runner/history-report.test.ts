@@ -2,15 +2,15 @@ import { lstat, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
+import type {
+  CompatibilityHistoryReport,
+  CompatibilityHistoryTransition,
+} from "../../src/runner/history.js";
 import {
   createCompatibilityHistoryBundle,
   formatCompatibilityHistory,
   writeCompatibilityHistoryBundle,
 } from "../../src/runner/history-report.js";
-import type {
-  CompatibilityHistoryReport,
-  CompatibilityHistoryTransition,
-} from "../../src/runner/history.js";
 
 const roots: string[] = [];
 
@@ -100,13 +100,7 @@ describe("compatibility history report", () => {
     expect(JSON.parse(json)).toEqual(report());
     expect(markdown).toContain("# PSBT Compatibility History");
     expect(markdown).toContain("regressions=1 improvements=1 mixed=1 changed=1 unchanged=1");
-    for (const classification of [
-      "UNCHANGED",
-      "REGRESSION",
-      "IMPROVEMENT",
-      "MIXED",
-      "CHANGED",
-    ]) {
+    for (const classification of ["UNCHANGED", "REGRESSION", "IMPROVEMENT", "MIXED", "CHANGED"]) {
       expect(markdown).toContain(classification);
     }
     expect(markdown).toContain("```` wallet``` [forged](https://example.invalid) ````");
@@ -131,8 +125,12 @@ describe("compatibility history report", () => {
     const link = join(root, "existing-link");
     await writeFile(file, "keep\n", { mode: 0o600 });
     await symlink(file, link);
-    await expect(writeCompatibilityHistoryBundle(file, report())).rejects.toThrow(/already exists/i);
-    await expect(writeCompatibilityHistoryBundle(link, report())).rejects.toThrow(/already exists/i);
+    await expect(writeCompatibilityHistoryBundle(file, report())).rejects.toThrow(
+      /already exists/i,
+    );
+    await expect(writeCompatibilityHistoryBundle(link, report())).rejects.toThrow(
+      /already exists/i,
+    );
     await expect(readFile(file, "utf8")).resolves.toBe("keep\n");
     await expect(lstat(link)).resolves.toMatchObject({});
   });
