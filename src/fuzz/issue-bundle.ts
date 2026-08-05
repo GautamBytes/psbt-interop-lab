@@ -4,10 +4,7 @@ import type { GeneratedFile } from "../scaffold/model.js";
 import { writeGeneratedProject } from "../scaffold/write.js";
 import { VERSION } from "../version.js";
 import type { ParserExpectedOutcome, ParserOutcome } from "./differential.js";
-import {
-  promoteDifferentialCase,
-  type DifferentialPromotionInput,
-} from "./promotion.js";
+import { type DifferentialPromotionInput, promoteDifferentialCase } from "./promotion.js";
 
 export const ISSUE_BUNDLE_SCHEMA = "psbt-lab.issue-bundle/0.1" as const;
 
@@ -119,9 +116,7 @@ function issueMarkdown(
   ].join("\n");
 }
 
-export function createParserIssueBundle(
-  input: ParserIssueBundleInput,
-): readonly GeneratedFile[] {
+export function createParserIssueBundle(input: ParserIssueBundleInput): readonly GeneratedFile[] {
   const outcomes = normalizedOutcomes(input.outcomes);
   const implementations = normalizedImplementations(input.implementations);
   const suite = promoteDifferentialCase({
@@ -135,12 +130,7 @@ export function createParserIssueBundle(
   });
   const suiteContents = `${JSON.stringify(suite, null, 2)}\n`;
   const suiteDigest = digest(suiteContents);
-  const issueContents = issueMarkdown(
-    input,
-    outcomes,
-    implementations,
-    suiteDigest,
-  );
+  const issueContents = issueMarkdown(input, outcomes, implementations, suiteDigest);
   const manifest = {
     schema: ISSUE_BUNDLE_SCHEMA,
     generator: { name: "psbt-interop-lab", version: VERSION },

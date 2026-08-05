@@ -3,10 +3,7 @@ import { lstat, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
-import {
-  createParserIssueBundle,
-  writeParserIssueBundle,
-} from "../../src/fuzz/issue-bundle.js";
+import { createParserIssueBundle, writeParserIssueBundle } from "../../src/fuzz/issue-bundle.js";
 import { LOCAL_PARSE_FIXTURES } from "../../src/local/fixtures.js";
 
 const roots: string[] = [];
@@ -137,9 +134,9 @@ describe("writeParserIssueBundle", () => {
     const parentFile = join(root, "parent");
     await writeFile(parentFile, "keep\n", "utf8");
 
-    await expect(
-      writeParserIssueBundle(join(root, "missing", "bundle"), input()),
-    ).rejects.toThrow(/parent.*directory/i);
+    await expect(writeParserIssueBundle(join(root, "missing", "bundle"), input())).rejects.toThrow(
+      /parent.*directory/i,
+    );
     await expect(writeParserIssueBundle(join(parentFile, "bundle"), input())).rejects.toThrow(
       /parent.*directory/i,
     );

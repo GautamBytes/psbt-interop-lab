@@ -45,7 +45,13 @@ describe("CLI program", () => {
     expect(fuzz?.options.find((option) => option.long === "--cases")?.defaultValue).toBe(64);
     expect(fuzz?.options.some((option) => option.long === "--fixture")).toBe(true);
     expect(fuzz?.options.some((option) => option.long === "--promote")).toBe(true);
+    expect(fuzz?.options.some((option) => option.long === "--adapter-manifest")).toBe(true);
+    const issueBundle = fuzz?.options.find((option) => option.long === "--issue-bundle");
+    expect((issueBundle as unknown as { conflictsWith?: string[] })?.conflictsWith).toContain(
+      "promote",
+    );
     expect(parseMatrix?.options.some((option) => option.long === "--suite-manifest")).toBe(true);
+    expect(parseMatrix?.options.some((option) => option.long === "--adapter-manifest")).toBe(true);
     expect(() => fuzz?.parseOptions(["--cases", "0"])).toThrow(/between 1 and 512/i);
     expect(() => fuzz?.parseOptions(["--seed", "4294967296"])).toThrow(/32-bit/i);
   });
