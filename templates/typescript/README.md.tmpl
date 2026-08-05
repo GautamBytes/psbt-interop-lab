@@ -1,0 +1,19 @@
+# {{ADAPTER_NAME}} PSBT adapter
+
+This project is a generated TypeScript parser adapter for [PSBT Interop Lab](https://github.com/GautamBytes/psbt-interop-lab). It uses `bitcoinjs-lib` for native PSBT parsing and implements the lab's bounded JSONL adapter protocol.
+
+## Verify locally
+
+```bash
+npm ci
+npm test
+npm run conformance
+```
+
+The adapter currently declares parser-only support for PSBTv0. Extend its capabilities only when the corresponding operations are implemented and tested.
+
+## Identity before publishing results
+
+The generated adapter reports `generated-typescript-template-v1` as its source revision so the scaffold works immediately. Before treating a compatibility report as release evidence, replace that value in both `src/adapter.ts` and `adapter-manifest.json` with the exact wallet or library revision under test.
+
+The adapter hashes its compiled entrypoint and self-reports that value as `artifactDigest`, as required by the protocol. This detects a changed entrypoint but is not runtime attestation and does not cover the dependency tree. Pin `expected.artifactDigest` in the manifest only when your build can independently reproduce and verify the artifact that runs.

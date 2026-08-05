@@ -1,0 +1,200 @@
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { createInterface } from "node:readline";
+import { fileURLToPath } from "node:url";
+import { Psbt } from "bitcoinjs-lib";
+
+const PROTOCOL = "psbt-lab.adapter/0.2";
+const MAX_LINE_BYTES = 4 * 1024 * 1024;
+const IMPLEMENTATION = {
+  name: "{{ADAPTER_NAME}}",
+  version: "0.1.0",
+  sourceRevision: "generated-typescript-template-v1",
+  artifactDigest: `sha256:${createHash("sha256")
+    .update(readFileSync(fileURLToPath(import.meta.url)))
+    .digest("hex")}`,
+};
+const SCRIPT_TYPES = [
+  "p2sh-p2wpkh",
+  "p2wpkh",
+  "p2wsh",
+  "p2tr-keypath",
+  "p2tr-scriptpath",
+] as const;
+
+type JsonObject = Record<string, unknown>;
+
+interface AdapterRequest {
+  readonly protocol: string;
+  readonly id: string;
+  readonly operation: string;
+  readonly payload: JsonObject;
+}
+
+function success(id: string, output: JsonObject): JsonObject {
+  return {
+    protocol: PROTOCOL,
+    id,
+    status: "ok",
+    implementation: IMPLEMENTATION,
+    output,
+  };
+}
+
+function failure(
+  id: string,
+  status: "rejected" | "unsupported",
+  errorClass: string,
+  message: string,
+): JsonObject {
+  return {
+    protocol: PROTOCOL,
+    id,
+    status,
+    implementation: IMPLEMENTATION,
+    error: { class: errorClass, message, retryable: false },
+  };
+}
+
+function safeId(value: unknown): value is string {
+  return typeof value === "string" && /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(value);
+}
+
+function exactObject(value: unknown, keys: readonly string[]): value is JsonObject {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    Object.keys(value).sort().join("\0") === [...keys].sort().join("\0")
+  );
+}
+
+function parseRequest(value: unknown): AdapterRequest | undefined {
+  if (
+    !exactObject(value, ["protocol", "id", "operation", "payload"]) ||
+    value["protocol"] !== PROTOCOL ||
+    !safeId(value["id"]) ||
+    typeof value["operation"] !== "string" ||
+    !exactObject(value["payload"], Object.keys(value["payload"] as JsonObject))
+  ) {
+    return undefined;
+  }
+  return {
+    protocol: value["protocol"],
+    id: value["id"],
+    operation: value["operation"],
+    payload: value["payload"] as JsonObject,
+  };
+}
+
+function psbtPayload(request: AdapterRequest): string | undefined {
+  if (!exactObject(request.payload, ["psbt"])) return undefined;
+  const psbt = request.payload["psbt"];
+  return typeof psbt === "string" && psbt.length > 0 ? psbt : undefined;
+}
+
+function handleRequest(value: unknown): JsonObject {
+  const fallbackId = exactObject(value, Object.keys((value ?? {}) as JsonObject)) && safeId(value["id"])
+    ? value["id"]
+    : "invalid-1";
+  const request = parseRequest(value);
+  if (!request) {
+    return failure(
+      fallbackId,
+      "rejected",
+      "protocol.invalid_request",
+      "Request does not match the adapter protocol",
+    );
+  }
+
+  if (request.operation === "hello") {
+    if (!exactObject(request.payload, [])) {
+      return failure(
+        request.id,
+        "rejected",
+        "protocol.invalid_payload",
+        "hello expects an empty payload",
+      );
+    }
+    return success(request.id, {
+      operations: ["hello", "native-parse", "roundtrip"],
+      roles: ["parser"],
+      psbtVersions: [0],
+      scriptTypes: SCRIPT_TYPES,
+      operationScriptTypes: { roundtrip: SCRIPT_TYPES },
+      features: ["generated-typescript-adapter-v1"],
+    });
+  }
+
+  if (request.operation === "native-parse" || request.operation === "roundtrip") {
+    const encoded = psbtPayload(request);
+    if (!encoded) {
+      return failure(
+        request.id,
+        "rejected",
+        "protocol.invalid_payload",
+        `${request.operation} expects only a psbt string field`,
+      );
+    }
+    let psbt: Psbt;
+    try {
+      psbt = Psbt.fromBase64(encoded);
+    } catch {
+      return failure(
+        request.id,
+        "rejected",
+        "psbt.native_parse_failed",
+        "bitcoinjs-lib rejected the PSBT",
+      );
+    }
+    if (request.operation === "native-parse") {
+      return success(request.id, {
+        nativeParser: IMPLEMENTATION.name,
+        psbtVersion: 0,
+        inputs: psbt.inputCount,
+        outputs: psbt.txOutputs.length,
+      });
+    }
+    const roundtripped = psbt.toBase64();
+    return success(request.id, {
+      psbt: roundtripped,
+      byteIdentical: roundtripped === encoded,
+      psbtVersion: 0,
+    });
+  }
+
+  return failure(
+    request.id,
+    "unsupported",
+    "operation.unsupported",
+    "Operation is outside this adapter's declared capabilities",
+  );
+}
+
+function handleLine(line: string): JsonObject {
+  if (Buffer.byteLength(line, "utf8") > MAX_LINE_BYTES) {
+    return failure(
+      "invalid-1",
+      "rejected",
+      "protocol.line_too_large",
+      "Request line exceeds the adapter limit",
+    );
+  }
+  let request: unknown;
+  try {
+    request = JSON.parse(line);
+  } catch {
+    return failure(
+      "invalid-1",
+      "rejected",
+      "protocol.invalid_json",
+      "Request line is not valid JSON",
+    );
+  }
+  return handleRequest(request);
+}
+
+const lines = createInterface({ input: process.stdin, crlfDelay: Number.POSITIVE_INFINITY });
+for await (const line of lines) {
+  process.stdout.write(`${JSON.stringify(handleLine(line))}\n`);
+}
