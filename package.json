@@ -2,6 +2,21 @@
   "name": "psbt-interop-lab",
   "version": "0.9.0",
   "description": "Deterministic PSBT interoperability testing for Bitcoin software",
+  "keywords": [
+    "bitcoin",
+    "psbt",
+    "interoperability",
+    "regtest",
+    "testing"
+  ],
+  "homepage": "https://github.com/GautamBytes/psbt-interop-lab#readme",
+  "bugs": {
+    "url": "https://github.com/GautamBytes/psbt-interop-lab/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/GautamBytes/psbt-interop-lab.git"
+  },
   "type": "module",
   "private": false,
   "bin": {
@@ -84,6 +99,7 @@
     "examples/parser-regression-suite.json",
     "docs/*.md",
     "CHANGELOG.md",
+    "CONTRIBUTING.md",
     "README.md",
     "SECURITY.md",
     "psbt-interop-lab-threat-model.md",

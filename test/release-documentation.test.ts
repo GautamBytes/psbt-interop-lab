@@ -9,20 +9,16 @@ function read(path: string): string {
 describe("release documentation", () => {
   it("keeps public version references on the package version", () => {
     const packageVersion = JSON.parse(read("package.json")).version as string;
-    const publicFiles = [
-      "README.md",
-      "src/version.ts",
-      "website/src/App.tsx",
-      "website/src/content.ts",
-      "website/AGENTS.md",
-      "website/src/components/ProofWalkthrough.tsx",
-      "website/src/components/Sections.tsx",
-    ];
+    const publicFiles = ["README.md", "src/version.ts", "website/AGENTS.md"];
 
     expect(packageVersion).toBe("0.9.0");
     for (const path of publicFiles) {
       expect(read(path), path).toContain(packageVersion);
     }
+    expect(read("website/src/release.ts")).toContain(
+      'import packageMetadata from "../../package.json"',
+    );
+    expect(read("website/src/release.ts")).toContain("version: packageMetadata.version");
   });
 
   it("records the v0.9.0 release capabilities in the packaged changelog", () => {
@@ -35,6 +31,12 @@ describe("release documentation", () => {
     expect(changelog).toContain("upstream issue bundles");
     expect(changelog).toContain("compatibility history");
     expect(changelog).toContain("independent Rust and TypeScript MuSig2");
+  });
+
+  it("ships the contributor guide referenced by the packaged README", () => {
+    const packageJson = JSON.parse(read("package.json")) as { files: string[] };
+
+    expect(packageJson.files).toContain("CONTRIBUTING.md");
   });
 
   it("does not ship internal implementation plans or design discussions", () => {
@@ -103,6 +105,18 @@ describe("release documentation", () => {
     }
   });
 
+  it("keeps package metadata imported by the website in Vercel builds", () => {
+    const includedPaths = new Set(
+      read(".vercelignore")
+        .split("\n")
+        .filter((line) => line.startsWith("!"))
+        .map((line) => line.slice(1)),
+    );
+
+    expect(read("website/src/release.ts")).toContain('from "../../package.json"');
+    expect(includedPaths.has("package.json")).toBe(true);
+  });
+
   it("documents the active PSBTv2 and Taproot script-path capabilities", () => {
     const psbtv2 = read("adapters/rust-psbt-v2/README.md");
     const bdk = read("adapters/bdk-wallet-current/README.md");
@@ -150,5 +164,27 @@ describe("release documentation", () => {
         /^https:\/\/raw\.githubusercontent\.com\/GautamBytes\/psbt-interop-lab\/[0-9a-f]{40}\//,
       );
     }
+  });
+
+  it("pins every public walkthrough reference to one immutable revision", () => {
+    const publicFiles = [
+      "README.md",
+      "website/index.html",
+      "website/src/components/MarkdownPage.tsx",
+    ];
+    const revisions = publicFiles.flatMap((path) => {
+      const source = read(path);
+      expect(source, path).not.toContain(
+        "raw.githubusercontent.com/GautamBytes/psbt-interop-lab/main/docs/assets/walkthrough/",
+      );
+      return [
+        ...source.matchAll(
+          /raw\.githubusercontent\.com\/GautamBytes\/psbt-interop-lab\/([0-9a-f]{40})\/docs\/assets\/walkthrough\//g,
+        ),
+      ].map((match) => match[1]);
+    });
+
+    expect(revisions.length).toBeGreaterThanOrEqual(4);
+    expect(new Set(revisions)).toEqual(new Set(["d29ac0fe83ce23e54a57707dc67c4d316b2b140d"]));
   });
 });

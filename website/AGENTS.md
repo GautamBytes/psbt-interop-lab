@@ -13,3 +13,5 @@ When implementing from a selected generated mock, treat that image as the source
 - Hero headline: `Catch PSBT handoff failures before users do.`
 - Hero supporting copy: `Run the same transaction through real Bitcoin libraries. Preserve intent, signatures, and metadata. Replay every failure.`
 - Use only compatibility claims supported by version 0.9.0 of the repository.
+- Present architecture as grouped system layers rather than dense hub-and-spoke flowcharts. Keep
+  implementation inventories in adjacent tables and provide a full-screen reading view for diagrams.

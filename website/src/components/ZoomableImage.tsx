@@ -1,6 +1,7 @@
 import { X } from "@phosphor-icons/react/X";
-import { type ImgHTMLAttributes, useCallback, useEffect, useRef, useState } from "react";
+import { type ImgHTMLAttributes, useCallback, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useModalFocus } from "../hooks/useModalFocus";
 
 interface ZoomableImageProps extends Omit<ImgHTMLAttributes<HTMLImageElement>, "alt" | "src"> {
   alt: string;
@@ -12,27 +13,10 @@ export function ZoomableImage({ alt, src, triggerClassName, ...imageProps }: Zoo
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useRef<HTMLElement>(null);
 
   const close = useCallback(() => setOpen(false), []);
-
-  useEffect(() => {
-    if (!open) return;
-
-    const frame = window.requestAnimationFrame(() => closeRef.current?.focus());
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") close();
-    };
-
-    document.addEventListener("keydown", handleKeyDown);
-    document.body.classList.add("dialog-open");
-
-    return () => {
-      window.cancelAnimationFrame(frame);
-      document.removeEventListener("keydown", handleKeyDown);
-      document.body.classList.remove("dialog-open");
-      triggerRef.current?.focus();
-    };
-  }, [close, open]);
+  useModalFocus({ open, containerRef: dialogRef, initialFocusRef: closeRef, onDismiss: close });
 
   return (
     <>
@@ -57,6 +41,7 @@ export function ZoomableImage({ alt, src, triggerClassName, ...imageProps }: Zoo
               }}
             >
               <section
+                ref={dialogRef}
                 className="image-preview-dialog"
                 role="dialog"
                 aria-modal="true"

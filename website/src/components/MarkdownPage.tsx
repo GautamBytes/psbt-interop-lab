@@ -1,9 +1,13 @@
 import { ArrowSquareOut } from "@phosphor-icons/react/ArrowSquareOut";
+import { BookOpenText } from "@phosphor-icons/react/BookOpenText";
+import { FileText } from "@phosphor-icons/react/FileText";
+import { PlugsConnected } from "@phosphor-icons/react/PlugsConnected";
+import { ShieldCheck } from "@phosphor-icons/react/ShieldCheck";
 import { isValidElement, type ReactNode } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import cliProof from "../../../docs/assets/walkthrough/cli-finding-and-replay.png";
 import reportProof from "../../../docs/assets/walkthrough/compatibility-report.png";
+import musig2Proof from "../../../docs/assets/walkthrough/musig2-report.png";
 import { repositoryUrl } from "../content";
 import { findDocumentBySourcePath, type WebsiteDocument } from "../pages/documents";
 import { findRepositoryResourceBySourcePath } from "../pages/repository-resources";
@@ -84,13 +88,13 @@ function normalizeRepoPath(baseDir: string, href: string): string {
 }
 
 const publicWalkthroughAssetBase =
-  "https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/41732b2e6fd789f8385281e810f13118fb6c83a7/docs/assets/walkthrough/";
+  "https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/d29ac0fe83ce23e54a57707dc67c4d316b2b140d/docs/assets/walkthrough/";
 
 const bundledImages: Readonly<Record<string, string>> = {
-  "docs/assets/walkthrough/cli-finding-and-replay.png": cliProof,
   "docs/assets/walkthrough/compatibility-report.png": reportProof,
-  [`${publicWalkthroughAssetBase}cli-finding-and-replay.png`]: cliProof,
+  "docs/assets/walkthrough/musig2-report.png": musig2Proof,
   [`${publicWalkthroughAssetBase}compatibility-report.png`]: reportProof,
+  [`${publicWalkthroughAssetBase}musig2-report.png`]: musig2Proof,
 };
 
 export function resolveDocumentImageSrc(src: string | undefined, baseDir: string): string {
@@ -119,19 +123,49 @@ export function resolveDocumentHref(href: string | undefined, baseDir: string): 
   return `${repositoryUrl}/blob/main/${path}${hash}`;
 }
 
-function heading(level: 1 | 2 | 3) {
+function heading(level: 1 | 2 | 3, sectionNumbers: ReadonlyMap<string, string> = new Map()) {
   return function MarkdownHeading({ children }: { children?: ReactNode }) {
     const id = slugify(textFromChildren(children));
     const Tag = `h${level}` as const;
-    return <Tag id={id}>{children}</Tag>;
+    const sectionNumber = level === 2 ? sectionNumbers.get(id) : undefined;
+    return (
+      <Tag id={id}>
+        {sectionNumber ? (
+          <span className="markdown-heading__index" aria-hidden="true">
+            {sectionNumber}
+          </span>
+        ) : null}
+        <span>{children}</span>
+      </Tag>
+    );
   };
+}
+
+function DocumentMark({ tone }: { tone: "guide" | "adapter" | "security" | "reference" }) {
+  if (tone === "guide") return <BookOpenText aria-hidden="true" weight="duotone" />;
+  if (tone === "adapter") return <PlugsConnected aria-hidden="true" weight="duotone" />;
+  if (tone === "security") return <ShieldCheck aria-hidden="true" weight="duotone" />;
+  return <FileText aria-hidden="true" weight="duotone" />;
 }
 
 export function MarkdownPage({ document }: MarkdownPageProps) {
   const toc = extractToc(document.markdown);
+  const primarySections = toc.filter((item) => item.depth === 2);
+  const sectionNumbers = new Map(
+    primarySections.flatMap((item, index) =>
+      /^\d+(?:\.\d+)*[.)]\s+/.test(item.label)
+        ? []
+        : [[item.id, String(index + 1).padStart(2, "0")]],
+    ),
+  );
+  const presentation = document.presentation ?? {
+    kind: "Project reference",
+    audience: "Contributors & reviewers",
+    tone: "reference" as const,
+  };
   const components: Components = {
     h1: heading(1),
-    h2: heading(2),
+    h2: heading(2, sectionNumbers),
     h3: heading(3),
     a: ({ href, children, node, ...props }) => {
       void node;
@@ -180,24 +214,57 @@ export function MarkdownPage({ document }: MarkdownPageProps) {
   };
 
   return (
-    <section className="docs-page" aria-labelledby="document-title">
+    <section
+      className={`docs-page docs-page--${presentation.tone}`}
+      aria-labelledby="document-title"
+    >
       <header className="docs-page__intro">
         <div className="page-shell">
-          <span className="eyebrow">Project knowledge base</span>
           <div className="docs-page__intro-row">
-            <div>
-              <p className="docs-page__label">{document.label}</p>
+            <div className="docs-page__mark">
+              <DocumentMark tone={presentation.tone} />
+            </div>
+            <div className="docs-page__intro-copy">
+              <span className="eyebrow">{presentation.kind}</span>
+              <p className="docs-page__label" id="document-title">
+                {document.label}
+              </p>
               <p>{document.description}</p>
             </div>
             <a className="button button--secondary" href={document.sourceUrl}>
               View source <ArrowSquareOut aria-hidden="true" />
             </a>
           </div>
+          <section className="docs-page__overview" aria-label={`${document.label} overview`}>
+            <dl className="docs-page__overview-list">
+              <div>
+                <dt>Document</dt>
+                <dd>{presentation.kind}</dd>
+              </div>
+              <div>
+                <dt>For</dt>
+                <dd>{presentation.audience}</dd>
+              </div>
+              <div>
+                <dt>Reading map</dt>
+                <dd>{primarySections.length} sections</dd>
+              </div>
+              <div>
+                <dt>Repository source</dt>
+                <dd>
+                  <code>{document.sourcePath}</code>
+                </dd>
+              </div>
+            </dl>
+          </section>
         </div>
       </header>
       <div className="docs-layout page-shell">
         <aside className="docs-toc" aria-label={`${document.label} sections`}>
-          <span>On this page</span>
+          <div className="docs-toc__heading">
+            <span>On this page</span>
+            <small>{primarySections.length} sections</small>
+          </div>
           <nav>
             {toc.map((item) => (
               <a
@@ -205,7 +272,12 @@ export function MarkdownPage({ document }: MarkdownPageProps) {
                 href={`#${item.id}`}
                 key={`${item.id}-${item.depth}`}
               >
-                {item.label}
+                {item.depth === 2 ? (
+                  <span className="docs-toc__index" aria-hidden="true">
+                    {sectionNumbers.get(item.id)}
+                  </span>
+                ) : null}
+                <span>{item.label}</span>
               </a>
             ))}
           </nav>

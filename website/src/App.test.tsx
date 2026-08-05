@@ -1,6 +1,6 @@
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { act, cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import { installCommand } from "./content";
 
@@ -11,7 +11,10 @@ describe("PSBT Interop Lab website", () => {
     document.documentElement.removeAttribute("data-theme");
   });
 
-  afterEach(cleanup);
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
 
   it("renders the approved hero and real compatibility finding", () => {
     render(<App />);
@@ -67,6 +70,25 @@ describe("PSBT Interop Lab website", () => {
     }
   });
 
+  it("routes each primary audience to a focused starting point", () => {
+    render(<App />);
+
+    const paths = screen.getByRole("region", {
+      name: "Start with the job you need to finish.",
+    });
+    expect(within(paths).getByRole("link", { name: /i maintain a wallet/i })).toHaveAttribute(
+      "href",
+      "/adapter-kit",
+    );
+    expect(within(paths).getByRole("link", { name: /i maintain a library/i })).toHaveAttribute(
+      "href",
+      "/docs#differential-fuzzing",
+    );
+    expect(
+      within(paths).getByRole("link", { name: /i review protocol behavior/i }),
+    ).toHaveAttribute("href", "/docs#walkthrough-verify-the-complete-matrix");
+  });
+
   it("shows a real command-to-report proof walkthrough", () => {
     render(<App />);
 
@@ -75,11 +97,9 @@ describe("PSBT Interop Lab website", () => {
     ).toBeInTheDocument();
     expect(screen.getByText(/evidence from the complete 47-scenario matrix/i)).toBeInTheDocument();
     expect(
-      screen.getByRole("img", { name: /complete matrix terminal output/i }),
-    ).toBeInTheDocument();
-    expect(
       screen.getByRole("img", { name: /complete matrix generated report/i }),
     ).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: /bip373 musig2 report evidence/i })).toBeInTheDocument();
     expect(
       screen.getByText(/47 bundled scenarios across 9 integration stacks/i),
     ).toBeInTheDocument();
@@ -95,18 +115,36 @@ describe("PSBT Interop Lab website", () => {
     render(<App />);
 
     const trigger = screen.getByRole("button", {
-      name: /open full-size complete matrix terminal output/i,
+      name: /open full-size complete matrix generated report/i,
     });
     await user.click(trigger);
 
     const dialog = screen.getByRole("dialog", {
-      name: /complete matrix terminal output full-size preview/i,
+      name: /complete matrix generated report full-size preview/i,
     });
     expect(dialog).toBeInTheDocument();
 
     await user.click(within(dialog).getByRole("button", { name: "Close image preview" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(trigger).toHaveFocus();
+  });
+
+  it("keeps keyboard focus inside the image viewer", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(
+      screen.getByRole("button", {
+        name: /open full-size complete matrix generated report/i,
+      }),
+    );
+
+    const close = screen.getByRole("button", { name: "Close image preview" });
+    expect(close).toHaveFocus();
+    await user.tab();
+    expect(close).toHaveFocus();
+    await user.tab({ shift: true });
+    expect(close).toHaveFocus();
   });
 
   it("closes an enlarged screenshot from the backdrop or Escape, but not the image", async () => {
@@ -218,16 +256,72 @@ describe("PSBT Interop Lab website", () => {
     expect(screen.queryByRole("link", { name: /quick start/i })).not.toBeInTheDocument();
   });
 
+  it("searches repository documentation content, traps focus, and restores the trigger", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    const trigger = screen.getByRole("button", { name: "Search documentation" });
+    await user.click(trigger);
+    const search = screen.getByRole("searchbox", { name: "Search documentation" });
+    await user.type(search, "nonce exchange");
+
+    expect(screen.getByRole("link", { name: /architecture/i })).toBeInTheDocument();
+
+    const close = screen.getByRole("button", { name: "Close search" });
+    close.focus();
+    await user.tab({ shift: true });
+    expect(document.activeElement).toHaveAttribute("href");
+
+    close.focus();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog", { name: "Find documentation" })).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+  });
+
   it("toggles theme and mobile navigation state", async () => {
     const user = userEvent.setup();
     render(<App />);
 
     await user.click(screen.getByRole("button", { name: "Switch to light theme" }));
     expect(document.documentElement).toHaveAttribute("data-theme", "light");
+    expect(window.localStorage.getItem("psbt-lab-theme")).toBe("light");
 
     const menuButton = screen.getByRole("button", { name: "Open navigation" });
     await user.click(menuButton);
     expect(menuButton).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByRole("navigation", { name: "Mobile navigation" })).toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("navigation", { name: "Mobile navigation" })).not.toBeInTheDocument();
+    expect(menuButton).toHaveFocus();
+  });
+
+  it("follows operating-system theme changes until the visitor chooses one", async () => {
+    const user = userEvent.setup();
+    let handleChange: ((event: { matches: boolean }) => void) | undefined;
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn().mockReturnValue({
+        matches: true,
+        addEventListener: (_event: string, handler: (event: { matches: boolean }) => void) => {
+          handleChange = handler;
+        },
+        removeEventListener: vi.fn(),
+      }),
+    );
+
+    render(<App />);
+
+    expect(document.documentElement).toHaveAttribute("data-theme", "light");
+    expect(window.localStorage.getItem("psbt-lab-theme")).toBeNull();
+
+    act(() => handleChange?.({ matches: false }));
+
+    expect(document.documentElement).toHaveAttribute("data-theme", "dark");
+
+    await user.click(screen.getByRole("button", { name: "Switch to light theme" }));
+    act(() => handleChange?.({ matches: false }));
+
+    expect(document.documentElement).toHaveAttribute("data-theme", "light");
   });
 });

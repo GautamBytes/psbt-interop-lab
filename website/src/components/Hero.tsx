@@ -5,12 +5,13 @@ import { HardDrives } from "@phosphor-icons/react/HardDrives";
 import { ShieldCheck } from "@phosphor-icons/react/ShieldCheck";
 import { TerminalWindow } from "@phosphor-icons/react/TerminalWindow";
 import { repositoryUrl } from "../content";
+import { releaseFacts } from "../release";
 import { InstallCommand } from "./InstallCommand";
 import { SiteLink } from "./SiteLink";
 
 const metrics = [
-  { icon: Flask, label: "47 scenarios" },
-  { icon: FlowArrow, label: "9 integration stacks" },
+  { icon: Flask, label: `${releaseFacts.scenarioCount} scenarios` },
+  { icon: FlowArrow, label: `${releaseFacts.integrationStackCount} integration stacks` },
   { icon: ShieldCheck, label: "regtest only" },
   { icon: HardDrives, label: "Dockerless parser checks" },
 ] as const;
@@ -45,7 +46,7 @@ export function Hero() {
         <InstallCommand />
         <p className="hero__mode-note">
           <span>Quickstart proves one real handoff.</span>
-          <span>Matrix runs all 47 bundled scenarios.</span>
+          <span>Matrix runs all {releaseFacts.scenarioCount} bundled scenarios.</span>
         </p>
         <ul className="hero__metrics" aria-label="Project coverage">
           {metrics.map(({ icon: Icon, label }) => (

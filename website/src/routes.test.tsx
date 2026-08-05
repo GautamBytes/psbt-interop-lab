@@ -24,6 +24,8 @@ describe("website documentation routes", () => {
 
   it.each([
     ["/docs", "PSBT Interop Lab", /local developer tool for finding interoperability failures/i],
+    ["/docs/contributing", "Contributing", /focused compatibility scenarios/i],
+    ["/docs/releasing", "Release Process", /npm and GitHub release access/i],
     ["/adapter-kit", "External Adapter Guide", /enroll conforming adapters in the full matrix/i],
     ["/security", "Security Model", /boundary is kept intentionally smaller/i],
     ["/docs/architecture", "Architecture", /proof suite answers one concrete question/i],
@@ -49,6 +51,27 @@ describe("website documentation routes", () => {
 
     expect(screen.getByRole("heading", { level: 1, name: heading })).toBeInTheDocument();
     expect(screen.getByText(text)).toBeInTheDocument();
+  });
+
+  it.each([
+    ["/docs", "Documentation", "Project guide", "Builders & reviewers", "README.md"],
+    [
+      "/adapter-kit",
+      "Adapter kit",
+      "Integration guide",
+      "Wallet & library teams",
+      "docs/adapters.md",
+    ],
+    ["/security", "Security", "Security reference", "Reviewers & integrators", "SECURITY.md"],
+  ])("presents %s as a scannable field guide", (pathname, label, kind, audience, sourcePath) => {
+    window.history.replaceState({}, "", pathname);
+    render(<App />);
+
+    const overview = screen.getByRole("region", { name: `${label} overview` });
+    expect(within(overview).getByText(kind)).toBeInTheDocument();
+    expect(within(overview).getByText(audience)).toBeInTheDocument();
+    expect(within(overview).getByText(/^\d+ sections$/)).toBeInTheDocument();
+    expect(within(overview).getByText(sourcePath)).toBeInTheDocument();
   });
 
   it("uses internal primary navigation and changes pages without reloading", async () => {
@@ -87,6 +110,25 @@ describe("website documentation routes", () => {
     expect(screen.getByRole("heading", { level: 1, name: "Security Model" })).toBeInTheDocument();
   });
 
+  it("does not add a second visual number to already-numbered chapters", () => {
+    window.history.replaceState({}, "", "/security/threat-model");
+    render(<App />);
+
+    const heading = screen.getByRole("heading", { level: 2, name: "1. Executive Summary" });
+    expect(heading.querySelector(".markdown-heading__index")).toBeNull();
+  });
+
+  it("updates browser metadata for first-party documentation routes", () => {
+    window.history.replaceState({}, "", "/adapter-kit");
+    render(<App />);
+
+    expect(document.title).toBe("Adapter kit | PSBT Interop Lab");
+    expect(document.querySelector('meta[name="description"]')).toHaveAttribute(
+      "content",
+      expect.stringMatching(/connect another wallet or library/i),
+    );
+  });
+
   it("does not leak Markdown parser metadata into the DOM", () => {
     window.history.replaceState({}, "", "/docs");
     render(<App />);
@@ -116,7 +158,7 @@ describe("website documentation routes", () => {
     );
   });
 
-  it("renders Mermaid fences as accessible diagrams instead of source code", async () => {
+  it("renders the architecture document as a grouped architecture diagram", async () => {
     window.history.replaceState({}, "", "/docs/architecture");
     render(<App />);
 
@@ -130,9 +172,32 @@ describe("website documentation routes", () => {
     );
     expect(mermaidMocks.render).toHaveBeenCalledWith(
       expect.stringMatching(/^mermaid-/),
-      expect.stringContaining("flowchart LR"),
+      expect.stringMatching(
+        /architecture-beta[\s\S]*Control plane[\s\S]*Proof engine[\s\S]*Isolated runtimes[\s\S]*Evidence/,
+      ),
     );
-    expect(screen.queryByText("flowchart LR")).not.toBeInTheDocument();
+    expect(screen.queryByText("architecture-beta")).not.toBeInTheDocument();
+  });
+
+  it("opens rendered diagrams in a full-screen reading view", async () => {
+    const user = userEvent.setup();
+    window.history.replaceState({}, "", "/docs/architecture");
+    render(<App />);
+
+    await user.click(
+      await screen.findByRole("button", { name: "Open Architecture diagram full screen" }),
+    );
+
+    expect(
+      screen.getByRole("dialog", { name: "Architecture diagram full-screen view" }),
+    ).toContainHTML("Rendered architecture");
+    expect(screen.getByRole("img", { name: "Architecture diagram full screen" })).toHaveAttribute(
+      "tabindex",
+      "0",
+    );
+    expect(
+      document.querySelectorAll(".mermaid-diagram__canvas svg, .diagram-preview-canvas svg"),
+    ).toHaveLength(1);
   });
 
   it("keeps every local repository link in mirrored Markdown inside the website", () => {
@@ -192,6 +257,17 @@ describe("website documentation routes", () => {
     expect(screen.getByText(content)).toBeInTheDocument();
   });
 
+  it("keeps repository resources in the shared document presentation shell", () => {
+    window.history.replaceState({}, "", "/files/src/conformance/adapter-manifest.schema.json");
+    render(<App />);
+
+    const overview = screen.getByRole("region", { name: "Adapter manifest schema overview" });
+    expect(within(overview).getByText("Repository file")).toBeInTheDocument();
+    expect(
+      within(overview).getByText("src/conformance/adapter-manifest.schema.json"),
+    ).toBeInTheDocument();
+  });
+
   it("uses internal links for homepage documentation references", () => {
     render(<App />);
 
@@ -224,18 +300,19 @@ describe("website documentation routes", () => {
     window.history.replaceState({}, "", "/docs");
     render(<App />);
 
-    const cliProof = screen.getByRole("img", {
-      name: /complete matrix terminal output/i,
-    });
     const reportProof = screen.getByRole("img", {
       name: /complete matrix generated report/i,
     });
+    const musig2Proof = screen.getByRole("img", {
+      name: /bip373 musig2 report evidence/i,
+    });
 
-    expect(cliProof).toHaveAttribute("src", expect.stringMatching(/cli-finding-and-replay/));
     expect(reportProof).toHaveAttribute("src", expect.stringMatching(/compatibility-report/));
-    expect(cliProof.getAttribute("src")).not.toMatch(/^https?:/);
     expect(reportProof.getAttribute("src")).not.toMatch(/^https?:/);
-    expect(screen.getByText(/all 47 bundled scenarios visible/i)).toBeInTheDocument();
+    expect(musig2Proof).toHaveAttribute("src", expect.stringMatching(/musig2-report/));
+    expect(musig2Proof.getAttribute("src")).not.toMatch(/^https?:/);
+    expect(screen.getByText(/fresh v0\.9\.0 run/i)).toBeInTheDocument();
+    expect(screen.getByText(/expected negative canary/i)).toBeInTheDocument();
   });
 
   it("opens documentation screenshots in the shared image viewer", async () => {
@@ -245,24 +322,24 @@ describe("website documentation routes", () => {
 
     await user.click(
       screen.getByRole("button", {
-        name: /open full-size complete matrix terminal output/i,
+        name: /open full-size complete matrix generated report/i,
       }),
     );
 
     expect(
       screen.getByRole("dialog", {
-        name: /complete matrix terminal output full-size preview/i,
+        name: /complete matrix generated report full-size preview/i,
       }),
     ).toBeInTheDocument();
   });
 
   it("maps the public npm walkthrough image URL to the bundled website asset", () => {
     const publicSource =
-      "https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/41732b2e6fd789f8385281e810f13118fb6c83a7/docs/assets/walkthrough/cli-finding-and-replay.png";
+      "https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/d29ac0fe83ce23e54a57707dc67c4d316b2b140d/docs/assets/walkthrough/compatibility-report.png";
 
     const resolved = resolveDocumentImageSrc(publicSource, "");
 
-    expect(resolved).toMatch(/cli-finding-and-replay/);
+    expect(resolved).toMatch(/compatibility-report/);
     expect(resolved).not.toMatch(/^https?:/);
   });
 

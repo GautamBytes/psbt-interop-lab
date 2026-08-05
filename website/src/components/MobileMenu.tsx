@@ -1,5 +1,6 @@
 import { List } from "@phosphor-icons/react/List";
 import { X } from "@phosphor-icons/react/X";
+import { useEffect, useRef } from "react";
 import { routes } from "../routes";
 import { SiteLink } from "./SiteLink";
 
@@ -10,9 +11,24 @@ interface MobileMenuProps {
 }
 
 export function MobileMenu({ open, onToggle, pathname }: MobileMenuProps) {
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      onToggle();
+      triggerRef.current?.focus();
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [onToggle, open]);
+
   return (
     <div className="mobile-menu">
       <button
+        ref={triggerRef}
         className="icon-button mobile-menu__trigger"
         type="button"
         aria-label={open ? "Close navigation" : "Open navigation"}

@@ -1,4 +1,5 @@
 import { ArrowSquareOut } from "@phosphor-icons/react/ArrowSquareOut";
+import { FileText } from "@phosphor-icons/react/FileText";
 import type { RepositoryResource } from "../pages/repository-resources";
 import { MarkdownCodeBlock } from "./MarkdownCodeBlock";
 
@@ -8,12 +9,18 @@ interface RepositoryResourcePageProps {
 
 export function RepositoryResourcePage({ resource }: RepositoryResourcePageProps) {
   return (
-    <section className="docs-page repository-resource" aria-labelledby="resource-title">
+    <section
+      className="docs-page docs-page--reference repository-resource"
+      aria-labelledby="resource-title"
+    >
       <header className="docs-page__intro">
         <div className="page-shell">
-          <span className="eyebrow">Repository reference</span>
           <div className="docs-page__intro-row">
-            <div>
+            <div className="docs-page__mark">
+              <FileText aria-hidden="true" weight="duotone" />
+            </div>
+            <div className="docs-page__intro-copy">
+              <span className="eyebrow">Repository reference</span>
               <h1 className="docs-page__label" id="resource-title">
                 {resource.label}
               </h1>
@@ -23,6 +30,23 @@ export function RepositoryResourcePage({ resource }: RepositoryResourcePageProps
               View on GitHub <ArrowSquareOut aria-hidden="true" />
             </a>
           </div>
+          <section
+            className="docs-page__overview docs-page__overview--resource"
+            aria-label={`${resource.label} overview`}
+          >
+            <dl className="docs-page__overview-list">
+              <div>
+                <dt>Document</dt>
+                <dd>Repository {resource.kind}</dd>
+              </div>
+              <div>
+                <dt>Repository source</dt>
+                <dd>
+                  <code>{resource.sourcePath}</code>
+                </dd>
+              </div>
+            </dl>
+          </section>
         </div>
       </header>
       <div className="repository-resource__body page-shell">

@@ -5,6 +5,7 @@ import { Warning } from "@phosphor-icons/react/Warning";
 import { useState } from "react";
 import { implementations, reportScenarios, type ScenarioStatus } from "../content";
 import { publicConformanceRules } from "../generated/conformance-rules";
+import { releaseFacts } from "../release";
 
 const statusIcon = {
   pass: CheckCircle,
@@ -62,7 +63,7 @@ export function CompatibilityReport() {
                 </button>
               );
             })}
-            <small>47 bundled scenarios</small>
+            <small>{releaseFacts.scenarioCount} bundled scenarios</small>
           </aside>
 
           <div className="evidence-panel">

@@ -1,8 +1,9 @@
 import { publicConformanceRules } from "./generated/conformance-rules";
+import { releaseFacts } from "./release";
 
 export const repositoryUrl = "https://github.com/GautamBytes/psbt-interop-lab";
 export const npmUrl = "https://www.npmjs.com/package/psbt-interop-lab";
-export const installCommand = "npx --yes psbt-interop-lab@0.9.0 quickstart";
+export const installCommand = `npx --yes psbt-interop-lab@${releaseFacts.version} quickstart`;
 
 export type ScenarioStatus = "pass" | "finding" | "supported";
 
@@ -304,7 +305,7 @@ export const docLinks = [
   },
   {
     label: "Scenario coverage",
-    detail: "See all 47 bundled scenarios",
+    detail: `See all ${releaseFacts.scenarioCount} bundled scenarios`,
     href: "/docs#current-coverage",
   },
   { label: "Adapter kit", detail: "Bring another wallet or library", href: "/adapter-kit" },
@@ -322,6 +323,16 @@ export const docLinks = [
     label: "Future work",
     detail: "Review planned compatibility and integration work",
     href: "/docs/future-work",
+  },
+  {
+    label: "Contributing",
+    detail: "Set up development and propose compatibility work",
+    href: "/docs/contributing",
+  },
+  {
+    label: "Release process",
+    detail: "Publish and verify a traceable release",
+    href: "/docs/releasing",
   },
   {
     label: "Official sources",

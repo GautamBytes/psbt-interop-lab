@@ -10,6 +10,7 @@ import { Package } from "@phosphor-icons/react/Package";
 import { ShieldCheck } from "@phosphor-icons/react/ShieldCheck";
 import { TerminalWindow } from "@phosphor-icons/react/TerminalWindow";
 import { npmUrl, repositoryUrl, workflowSteps } from "../content";
+import { releaseFacts } from "../release";
 import { routes } from "../routes";
 import { SiteLink } from "./SiteLink";
 
@@ -220,7 +221,7 @@ export function Sections() {
         <div className="page-shell">
           <Package aria-hidden="true" weight="duotone" />
           <h2 id="cta-title">Run the same PSBT through every handoff.</h2>
-          <p>Open source, MIT licensed, and available now as version 0.9.0.</p>
+          <p>Open source, MIT licensed, and available now as version {releaseFacts.version}.</p>
           <div>
             <a className="button button--primary" href={npmUrl}>
               <TerminalWindow aria-hidden="true" />
