@@ -6,7 +6,7 @@ import type { ScenarioExecutionContext } from "./context.js";
 import type { ScenarioAssertionEvidence, ScenarioDefinition } from "./definition.js";
 
 export const MUSIG2_SIGNER_ONE = "musig2-rust-signer-1";
-export const MUSIG2_SIGNER_TWO = "musig2-rust-signer-2";
+export const MUSIG2_SIGNER_TWO = "musig2-scure-signer-2";
 
 const PARTICIPANT_FIELD = 0x1a;
 const PUBLIC_NONCE_FIELD = 0x1b;
@@ -99,7 +99,7 @@ export function createMusig2Scenario(
     title: "BIP373 MuSig2 nonce exchange and Taproot finalization",
     category: "musig2",
     summary:
-      "Preserves BIP373 fields across independent parsers, completes both MuSig2 rounds, verifies partial signatures, and proves the aggregate spend with Bitcoin Core.",
+      "Preserves BIP373 fields across independent parsers, completes both rounds across independent MuSig2 implementations, verifies partial signatures, and proves the aggregate spend with Bitcoin Core.",
     requirements: [
       {
         adapter: "rust-bitcoin",

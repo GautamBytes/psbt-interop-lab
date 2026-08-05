@@ -85,7 +85,8 @@ const BDK_IMAGE = "psbt-interop-lab/bdkpython:2.3.1";
 const BDK_CURRENT_IMAGE = "psbt-interop-lab/bdk-wallet-current:3.1.0";
 const PSBTV2_IMAGE = "psbt-interop-lab/rust-psbt-v2:0.1.0";
 const LIBWALLY_IMAGE = "psbt-interop-lab/libwally:1.5.4";
-const MUSIG2_IMAGE = "psbt-interop-lab/musig2-rust:0.1.0";
+const MUSIG2_RUST_IMAGE = "psbt-interop-lab/musig2-rust:0.1.0";
+const MUSIG2_SCURE_IMAGE = "psbt-interop-lab/musig2-scure:0.1.0";
 const HWI_SIMULATOR_IMAGE = "psbt-interop-lab/hwi-simulator:0.1.0";
 const MAX_COMMITMENT_ENV_BYTES = 4 * 1024;
 const SAFE_FIXTURE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
@@ -98,7 +99,7 @@ const BUILT_IN_ADAPTER_IDS = [
   "rust-psbt-v2",
   "libwally",
   "musig2-rust-signer-1",
-  "musig2-rust-signer-2",
+  "musig2-scure-signer-2",
   "hwi-simulator",
 ] as const;
 export type BuiltInAdapterId = (typeof BUILT_IN_ADAPTER_IDS)[number];
@@ -571,7 +572,12 @@ export const PROOF_SCENARIO_REGISTRATIONS: readonly ProofScenarioRegistration[] 
     {
       core: true,
       fixtures: ["p2tr-musig2"],
-      adapters: ["rust-bitcoin", "bitcoinjs-lib", "musig2-rust-signer-1", "musig2-rust-signer-2"],
+      adapters: [
+        "rust-bitcoin",
+        "bitcoinjs-lib",
+        "musig2-rust-signer-1",
+        "musig2-scure-signer-2",
+      ],
     },
     (fixtures) => createMusig2Scenario(requiredFixture(fixtures, "p2tr-musig2")),
   ),
@@ -1151,8 +1157,9 @@ function adapterImage(id: BuiltInAdapterId): string {
     case "libwally":
       return LIBWALLY_IMAGE;
     case "musig2-rust-signer-1":
-    case "musig2-rust-signer-2":
-      return MUSIG2_IMAGE;
+      return MUSIG2_RUST_IMAGE;
+    case "musig2-scure-signer-2":
+      return MUSIG2_SCURE_IMAGE;
     case "hwi-simulator":
       return HWI_SIMULATOR_IMAGE;
   }
@@ -1172,7 +1179,7 @@ function adapterOptions(
           ? BDK_CURRENT_COMMITMENT_FIXTURES
           : id === "rust-psbt-v2" || id === "libwally"
             ? PSBTV2_COMMITMENT_FIXTURES
-            : id === "musig2-rust-signer-1" || id === "musig2-rust-signer-2"
+            : id === "musig2-rust-signer-1" || id === "musig2-scure-signer-2"
               ? MUSIG2_COMMITMENT_FIXTURES
               : id === "hwi-simulator"
                 ? HWI_COMMITMENT_FIXTURES
@@ -1182,7 +1189,7 @@ function adapterOptions(
     return fixture ? [fixture] : [];
   });
   const signerSelector =
-    id === "musig2-rust-signer-1" ? "1" : id === "musig2-rust-signer-2" ? "2" : undefined;
+    id === "musig2-rust-signer-1" ? "1" : undefined;
   if (commitments.length === 0) {
     return signerSelector ? { env: { PSBT_LAB_MUSIG2_SIGNER: signerSelector } } : {};
   }
@@ -1216,7 +1223,7 @@ async function negotiateBuiltInAdapter(
       return assertAdapterHello(response, LIBWALLY_ADAPTER_CONTRACT);
     case "musig2-rust-signer-1":
       return assertAdapterHello(response, MUSIG2_SIGNER_ONE_ADAPTER_CONTRACT);
-    case "musig2-rust-signer-2":
+    case "musig2-scure-signer-2":
       return assertAdapterHello(response, MUSIG2_SIGNER_TWO_ADAPTER_CONTRACT);
     case "hwi-simulator":
       return assertAdapterHello(response, HWI_SIMULATOR_ADAPTER_CONTRACT);

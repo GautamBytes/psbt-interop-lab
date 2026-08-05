@@ -224,11 +224,14 @@ export const BDK_CURRENT_ADAPTER_CONTRACT = {
   ],
 } as const satisfies ExpectedAdapterContract;
 
-function musig2AdapterContract(name: "musig2-rust-signer-1" | "musig2-rust-signer-2") {
+function musig2AdapterContract(
+  name: "musig2-rust-signer-1" | "musig2-scure-signer-2",
+  sourceRevision: string,
+) {
   return {
     name,
     version: "0.1.0",
-    sourceRevision: "musig2-crate-0.4.1+bitcoin-0.32.102",
+    sourceRevision,
     operations: [
       "hello",
       "native-parse",
@@ -255,8 +258,14 @@ function musig2AdapterContract(name: "musig2-rust-signer-1" | "musig2-rust-signe
   } as const satisfies ExpectedAdapterContract;
 }
 
-export const MUSIG2_SIGNER_ONE_ADAPTER_CONTRACT = musig2AdapterContract("musig2-rust-signer-1");
-export const MUSIG2_SIGNER_TWO_ADAPTER_CONTRACT = musig2AdapterContract("musig2-rust-signer-2");
+export const MUSIG2_SIGNER_ONE_ADAPTER_CONTRACT = musig2AdapterContract(
+  "musig2-rust-signer-1",
+  "musig2-crate-0.4.1+bitcoin-0.32.102",
+);
+export const MUSIG2_SIGNER_TWO_ADAPTER_CONTRACT = musig2AdapterContract(
+  "musig2-scure-signer-2",
+  "@scure/btc-signer@2.2.0+bitcoinjs-lib@7.0.1",
+);
 
 export const HWI_SIMULATOR_ADAPTER_CONTRACT = {
   name: "hwi-simulator",
