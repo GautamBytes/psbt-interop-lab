@@ -1,4 +1,5 @@
-import { compareRuns, type RunComparisonChange } from "./compare.js";
+import { compareVerifiedReplays, type RunComparisonChange } from "./compare.js";
+import { loadVerifiedReplay, type VerifiedReplay } from "./replay.js";
 
 export const COMPATIBILITY_HISTORY_SCHEMA = "psbt-lab.compatibility-history/0.1" as const;
 const MIN_HISTORY_RUNS = 2;
@@ -117,13 +118,13 @@ function validateRun(run: CompatibilityHistoryRun): number {
   return completedAt;
 }
 
-function sameRun(left: CompatibilityHistoryRun, right: CompatibilityHistoryRun): boolean {
-  return (
-    left.runId === right.runId &&
-    left.completedAt === right.completedAt &&
-    left.outcome === right.outcome &&
-    left.verifiedCheckpoints === right.verifiedCheckpoints
-  );
+function historyRun(replay: VerifiedReplay): CompatibilityHistoryRun {
+  return {
+    runId: replay.manifest.runId,
+    completedAt: replay.manifest.completedAt,
+    outcome: replay.manifest.outcome,
+    verifiedCheckpoints: replay.verifiedCheckpoints,
+  };
 }
 
 export async function buildCompatibilityHistory(
@@ -138,28 +139,25 @@ export async function buildCompatibilityHistory(
   const runs: CompatibilityHistoryRun[] = [];
   const transitions: CompatibilityHistoryTransition[] = [];
   const runIds = new Set<string>();
-  let previousCompletedAt: number | undefined;
+  const firstDirectory = directories[0];
+  if (firstDirectory === undefined) {
+    throw new Error("Compatibility history directory sequence is incomplete");
+  }
+  let baseReplay = await loadVerifiedReplay(firstDirectory);
+  const firstRun = historyRun(baseReplay);
+  let previousCompletedAt = validateRun(firstRun);
+  runIds.add(firstRun.runId);
+  runs.push(firstRun);
 
   for (let index = 0; index < directories.length - 1; index += 1) {
-    const baseDirectory = directories[index];
     const headDirectory = directories[index + 1];
-    if (baseDirectory === undefined || headDirectory === undefined) {
+    if (headDirectory === undefined) {
       throw new Error("Compatibility history directory sequence is incomplete");
     }
-    const comparison = await compareRuns(baseDirectory, headDirectory);
+    const headReplay = await loadVerifiedReplay(headDirectory);
+    const comparison = compareVerifiedReplays(baseReplay, headReplay);
     const base: CompatibilityHistoryRun = { ...comparison.base };
     const head: CompatibilityHistoryRun = { ...comparison.head };
-
-    if (index === 0) {
-      previousCompletedAt = validateRun(base);
-      runIds.add(base.runId);
-      runs.push(base);
-    } else {
-      const previous = runs[runs.length - 1];
-      if (previous === undefined || !sameRun(previous, base)) {
-        throw new Error("Compatibility history artifact changed while it was being compared");
-      }
-    }
 
     const completedAt = validateRun(head);
     if (runIds.has(head.runId)) {
@@ -188,6 +186,7 @@ export async function buildCompatibilityHistory(
       signals,
       changes,
     });
+    baseReplay = headReplay;
   }
 
   return {

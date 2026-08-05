@@ -1,7 +1,7 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import type { RunManifest, ScenarioRecord } from "../../src/runner/artifacts.js";
 import type { RunComparisonChange } from "../../src/runner/compare.js";
 import {
@@ -9,10 +9,12 @@ import {
   classifyCompatibilityChange,
   historyHasLatestRegression,
 } from "../../src/runner/history.js";
+import * as replay from "../../src/runner/replay.js";
 
 const roots: string[] = [];
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
@@ -164,6 +166,18 @@ describe("classifyCompatibilityChange", () => {
 });
 
 describe("buildCompatibilityHistory", () => {
+  test("replay-verifies each input artifact exactly once", async () => {
+    const base = await temporaryRun(manifest("base", "2026-07-24T00:00:01.000Z", "passed"));
+    const middle = await temporaryRun(manifest("middle", "2026-07-25T00:00:01.000Z", "failed"));
+    const head = await temporaryRun(manifest("head", "2026-07-26T00:00:01.000Z", "passed"));
+    const load = vi.spyOn(replay, "loadVerifiedReplay");
+
+    await buildCompatibilityHistory([base, middle, head]);
+
+    expect(load).toHaveBeenCalledTimes(3);
+    expect(load.mock.calls.map(([directory]) => directory)).toEqual([base, middle, head]);
+  });
+
   test("builds ordered regression and improvement transitions", async () => {
     const base = await temporaryRun(manifest("base", "2026-07-24T00:00:01.000Z", "passed"));
     const middle = await temporaryRun(manifest("middle", "2026-07-25T00:00:01.000Z", "failed"));

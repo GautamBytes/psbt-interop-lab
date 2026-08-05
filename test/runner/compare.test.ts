@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import type { AdapterHelloCapabilities } from "../../src/protocol/types.js";
 import { ArtifactRun, type RunManifest } from "../../src/runner/artifacts.js";
-import { compareRuns } from "../../src/runner/compare.js";
+import { compareRuns, compareVerifiedReplays } from "../../src/runner/compare.js";
 
 const roots: string[] = [];
 const magic = Buffer.from("70736274ff", "hex");
@@ -129,6 +129,33 @@ afterEach(async () => {
 });
 
 describe("compareRuns", () => {
+  test("rejects a manifest without completion metadata", async () => {
+    const base = await temporaryRun(manifest({ completedAt: undefined as never }));
+    const head = await temporaryRun(manifest({ runId: "head-run" }));
+
+    await expect(compareRuns(base, head)).rejects.toThrow(/does not match psbt-lab.run\/0.1/i);
+  });
+
+  test("compares already verified snapshots without reading artifact directories again", () => {
+    const comparison = compareVerifiedReplays(
+      { manifest: manifest(), verifiedCheckpoints: 2 },
+      {
+        manifest: manifest({
+          runId: "head-run",
+          completedAt: "2026-07-25T00:00:01.000Z",
+          outcome: "failed",
+        }),
+        verifiedCheckpoints: 3,
+      },
+    );
+
+    expect(comparison).toMatchObject({
+      base: { runId: "base-run", verifiedCheckpoints: 2 },
+      head: { runId: "head-run", verifiedCheckpoints: 3 },
+      changed: true,
+    });
+  });
+
   test("reports changed outcomes, assertions, findings, and adapter identities", async () => {
     const base = await temporaryRun(manifest());
     const head = await temporaryRun(
