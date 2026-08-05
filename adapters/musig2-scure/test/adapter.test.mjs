@@ -215,6 +215,48 @@ test("refuses nonce reuse and consumes a secret nonce after partial signing", ()
   assert.equal(repeated.error.class, "musig2.session_missing");
 });
 
+test("bounds live nonce sessions and permanently consumes expired session identifiers", () => {
+  const source = fixturePsbt();
+  let clock = 1_000;
+  const adapter = createMusig2ScureAdapter(
+    fixtureConfig(source, {
+      now: () => clock,
+    }),
+  );
+  const noncePayload = (sessionId) => ({
+    psbt: source.toBase64(),
+    fixtureId: "p2tr-musig2",
+    sessionId,
+  });
+
+  for (let index = 0; index < 64; index += 1) {
+    const result = adapter.handleValue(
+      request("musig2-nonce", noncePayload(`bounded-${index}`)),
+      DIGEST,
+    );
+    assert.equal(result.status, "ok");
+  }
+  const atLimit = adapter.handleValue(
+    request("musig2-nonce", noncePayload("bounded-overflow")),
+    DIGEST,
+  );
+  assert.equal(atLimit.status, "rejected");
+  assert.equal(atLimit.error.class, "musig2.session_limit");
+
+  clock += 15 * 60 * 1_000;
+  const afterExpiry = adapter.handleValue(
+    request("musig2-nonce", noncePayload("after-expiry")),
+    DIGEST,
+  );
+  assert.equal(afterExpiry.status, "ok");
+  const reusedExpired = adapter.handleValue(
+    request("musig2-nonce", noncePayload("bounded-0")),
+    DIGEST,
+  );
+  assert.equal(reusedExpired.status, "rejected");
+  assert.equal(reusedExpired.error.class, "musig2.nonce_reuse");
+});
+
 test("rejects uncommitted fixtures and malformed request shapes", () => {
   const source = fixturePsbt();
   const adapter = createMusig2ScureAdapter({
