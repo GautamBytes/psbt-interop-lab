@@ -1,2 +1,2 @@
-export const VERSION = "0.8.0";
-export const RELEASE_ACTION_SHA = "4f313809a8b640f0f73f376711411b4506b01ab2";
+export const VERSION = "0.9.0";
+export const RELEASE_ACTION_SHA = "efd5dc2f8dd9f82c4d871b17ff978dcc2cfeef9a";

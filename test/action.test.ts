@@ -42,12 +42,12 @@ describe("GitHub Action", () => {
     expect(workflow).toContain("/tmp/psbt-install/node_modules/.bin/psbt-lab history --help");
   });
 
-  test("declares the v0.8 package, report, build, and upload inputs", async () => {
+  test("declares the v0.9 package, report, build, and upload inputs", async () => {
     const action = await readFile(resolve("action.yml"), "utf8");
 
     expect(action).toContain("adapter-manifest:");
     expect(action).toContain("package-spec:");
-    expect(action).toContain('default: "psbt-interop-lab@0.8.0"');
+    expect(action).toContain('default: "psbt-interop-lab@0.9.0"');
     expect(action).toContain("junit:");
     expect(action).toContain("sarif:");
     expect(action).toContain("build:");
@@ -102,6 +102,6 @@ describe("GitHub Action", () => {
         PSBT_LAB_ADAPTER_MANIFEST: "adapter.json",
         PSBT_LAB_BUILD: "false",
       }).packageSpec,
-    ).toBe("psbt-interop-lab@0.8.0");
+    ).toBe("psbt-interop-lab@0.9.0");
   });
 });

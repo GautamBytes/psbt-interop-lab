@@ -25,7 +25,9 @@ export function ProofWalkthrough() {
       <div className="page-shell">
         <header className="proof-heading">
           <div>
-            <span className="eyebrow">Evidence from the complete 47-scenario matrix | v0.8.0</span>
+            <span className="eyebrow">
+              Evidence from the complete 47-scenario matrix | v0.8.0 capture, retained in v0.9.0
+            </span>
             <h2 id="proof-title">The complete matrix, one replayable artifact.</h2>
           </div>
           <div>

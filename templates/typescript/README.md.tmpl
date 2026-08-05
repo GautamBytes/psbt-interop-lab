@@ -10,6 +10,17 @@ npm test
 npm run conformance
 ```
 
+The lockfile pins every dependency to an exact version. Its `psbt-interop-lab` entry pins version
+`{{LAB_VERSION}}` and the matching HTTPS registry tarball but intentionally has no `integrity`
+field: this template is contained by that same tarball, so it cannot contain its own digest. Other
+dependencies retain their published integrity values. After version `{{LAB_VERSION}}` is available
+from npm, projects whose policy requires an SRI value can hydrate that one entry before committing
+the generated lockfile:
+
+```bash
+npm install --save-dev --package-lock-only --ignore-scripts psbt-interop-lab@{{LAB_VERSION}}
+```
+
 The adapter currently declares parser-only support for PSBTv0. Extend its capabilities only when the corresponding operations are implemented and tested.
 
 ## Identity before publishing results

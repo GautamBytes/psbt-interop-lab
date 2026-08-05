@@ -7,9 +7,10 @@ writes replayable compatibility reports.
 
 The current suite integrates Bitcoin Core 31.1, rust-bitcoin 0.32.102, btcsuite PSBT 1.2.0,
 bitcoinjs-lib 7.0.1, BDK Wallet 3.1.0, rust-psbt's PSBTv2 0.3.0 implementation, and libwally
-1.5.4. The MuSig2 proof crosses independent Rust `musig2` 0.4.1 and TypeScript Scure 2.2.0 signer
-processes. Version 0.8.0 also adds an HWI-compatible JSON process simulator backed by
-bitcoinjs-lib. A frozen bdkpython
+1.5.4. Version 0.9.0 adds a generated TypeScript adapter project, reproducible upstream issue
+bundles, replay-verified compatibility history, and a MuSig2 proof crossing independent Rust
+`musig2` 0.4.1 and TypeScript Scure 2.2.0 signer processes. The suite also includes an
+HWI-compatible JSON process simulator backed by bitcoinjs-lib. A frozen bdkpython
 2.3.1 adapter remains as a real regression specimen. Everything runs on regtest; the tool never
 broadcasts and has no mainnet mode.
 
@@ -21,7 +22,7 @@ Requirements:
 - Node.js 22 or 24
 
 ```bash
-npx --yes psbt-interop-lab@0.8.0 quickstart
+npx --yes psbt-interop-lab@0.9.0 quickstart
 ```
 
 `quickstart` is the bounded first-run proof. It checks Node.js, Docker, and Compose, runs five
@@ -32,7 +33,7 @@ the local regtest node automatically.
 For exhaustive compatibility testing, install the CLI once and run the complete 47-scenario matrix:
 
 ```bash
-npm install --global psbt-interop-lab@0.8.0
+npm install --global psbt-interop-lab@0.9.0
 psbt-lab matrix
 ```
 
@@ -165,7 +166,7 @@ independently installed [bitcoinjs-lib consumer example](examples/wallet-ci-adap
 GitHub Action:
 
 ```yaml
-- uses: GautamBytes/psbt-interop-lab@v0.8.0
+- uses: GautamBytes/psbt-interop-lab@v0.9.0
   with:
     adapter-manifest: ./adapters.json
 ```

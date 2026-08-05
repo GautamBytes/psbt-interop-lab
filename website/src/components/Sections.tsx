@@ -208,7 +208,7 @@ export function Sections() {
                 {"\n"}
                 <em>Adapter is ready for the matrix.</em>
                 {"\n\n"}
-                <span>$</span> psbt-lab compare artifacts/v0.8.0 artifacts/candidate{"\n"}
+                <span>$</span> psbt-lab compare artifacts/v0.8.0 artifacts/v0.9.0{"\n"}
                 <b>PASS</b> replay-verified artifact comparison{"\n"}
               </code>
             </pre>
@@ -220,7 +220,7 @@ export function Sections() {
         <div className="page-shell">
           <Package aria-hidden="true" weight="duotone" />
           <h2 id="cta-title">Run the same PSBT through every handoff.</h2>
-          <p>Open source, MIT licensed, and available now as version 0.8.0.</p>
+          <p>Open source, MIT licensed, and available now as version 0.9.0.</p>
           <div>
             <a className="button button--primary" href={npmUrl}>
               <TerminalWindow aria-hidden="true" />

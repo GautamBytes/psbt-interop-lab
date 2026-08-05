@@ -22,6 +22,13 @@ uses only templates shipped in the installed package; it performs no network acc
 installation, Git initialization, or generated-code execution. It never overwrites an existing
 file, directory, or symbolic link.
 
+The generated lockfile exact-pins the lab version and its HTTPS registry tarball. That one entry
+cannot embed an integrity digest because the template is shipped inside the same tarball whose
+digest it would need to contain. All other generated dependencies retain their published integrity
+values. After the release is available from npm, maintainers whose policy requires SRI for the lab
+entry can run the documented `npm install --package-lock-only --ignore-scripts` refresh and review
+the resulting lockfile before committing it.
+
 The generated adapter supports the baseline PSBTv0 parser profile: `hello`, `native-parse`, and
 `roundtrip`. Its self-reported `artifactDigest` is the SHA256 of the compiled adapter entrypoint.
 That value makes runs reproducible and can be pinned through `expected.artifactDigest`, but it is
@@ -109,12 +116,12 @@ custom suite, and requires an adapter manifest.
 The root composite action wraps this focused path:
 
 ```yaml
-- uses: GautamBytes/psbt-interop-lab@v0.8.0
+- uses: GautamBytes/psbt-interop-lab@v0.9.0
   with:
     adapter-manifest: ./adapters.json
 ```
 
-It installs the exact `psbt-interop-lab@0.8.0` release with lifecycle scripts disabled, checks the
+It installs the exact `psbt-interop-lab@0.9.0` release with lifecycle scripts disabled, checks the
 adapter, runs the matrix, and uploads the replay, JUnit, and SARIF outputs. `package-spec` can point
 to a trusted
 packed tarball for pre-release validation. The separately installed
