@@ -7,25 +7,56 @@ to one another and still produce a transaction that Bitcoin Core can finalize an
 policy? It does not reimplement wallet logic in TypeScript. The orchestrator controls the run while
 each native library parses and acts on the PSBT itself.
 
+Read the system from control to evidence. The proof engine coordinates isolated native runtimes.
+Library adapters do not call one another; the HWI adapter invokes only its dedicated simulated
+device process. Every returned PSBT crosses the semantic-policy layer before it becomes durable
+evidence.
+
 ```mermaid
-flowchart LR
-  CLI["TypeScript CLI"] -->|"JSON-RPC on loopback"| Core["Bitcoin Core 31.1 regtest"]
-  CLI -->|"bounded JSONL"| Rust["rust-bitcoin 0.32.102 adapter"]
-  CLI -->|"bounded JSONL"| Go["btcsuite psbt 1.2.0 adapter"]
-  CLI -->|"bounded JSONL"| JS["bitcoinjs-lib 7.0.1 adapter"]
-  CLI -->|"bounded JSONL"| BDK["BDK Wallet 3.1.0 adapter"]
-  CLI -->|"bounded JSONL"| V2["rust-psbt PSBTv2 0.3.0 adapter"]
-  CLI -->|"bounded JSONL"| Wally["libwally 1.5.4 PSBTv0/v2 adapter"]
-  CLI -->|"bounded JSONL"| Frozen["bdkpython 2.3.1 regression specimen"]
-  CLI -->|"bounded JSONL"| MuSig1["Rust musig2 signer process"]
-  CLI -->|"bounded JSONL"| MuSig2["TypeScript Scure MuSig2 signer process"]
-  CLI -->|"bounded JSONL"| HWI["HWI simulator adapter"]
-  HWI -->|"HWI-style JSON command"| Device["Simulated hardware device process"]
-  CLI --> Facts["Lossless semantic PSBT parser and transition rules"]
-  CLI --> Artifacts["Private checkpoints plus JSON, Markdown, and HTML reports"]
-  Artifacts --> Replay["Offline PSBT-digest replay"]
-  Artifacts --> Compare["Replay-verified run comparison"]
+architecture-beta
+  group control(cloud)[Control plane]
+  group proof(cloud)[Proof engine]
+  group runtimes(cloud)[Isolated runtimes]
+  group evidence(cloud)[Evidence]
+
+  service selection(disk)[Validated selection] in control
+  service cli(server)[TypeScript CLI] in control
+
+  service engine(server)[Scenario engine] in proof
+  service rules(server)[Transition rules] in proof
+  service facts(database)[Wire facts] in proof
+
+  service core(server)[Bitcoin Core v31] in runtimes
+  service v0(server)[PSBTv0 adapters] in runtimes
+  service v2(server)[PSBTv2 adapters] in runtimes
+  service musig(server)[MuSig2 signers] in runtimes
+  service hwi(server)[HWI adapter] in runtimes
+  service device(server)[Simulated device] in runtimes
+
+  service checkpoints(disk)[Private checkpoints] in evidence
+  service reports(disk)[JSON Markdown HTML] in evidence
+  service replay(server)[Replay and compare] in evidence
+
+  selection:R --> L:cli
+  cli:R --> L:engine
+  engine:B --> T:core
+  engine:B --> T:v0
+  engine:B --> T:v2
+  engine:B --> T:musig
+  engine:B --> T:hwi
+  hwi:R --> L:device
+  engine:R --> L:rules
+  rules:R --> L:facts
+  facts:R --> L:checkpoints
+  checkpoints:B --> T:reports
+  checkpoints:R --> L:replay
 ```
+
+| Runtime family | Native implementations |
+| --- | --- |
+| PSBTv0 adapters | rust-bitcoin 0.32.102, btcsuite psbt 1.2.0, bitcoinjs-lib 7.0.1, BDK Wallet 3.1.0, and the frozen bdkpython 2.3.1 regression specimen |
+| PSBTv2 adapters | rust-psbt 0.3.0 and libwally 1.5.4, including v0/v2 conversion paths |
+| Stateful protocols | Independent Rust musig2 0.4.1 and TypeScript Scure 2.2.0 signers, plus the HWI simulator/device pair |
 
 ## Components
 

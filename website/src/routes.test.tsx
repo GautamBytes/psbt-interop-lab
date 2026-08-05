@@ -158,7 +158,7 @@ describe("website documentation routes", () => {
     );
   });
 
-  it("renders Mermaid fences as accessible diagrams instead of source code", async () => {
+  it("renders the architecture document as a grouped architecture diagram", async () => {
     window.history.replaceState({}, "", "/docs/architecture");
     render(<App />);
 
@@ -172,9 +172,32 @@ describe("website documentation routes", () => {
     );
     expect(mermaidMocks.render).toHaveBeenCalledWith(
       expect.stringMatching(/^mermaid-/),
-      expect.stringContaining("flowchart LR"),
+      expect.stringMatching(
+        /architecture-beta[\s\S]*Control plane[\s\S]*Proof engine[\s\S]*Isolated runtimes[\s\S]*Evidence/,
+      ),
     );
-    expect(screen.queryByText("flowchart LR")).not.toBeInTheDocument();
+    expect(screen.queryByText("architecture-beta")).not.toBeInTheDocument();
+  });
+
+  it("opens rendered diagrams in a full-screen reading view", async () => {
+    const user = userEvent.setup();
+    window.history.replaceState({}, "", "/docs/architecture");
+    render(<App />);
+
+    await user.click(
+      await screen.findByRole("button", { name: "Open Architecture diagram full screen" }),
+    );
+
+    expect(
+      screen.getByRole("dialog", { name: "Architecture diagram full-screen view" }),
+    ).toContainHTML("Rendered architecture");
+    expect(screen.getByRole("img", { name: "Architecture diagram full screen" })).toHaveAttribute(
+      "tabindex",
+      "0",
+    );
+    expect(
+      document.querySelectorAll(".mermaid-diagram__canvas svg, .diagram-preview-canvas svg"),
+    ).toHaveLength(1);
   });
 
   it("keeps every local repository link in mirrored Markdown inside the website", () => {

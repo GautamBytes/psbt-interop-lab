@@ -30,7 +30,7 @@
 
 ## Technical checks
 
-- Automated website tests: 54 passed.
+- Automated website tests: 55 passed.
 - TypeScript: passed.
 - Production build: passed.
 - Complete Docker matrix: 47 passed, zero failed, one known compatibility finding.
