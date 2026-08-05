@@ -121,6 +121,31 @@ packed tarball for pre-release validation. The separately installed
 [`examples/wallet-ci-adapter`](../examples/wallet-ci-adapter) package is the executable reference
 consumer.
 
+## Export a Parser Issue Bundle
+
+After replacing the generated parser with the implementation under test, use the same trusted
+manifest for bounded differential fuzzing and deterministic replay:
+
+```bash
+psbt-lab fuzz --runtime local --adapter-manifest ./wallet-adapter/adapter-manifest.json \
+  --fixture bip174-minimal-v0 --seed 42 --cases 64 --issue-bundle parser-issue
+psbt-lab parse-matrix --runtime local \
+  --adapter-manifest ./wallet-adapter/adapter-manifest.json \
+  --suite-manifest parser-issue/regression-suite.json
+```
+
+`parser-issue/` is created only when a minimized differential case exists. It contains
+`manifest.json`, `regression-suite.json`, and `issue.md`. The manifest uses
+`psbt-lab.issue-bundle/0.1`, records the exact identities negotiated from successful adapter hello
+responses, normalizes classifications and accepted parser facts, and commits the issue and suite
+bytes with SHA256. Existing files, directories, and symbolic links are never overwritten.
+
+The issue draft is evidence for investigation and does not assign fault to an implementation.
+Adapter commands, arguments, environment, raw diagnostic strings, and local paths are excluded.
+Only frozen public test fixtures can enter this fuzzing path; private wallet PSBTs and production
+transactions are not accepted. Keep the executable adapter manifest separate and review it as
+trusted local code before replay.
+
 The manifest `id` is the stable registry and report identity. It may differ from `expected.name`.
 It must not collide with `rust-bitcoin`, `btcsuite-go`, `bitcoinjs-lib`, `bdkpython`,
 `bdk-wallet-current`, `rust-psbt-v2`, `libwally`, `musig2-rust-signer-1`,

@@ -174,7 +174,7 @@ Run a deterministic, bounded mutation campaign through the lab parser and the av
 parsers without starting Bitcoin Core:
 
 ```bash
-psbt-lab fuzz --runtime local --fixture minimal --seed 42 --cases 64 --json
+psbt-lab fuzz --runtime local --fixture bip174-minimal-v0 --seed 42 --cases 64 --json
 ```
 
 The seed reproduces the exact recipe sequence. Each case applies an allowlisted structured-map or
@@ -195,6 +195,24 @@ accepted parses, normalized version/input/output facts.
 `parse-matrix` replays that parser-only suite with the same Dockerless runtime. Core-backed or
 signing steps are refused on this path. A checked-in
 [parser regression example](examples/parser-regression-suite.json) shows the complete v0.2 shape.
+
+To investigate a wallet or library parser, enroll its trusted adapter manifest and export the first
+minimized divergence as an upstream-ready bundle:
+
+```bash
+psbt-lab fuzz --runtime local --adapter-manifest ./wallet-adapter/adapter-manifest.json \
+  --fixture bip174-minimal-v0 --seed 42 --cases 64 --issue-bundle parser-issue
+psbt-lab parse-matrix --runtime local \
+  --adapter-manifest ./wallet-adapter/adapter-manifest.json \
+  --suite-manifest parser-issue/regression-suite.json
+```
+
+The new destination contains `manifest.json`, `regression-suite.json`, and `issue.md`. The manifest
+records exact negotiated implementation identities, normalized outcomes, and SHA256 commitments to
+the other two files. The issue draft uses neutral investigation language: the lab does not assign
+fault from a differential result. Commands, environment variables, raw diagnostics, and local paths
+are excluded. Fuzzing remains limited to the frozen public test fixtures; it does not accept wallet
+PSBTs or production transaction data. The destination must not already exist.
 
 ## Custom Suites
 
