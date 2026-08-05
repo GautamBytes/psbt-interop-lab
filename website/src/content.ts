@@ -43,7 +43,12 @@ export const implementations = [
   { name: "BDK Wallet", version: "3.1.0", short: "BDK", tone: "green" },
   { name: "rust-psbt PSBTv2", version: "0.3.0", short: "V2", tone: "violet" },
   { name: "libwally", version: "1.5.4", short: "LW", tone: "blue" },
-  { name: "MuSig2 signer", version: "musig2 0.4.1", short: "M2", tone: "green" },
+  {
+    name: "MuSig2 signers",
+    version: "musig2 0.4.1 / Scure 2.2.0",
+    short: "M2",
+    tone: "green",
+  },
   { name: "HWI simulator", version: "JSON contract v1", short: "HWI", tone: "neutral" },
 ] as const;
 
@@ -204,13 +209,13 @@ export const reportScenarios: ReportScenario[] = [
   {
     id: "musig2",
     shortLabel: "BIP373 MuSig2",
-    title: "Two-process MuSig2 key-path signing",
+    title: "Cross-library MuSig2 key-path signing",
     status: "pass",
     statusLabel: "Passed",
     handoff: "Core -> Rust/JavaScript preservation -> signer 1 + signer 2 -> Core",
     summary:
-      "Two isolated signer processes exchange BIP373 nonces and partial signatures, reject nonce reuse, verify both shares, and aggregate a Core-accepted BIP340 signature.",
-    implementations: ["Bitcoin Core", "rust-bitcoin", "bitcoinjs-lib", "MuSig2 signer"],
+      "Independent Rust and TypeScript signer processes exchange BIP373 nonces and partial signatures, reject nonce reuse, verify both shares, and aggregate a Core-accepted BIP340 signature.",
+    implementations: ["Bitcoin Core", "rust-bitcoin", "bitcoinjs-lib", "MuSig2 signers"],
     evidence: [
       {
         field: "BIP373 participant and nonce fields",
@@ -223,15 +228,15 @@ export const reportScenarios: ReportScenario[] = [
         field: "Secret nonce lifecycle",
         expected: "one session, one use",
         actual: "in-memory and reuse rejected",
-        implementation: "MuSig2 signer processes",
+        implementation: "Rust musig2 / TypeScript Scure",
         nextStep: "Never persist or recycle production nonces.",
       },
       {
         field: "Aggregate signature",
         expected: "partials verified and Core accepted",
         actual: "BIP340 verification and regtest policy passed",
-        implementation: "musig2 0.4.1 / Bitcoin Core 31.1",
-        nextStep: "Add a second independent MuSig2 implementation next.",
+        implementation: "musig2 0.4.1 / Scure 2.2.0 / Bitcoin Core 31.1",
+        nextStep: "Keep both independent adapters pinned and regression-tested.",
       },
     ],
     replay: "psbt-lab replay artifacts/<run-id>",

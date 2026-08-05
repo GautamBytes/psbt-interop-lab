@@ -91,6 +91,10 @@ protocol specification.
   seeds come from the operating-system CSPRNG and are additionally bound to the session, message,
   aggregate key, and signing key. The adapter pins the crate and `bitcoin` 0.32.102 in its
   committed `Cargo.lock`.
+- [`@scure/btc-signer` 2.2.0](https://www.npmjs.com/package/@scure/btc-signer/v/2.2.0) supplies the
+  independent TypeScript BIP327 implementation used by signer two. Its exact Scure, Noble,
+  bitcoinjs-lib, and tiny-secp256k1 dependency graph is committed in `package-lock.json`; CI tests,
+  type-checks, and audits that isolated adapter.
 - [Bitcoin Core HWI](https://github.com/bitcoin-core/HWI) defines the external command and JSON
   response boundary used by hardware-wallet integrations. The lab implements an HWI-compatible
   simulator command with `enumerate` and `signtx`; it does not execute the HWI Python package,

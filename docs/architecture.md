@@ -17,8 +17,8 @@ flowchart LR
   CLI -->|"bounded JSONL"| V2["rust-psbt PSBTv2 0.3.0 adapter"]
   CLI -->|"bounded JSONL"| Wally["libwally 1.5.4 PSBTv0/v2 adapter"]
   CLI -->|"bounded JSONL"| Frozen["bdkpython 2.3.1 regression specimen"]
-  CLI -->|"bounded JSONL"| MuSig1["MuSig2 signer process 1"]
-  CLI -->|"bounded JSONL"| MuSig2["MuSig2 signer process 2"]
+  CLI -->|"bounded JSONL"| MuSig1["Rust musig2 signer process"]
+  CLI -->|"bounded JSONL"| MuSig2["TypeScript Scure MuSig2 signer process"]
   CLI -->|"bounded JSONL"| HWI["HWI simulator adapter"]
   HWI -->|"HWI-style JSON command"| Device["Simulated hardware device process"]
   CLI --> Facts["Lossless semantic PSBT parser and transition rules"]
@@ -90,13 +90,14 @@ known run-committed fixture inputs. rust-psbt-v2 and libwally both exercise the 
 corpus and run bidirectional PSBTv2 signing/finalization workflows. The Python adapter freezes the affected `bdkpython` 2.3.1 wheel and exposes
 round-trip/finalize behavior. No adapter has network access at runtime.
 
-The MuSig2 adapter runs twice with an explicit process identity. Each process owns one deterministic
-regtest key and keeps its CSPRNG-seeded secret nonce only in memory. BIP373 participant,
+Two independent MuSig2 adapters each own one deterministic regtest key and keep their
+CSPRNG-seeded secret nonce only in memory. The first uses Rust `musig2` 0.4.1 and the second uses
+TypeScript Scure 2.2.0. BIP373 participant,
 public-nonce, and partial-signature fields carry the two-round protocol; live nonces expire, recent
 session identifiers are held in a bounded replay cache, each partial is verified before
 aggregation, and the final BIP340 signature is written as the standard Taproot key signature before
-Core finalization. Both participants currently use the same pinned `musig2` 0.4.1 implementation,
-so this proves protocol/state isolation rather than cross-library MuSig2 agreement.
+Core finalization. The resulting spend proves cross-library BIP327 signing agreement as well as
+process and nonce-state isolation.
 
 The HWI adapter first enumerates a separate JSON-speaking simulator process, then invokes its
 `signtx` command with a fixed regtest BIP84 origin. The device process owns the deterministic key,

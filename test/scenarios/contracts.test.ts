@@ -151,26 +151,34 @@ describe("adapter contracts", () => {
     });
   });
 
-  test.each([MUSIG2_SIGNER_ONE_ADAPTER_CONTRACT, MUSIG2_SIGNER_TWO_ADAPTER_CONTRACT])(
-    "$name pins the explicit BIP373 signing phases",
-    (contract) => {
-      expect(contract).toMatchObject({
-        version: "0.1.0",
-        sourceRevision: "musig2-crate-0.4.1+bitcoin-0.32.102",
-        operations: [
-          "hello",
-          "native-parse",
-          "roundtrip",
-          "musig2-nonce",
-          "musig2-partial-sign",
-          "musig2-aggregate",
-        ],
-        roles: ["parser", "updater", "signer", "combiner", "finalizer"],
-        scriptTypes: ["p2tr-keypath"],
-      });
-      expect(contract.features).toContain("bip327-csprng-nonce-v1");
-    },
-  );
+  test.each([
+    [MUSIG2_SIGNER_ONE_ADAPTER_CONTRACT, "musig2-crate-0.4.1+bitcoin-0.32.102"],
+    [MUSIG2_SIGNER_TWO_ADAPTER_CONTRACT, "@scure/btc-signer@2.2.0+bitcoinjs-lib@7.0.1"],
+  ] as const)("$name pins the explicit BIP373 signing phases", (contract, sourceRevision) => {
+    expect(contract).toMatchObject({
+      version: "0.1.0",
+      sourceRevision,
+      operations: [
+        "hello",
+        "native-parse",
+        "roundtrip",
+        "musig2-nonce",
+        "musig2-partial-sign",
+        "musig2-aggregate",
+      ],
+      roles: ["parser", "updater", "signer", "combiner", "finalizer"],
+      scriptTypes: ["p2tr-keypath"],
+    });
+    expect(contract.features).toContain("bip327-csprng-nonce-v1");
+  });
+
+  test("uses independent MuSig2 libraries for the two signer contracts", () => {
+    expect(MUSIG2_SIGNER_ONE_ADAPTER_CONTRACT.name).toBe("musig2-rust-signer-1");
+    expect(MUSIG2_SIGNER_TWO_ADAPTER_CONTRACT.name).toBe("musig2-scure-signer-2");
+    expect(MUSIG2_SIGNER_TWO_ADAPTER_CONTRACT.sourceRevision).not.toBe(
+      MUSIG2_SIGNER_ONE_ADAPTER_CONTRACT.sourceRevision,
+    );
+  });
 
   test("pins the HWI-compatible simulator without claiming physical hardware", () => {
     expect(HWI_SIMULATOR_ADAPTER_CONTRACT).toMatchObject({

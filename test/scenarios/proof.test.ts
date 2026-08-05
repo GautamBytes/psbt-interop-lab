@@ -153,7 +153,10 @@ function fixture(id: PsbtFixture["id"]): PsbtFixture {
     id,
     initialPsbt:
       "cHNidP8BADwCAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/////wD/////AQAAAAAAAAAAAAAAAAAAAAA=",
-    outpoints: [],
+    outpoints:
+      id === "p2tr-musig2"
+        ? [{ txid: "e".repeat(64), vout: 0, amountSats: 312_500_000, height: 1 }]
+        : [],
     inputCount:
       id === "bdk-finalize-regression" || id === "sighash-p2wpkh" || id === "sighash-p2tr-keypath"
         ? 2
@@ -273,6 +276,7 @@ function proofHarness(
     ["psbt-interop-lab/btcsuite-go:1.2.0", GO_ADAPTER_CONTRACT],
     ["psbt-interop-lab/bitcoinjs-lib:7.0.1", BITCOINJS_ADAPTER_CONTRACT],
     ["psbt-interop-lab/bdkpython:2.3.1", BDK_ADAPTER_CONTRACT],
+    ["psbt-interop-lab/musig2-scure:0.1.0", MUSIG2_SIGNER_TWO_ADAPTER_CONTRACT],
     ["psbt-interop-lab/bdk-wallet-current:3.1.0", BDK_CURRENT_ADAPTER_CONTRACT],
     ["psbt-interop-lab/rust-psbt-v2:0.1.0", PSBTV2_ADAPTER_CONTRACT],
     ["psbt-interop-lab/libwally:1.5.4", LIBWALLY_ADAPTER_CONTRACT],
@@ -303,9 +307,7 @@ function proofHarness(
         created.push({ image, options });
         const contract =
           image === "psbt-interop-lab/musig2-rust:0.1.0"
-            ? options.env?.["PSBT_LAB_MUSIG2_SIGNER"] === "2"
-              ? MUSIG2_SIGNER_TWO_ADAPTER_CONTRACT
-              : MUSIG2_SIGNER_ONE_ADAPTER_CONTRACT
+            ? MUSIG2_SIGNER_ONE_ADAPTER_CONTRACT
             : contracts.get(image);
         if (!contract) throw new Error(`Unexpected test adapter image ${image}`);
         const value = runtimeAdapter(contract);
@@ -872,11 +874,11 @@ describe("proof runtime", () => {
         },
       },
       {
-        image: "psbt-interop-lab/musig2-rust:0.1.0",
+        image: "psbt-interop-lab/musig2-scure:0.1.0",
         options: {
           env: {
             PSBT_LAB_FIXTURE_COMMITMENTS: musig2Commitments,
-            PSBT_LAB_MUSIG2_SIGNER: "2",
+            PSBT_LAB_MUSIG2_WITNESS_VALUE_SATS: "312500000",
           },
         },
       },

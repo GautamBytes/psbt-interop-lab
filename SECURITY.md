@@ -89,11 +89,10 @@ key on regtest, not from protecting that key. Do not place real funds on the fix
 
 Bitcoin Core receives only public descriptors. It does not receive fixture private keys.
 
-The MuSig2 fixture uses two public deterministic scalars in separate processes. Secret nonces use
-operating-system CSPRNG entropy, stay in process memory, expire after 15 minutes, and are consumed
-on the first partial-sign attempt. A bounded replay cache rejects recent session reuse, and a
-process refuses to start without an explicit signer identity. This is test-only nonce discipline,
-not production key custody.
+The MuSig2 fixture uses two public deterministic scalars in separate Rust and TypeScript processes.
+Secret nonces use operating-system CSPRNG entropy, stay in process memory, expire after 15 minutes,
+and are consumed on the first partial-sign attempt. Bounded replay caches reject recent session
+reuse. This is test-only nonce discipline, not production key custody.
 
 The HWI simulator is a separate process that exercises enumeration, JSON command transport, fixed
 key-origin policy, user approval/refusal, and PSBT return validation. It is not physical hardware

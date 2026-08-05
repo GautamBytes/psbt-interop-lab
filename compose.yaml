@@ -144,9 +144,9 @@ services:
       - no-new-privileges:true
 
   musig2-signer-2:
-    image: psbt-interop-lab/musig2-rust:0.1.0
-    environment:
-      PSBT_LAB_MUSIG2_SIGNER: "2"
+    image: psbt-interop-lab/musig2-scure:0.1.0
+    build:
+      context: adapters/musig2-scure
     network_mode: none
     read_only: true
     cap_drop:

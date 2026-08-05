@@ -38,9 +38,12 @@ describe("MuSig2 proof scenario", () => {
   test("requires both isolated signers and independent preservation adapters", () => {
     const scenario = createMusig2Scenario(fixture);
 
+    expect(MUSIG2_SIGNER_ONE).toBe("musig2-rust-signer-1");
+    expect(MUSIG2_SIGNER_TWO).toBe("musig2-scure-signer-2");
     expect(scenario).toMatchObject({
       id: "bip373-musig2-keypath",
       category: "musig2",
+      summary: expect.stringContaining("independent MuSig2 implementations"),
     });
     expect(scenario.requirements.map(({ adapter }) => adapter)).toEqual([
       "rust-bitcoin",
