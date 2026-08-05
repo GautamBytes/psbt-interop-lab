@@ -2,6 +2,7 @@
 
 !README.md
 !CONTRIBUTING.md
+!package.json
 !SECURITY.md
 !psbt-interop-lab-threat-model.md
 !vercel.json

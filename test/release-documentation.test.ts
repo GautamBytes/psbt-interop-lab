@@ -105,6 +105,18 @@ describe("release documentation", () => {
     }
   });
 
+  it("keeps package metadata imported by the website in Vercel builds", () => {
+    const includedPaths = new Set(
+      read(".vercelignore")
+        .split("\n")
+        .filter((line) => line.startsWith("!"))
+        .map((line) => line.slice(1)),
+    );
+
+    expect(read("website/src/release.ts")).toContain('from "../../package.json"');
+    expect(includedPaths.has("package.json")).toBe(true);
+  });
+
   it("documents the active PSBTv2 and Taproot script-path capabilities", () => {
     const psbtv2 = read("adapters/rust-psbt-v2/README.md");
     const bdk = read("adapters/bdk-wallet-current/README.md");
