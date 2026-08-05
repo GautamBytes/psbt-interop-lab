@@ -11,7 +11,7 @@ describe("release documentation", () => {
     const packageVersion = JSON.parse(read("package.json")).version as string;
     const publicFiles = [
       "README.md",
-      "src/cli.ts",
+      "src/version.ts",
       "website/src/App.tsx",
       "website/src/content.ts",
       "website/AGENTS.md",

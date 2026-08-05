@@ -1,0 +1,137 @@
+import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
+import { once } from "node:events";
+import { resolve } from "node:path";
+import test from "node:test";
+
+const PROJECT_DIRECTORY = resolve(import.meta.dirname, "..");
+const ADAPTER = resolve(PROJECT_DIRECTORY, "dist/adapter.js");
+const VALID_PSBT =
+  "cHNidP8BADwCAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/////wD/////AQAAAAAAAAAAAAAAAAAAAAA=";
+
+let requestCounter = 0;
+
+function request(operation, payload) {
+  requestCounter += 1;
+  return {
+    protocol: "psbt-lab.adapter/0.2",
+    id: `request-${requestCounter}`,
+    operation,
+    payload,
+  };
+}
+
+async function exchange(value) {
+  const responses = await exchangeMany([value]);
+  assert.equal(responses.length, 1);
+  return responses[0];
+}
+
+async function exchangeMany(values) {
+  const child = spawn(process.execPath, [ADAPTER], {
+    cwd: PROJECT_DIRECTORY,
+    shell: false,
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+  let stdout = "";
+  let stderr = "";
+  child.stdout.setEncoding("utf8");
+  child.stderr.setEncoding("utf8");
+  child.stdout.on("data", (chunk) => {
+    stdout += chunk;
+  });
+  child.stderr.on("data", (chunk) => {
+    stderr += chunk;
+  });
+  const timeout = setTimeout(() => child.kill("SIGKILL"), 10_000);
+  try {
+    child.stdin.end(`${values.map((value) => JSON.stringify(value)).join("\n")}\n`);
+    const [code, signal] = await once(child, "close");
+    assert.equal(signal, null);
+    assert.equal(code, 0);
+    assert.equal(stderr, "");
+    return stdout
+      .trim()
+      .split("\n")
+      .filter((line) => line.length > 0)
+      .map((line) => JSON.parse(line));
+  } finally {
+    clearTimeout(timeout);
+    if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+  }
+}
+
+test("rejects a null payload without terminating the adapter", async () => {
+  const malformed = {
+    protocol: "psbt-lab.adapter/0.2",
+    id: "malformed-1",
+    operation: "hello",
+    payload: null,
+  };
+  const responses = await exchangeMany([malformed, request("hello", {})]);
+
+  assert.equal(responses.length, 2);
+  assert.equal(responses[0].status, "rejected");
+  assert.equal(responses[0].error.class, "protocol.invalid_request");
+  assert.equal(responses[1].status, "ok");
+});
+
+test("discards an oversized line and continues with the next request", async () => {
+  const responses = await exchangeMany([
+    "x".repeat(4 * 1024 * 1024 + 1),
+    request("hello", {}),
+  ]);
+
+  assert.equal(responses.length, 2);
+  assert.equal(responses[0].status, "rejected");
+  assert.equal(responses[0].error.class, "protocol.line_too_large");
+  assert.equal(responses[1].status, "ok");
+});
+
+test("declares parser capabilities and generated identity", async () => {
+  const response = await exchange(request("hello", {}));
+  assert.equal(response.status, "ok");
+  assert.deepEqual(
+    {
+      ...response.implementation,
+      artifactDigest: undefined,
+    },
+    {
+      name: "{{ADAPTER_NAME}}",
+      version: "0.1.0",
+      sourceRevision: "generated-typescript-template-v1",
+      artifactDigest: undefined,
+    },
+  );
+  assert.match(response.implementation.artifactDigest, /^sha256:[0-9a-f]{64}$/);
+  assert.deepEqual(response.output.operations, ["hello", "native-parse", "roundtrip"]);
+  assert.deepEqual(response.output.roles, ["parser"]);
+});
+
+test("parses a valid PSBT with bitcoinjs-lib", async () => {
+  const response = await exchange(request("native-parse", { psbt: VALID_PSBT }));
+  assert.equal(response.status, "ok");
+  assert.equal(response.output.nativeParser, "{{ADAPTER_NAME}}");
+  assert.equal(response.output.psbtVersion, 0);
+});
+
+test("rejects malformed PSBT bytes with the stable class", async () => {
+  const response = await exchange(
+    request("native-parse", { psbt: "bm90IGEgcHNidA==" }),
+  );
+  assert.equal(response.status, "rejected");
+  assert.equal(response.error.class, "psbt.native_parse_failed");
+});
+
+test("roundtrips a valid PSBT", async () => {
+  const response = await exchange(request("roundtrip", { psbt: VALID_PSBT }));
+  assert.equal(response.status, "ok");
+  assert.equal(typeof response.output.psbt, "string");
+  assert.equal(response.output.psbtVersion, 0);
+});
+
+test("rejects undeclared operations as unsupported", async () => {
+  const response = await exchange(request("sign", { psbt: VALID_PSBT }));
+  assert.equal(response.status, "unsupported");
+  assert.equal(response.error.class, "operation.unsupported");
+});

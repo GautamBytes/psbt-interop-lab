@@ -28,6 +28,8 @@ maintainers using those foundations.
 
 ## Developer Integration
 
+- Extend the shipped TypeScript adapter initializer with a Rust template after independent wallet
+  maintainers validate the generated-project workflow.
 - Validate the reusable action against additional independent wallet repositories and native
   adapter implementations.
 - Publish versioned compatibility reports and reusable test vectors.

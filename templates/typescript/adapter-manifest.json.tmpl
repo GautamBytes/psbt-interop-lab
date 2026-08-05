@@ -1,0 +1,16 @@
+{
+  "schema": "psbt-lab.adapters/0.1",
+  "adapters": [
+    {
+      "id": "{{ADAPTER_NAME}}",
+      "command": "node",
+      "args": ["dist/adapter.js"],
+      "cwd": ".",
+      "expected": {
+        "name": "{{ADAPTER_NAME}}",
+        "version": "0.1.0",
+        "sourceRevision": "generated-typescript-template-v1"
+      }
+    }
+  ]
+}

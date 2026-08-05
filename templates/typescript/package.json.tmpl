@@ -1,0 +1,22 @@
+{
+  "name": "{{PACKAGE_NAME}}",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test test/*.test.mjs",
+    "conformance": "npm run build && psbt-lab adapter check adapter-manifest.json"
+  },
+  "engines": {
+    "node": "^22.0.0 || ^24.0.0"
+  },
+  "dependencies": {
+    "bitcoinjs-lib": "7.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.3",
+    "psbt-interop-lab": "{{LAB_VERSION}}",
+    "typescript": "7.0.2"
+  }
+}

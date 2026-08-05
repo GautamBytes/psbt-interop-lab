@@ -60,6 +60,40 @@ describe("CLI program", () => {
     expect(quickstart?.options.some((option) => option.long === "--adapter-manifest")).toBe(false);
   });
 
+  test("offers TypeScript adapter initialization next to conformance checking", () => {
+    const adapter = createProgram().commands.find((command) => command.name() === "adapter");
+    const init = adapter?.commands.find((command) => command.name() === "init");
+
+    expect(adapter?.commands.map((command) => command.name())).toEqual(["check", "init"]);
+    expect(init?.options.find((option) => option.long === "--name")?.mandatory).toBe(true);
+    expect(init?.options.find((option) => option.long === "--template")?.defaultValue).toBe(
+      "typescript",
+    );
+  });
+
+  test("initializes a generated adapter from the CLI without installing dependencies", () => {
+    const directory = mkdtempSync(resolve(tmpdir(), "psbt-lab-init-cli-"));
+    const destination = resolve(directory, "wallet-adapter");
+    const entrypoint = fileURLToPath(new URL("../src/cli.ts", import.meta.url));
+
+    try {
+      const result = spawnSync(
+        process.execPath,
+        ["--import", "tsx", entrypoint, "adapter", "init", destination, "--name", "wallet-adapter"],
+        { encoding: "utf8", timeout: 30_000 },
+      );
+
+      expect(result.status).toBe(0);
+      expect(result.stderr).toBe("");
+      expect(result.stdout).toContain(`Created TypeScript PSBT adapter at ${destination}`);
+      expect(result.stdout).toContain("npm run conformance");
+      expect(existsSync(resolve(destination, "adapter-manifest.json"))).toBe(true);
+      expect(existsSync(resolve(destination, "node_modules"))).toBe(false);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  }, 35_000);
+
   test("runs external adapter conformance from a manifest", () => {
     const directory = mkdtempSync(resolve(tmpdir(), "psbt-lab-conformance-"));
     const manifest = resolve(directory, "adapters.json");

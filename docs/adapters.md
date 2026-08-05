@@ -4,6 +4,35 @@
 changing PSBT Interop Lab source. The same manifest can enroll conforming adapters in the full
 matrix while preserving the 47 bundled scenarios.
 
+## Generate a TypeScript Adapter
+
+Create a protocol-correct bitcoinjs-lib parser adapter as a starting point:
+
+```bash
+psbt-lab adapter init ./wallet-adapter --name example-wallet
+cd ./wallet-adapter
+npm ci
+npm test
+npm run conformance
+```
+
+`--template typescript` is the only template and the default. Adapter names must be lowercase
+kebab-case. The destination must not exist and its parent directory must already exist. The command
+uses only templates shipped in the installed package; it performs no network access, dependency
+installation, Git initialization, or generated-code execution. It never overwrites an existing
+file, directory, or symbolic link.
+
+The generated adapter supports the baseline PSBTv0 parser profile: `hello`, `native-parse`, and
+`roundtrip`. Its self-reported `artifactDigest` is the SHA256 of the compiled adapter entrypoint.
+That value makes runs reproducible and can be pinned through `expected.artifactDigest`, but it is
+not runtime attestation and does not commit to the dependency tree. The generated manifest leaves
+the expected digest unpinned so the first build can pass conformance; pin it after deciding how the
+adapter will be built and distributed.
+
+Replace the sample parser and generated identity with the implementation under test before using
+the adapter as interoperability evidence. Signing support is deliberately absent from this
+template because signing requires an implementation-specific key and fixture authorization design.
+
 ## Adapter Manifest
 
 Create a JSON file that follows `psbt-lab.adapters/0.1`:

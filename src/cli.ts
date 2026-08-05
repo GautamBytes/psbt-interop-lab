@@ -30,6 +30,7 @@ import { createLocalRuntimeProvider } from "./local/provider.js";
 import { writeCiReports } from "./runner/ci-reports.js";
 import { compareRuns } from "./runner/compare.js";
 import { verifyReplay } from "./runner/replay.js";
+import { initializeAdapterProject } from "./scaffold/init.js";
 import {
   assertProofSelectionCompatibility,
   type BuiltInAdapterId,
@@ -39,8 +40,8 @@ import {
   runProof,
 } from "./scenarios/proof.js";
 import { runCommand } from "./system/command.js";
+import { VERSION } from "./version.js";
 
-const VERSION = "0.8.0";
 const PROJECT_DIRECTORY = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const DEFAULT_RPC_URL = "http://127.0.0.1:18443";
 const DEFAULT_RPC_USER = "psbtlab";
@@ -455,6 +456,26 @@ export function createProgram(): Command {
           : `${formatAdapterConformance(report)}\n`,
       );
       if (!report.passed) process.exitCode = 1;
+    });
+  adapter
+    .command("init <directory>")
+    .description("Generate a conformant PSBT adapter project")
+    .requiredOption("--name <name>", "Lowercase kebab-case adapter name")
+    .option("--template <template>", "Built-in adapter template", "typescript")
+    .action(async (directory: string, options: { name: string; template: string }) => {
+      const result = await initializeAdapterProject({
+        directory,
+        name: options.name,
+        template: options.template,
+        cwd: process.cwd(),
+      });
+      process.stdout.write(
+        `Created TypeScript PSBT adapter at ${result.directory}\n\n` +
+          "Run these commands from the generated directory:\n" +
+          "  npm ci\n" +
+          "  npm test\n" +
+          "  npm run conformance\n",
+      );
     });
 
   addRuntimeOptions(

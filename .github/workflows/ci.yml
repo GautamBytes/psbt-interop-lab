@@ -165,7 +165,12 @@ jobs:
       - run: test ! -d /tmp/psbt-install/node_modules/ajv
       - run: /tmp/psbt-install/node_modules/.bin/psbt-lab self-test
       - run: /tmp/psbt-install/node_modules/.bin/psbt-lab adapter --help
+      - run: /tmp/psbt-install/node_modules/.bin/psbt-lab adapter init /tmp/psbt-generated-adapter --name package-smoke
+      - run: npm ci --prefix /tmp/psbt-generated-adapter
+      - run: npm test --prefix /tmp/psbt-generated-adapter
+      - run: /tmp/psbt-install/node_modules/.bin/psbt-lab adapter check /tmp/psbt-generated-adapter/adapter-manifest.json
       - run: test -f /tmp/psbt-install/node_modules/psbt-interop-lab/compose.yaml
+      - run: test -f /tmp/psbt-install/node_modules/psbt-interop-lab/templates/typescript/package.json.tmpl
       - run: test -f /tmp/psbt-install/node_modules/psbt-interop-lab/adapters/rust-bitcoin/Dockerfile
       - run: test -f /tmp/psbt-install/node_modules/psbt-interop-lab/adapters/libwally-1.5.4/Dockerfile
       - run: test -f /tmp/psbt-install/node_modules/psbt-interop-lab/adapters/musig2-rust/Dockerfile
@@ -253,7 +258,10 @@ jobs:
 
   feature-docker-proof:
     name: v0.8 feature Docker proof
-    if: github.event_name == 'pull_request'
+    if: >-
+      github.event_name == 'pull_request' &&
+      (github.event.pull_request.stack == null ||
+      github.event.pull_request.stack.position == github.event.pull_request.stack.size)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
