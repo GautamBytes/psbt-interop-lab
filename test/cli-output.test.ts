@@ -90,8 +90,18 @@ describe("CLI output", () => {
   test("prints run comparison changes for humans", () => {
     const output = formatRunComparison({
       changed: true,
-      base: { runId: "base-run", outcome: "passed", verifiedCheckpoints: 3 },
-      head: { runId: "head-run", outcome: "failed", verifiedCheckpoints: 4 },
+      base: {
+        runId: "base-run",
+        completedAt: "2026-07-24T00:00:01.000Z",
+        outcome: "passed",
+        verifiedCheckpoints: 3,
+      },
+      head: {
+        runId: "head-run",
+        completedAt: "2026-07-25T00:00:01.000Z",
+        outcome: "failed",
+        verifiedCheckpoints: 4,
+      },
       summary: {
         runOutcomeChanged: true,
         scenarioChanges: 1,
@@ -160,8 +170,18 @@ describe("CLI output", () => {
   test("labels same-status assertion evidence changes clearly", () => {
     const output = formatRunComparison({
       changed: true,
-      base: { runId: "base-run", outcome: "passed", verifiedCheckpoints: 0 },
-      head: { runId: "head-run", outcome: "passed", verifiedCheckpoints: 0 },
+      base: {
+        runId: "base-run",
+        completedAt: "2026-07-24T00:00:01.000Z",
+        outcome: "passed",
+        verifiedCheckpoints: 0,
+      },
+      head: {
+        runId: "head-run",
+        completedAt: "2026-07-25T00:00:01.000Z",
+        outcome: "passed",
+        verifiedCheckpoints: 0,
+      },
       summary: {
         runOutcomeChanged: false,
         scenarioChanges: 0,

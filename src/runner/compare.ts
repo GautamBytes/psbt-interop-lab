@@ -68,11 +68,13 @@ export interface RunComparison {
   readonly changed: boolean;
   readonly base: {
     readonly runId: string;
+    readonly completedAt: string;
     readonly outcome: RunManifest["outcome"];
     readonly verifiedCheckpoints: number;
   };
   readonly head: {
     readonly runId: string;
+    readonly completedAt: string;
     readonly outcome: RunManifest["outcome"];
     readonly verifiedCheckpoints: number;
   };
@@ -514,11 +516,13 @@ export async function compareRuns(
     changed: changes.length > 0,
     base: {
       runId: base.manifest.runId,
+      completedAt: base.manifest.completedAt,
       outcome: base.manifest.outcome,
       verifiedCheckpoints: base.verifiedCheckpoints,
     },
     head: {
       runId: head.manifest.runId,
+      completedAt: head.manifest.completedAt,
       outcome: head.manifest.outcome,
       verifiedCheckpoints: head.verifiedCheckpoints,
     },

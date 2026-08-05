@@ -170,8 +170,18 @@ describe("compareRuns", () => {
 
     expect(comparison).toMatchObject({
       changed: true,
-      base: { runId: "base-run", outcome: "passed", verifiedCheckpoints: 0 },
-      head: { runId: "head-run", outcome: "failed", verifiedCheckpoints: 0 },
+      base: {
+        runId: "base-run",
+        completedAt: "2026-07-24T00:00:01.000Z",
+        outcome: "passed",
+        verifiedCheckpoints: 0,
+      },
+      head: {
+        runId: "head-run",
+        completedAt: "2026-07-24T00:00:01.000Z",
+        outcome: "failed",
+        verifiedCheckpoints: 0,
+      },
       summary: {
         runOutcomeChanged: true,
         scenarioChanges: 1,
