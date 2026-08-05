@@ -39,8 +39,8 @@ import {
   runProof,
 } from "./scenarios/proof.js";
 import { runCommand } from "./system/command.js";
+import { VERSION } from "./version.js";
 
-const VERSION = "0.8.0";
 const PROJECT_DIRECTORY = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const DEFAULT_RPC_URL = "http://127.0.0.1:18443";
 const DEFAULT_RPC_USER = "psbtlab";
