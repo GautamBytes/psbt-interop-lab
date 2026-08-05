@@ -153,7 +153,10 @@ function fixture(id: PsbtFixture["id"]): PsbtFixture {
     id,
     initialPsbt:
       "cHNidP8BADwCAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/////wD/////AQAAAAAAAAAAAAAAAAAAAAA=",
-    outpoints: [],
+    outpoints:
+      id === "p2tr-musig2"
+        ? [{ txid: "e".repeat(64), vout: 0, amountSats: 312_500_000, height: 1 }]
+        : [],
     inputCount:
       id === "bdk-finalize-regression" || id === "sighash-p2wpkh" || id === "sighash-p2tr-keypath"
         ? 2
@@ -873,7 +876,10 @@ describe("proof runtime", () => {
       {
         image: "psbt-interop-lab/musig2-scure:0.1.0",
         options: {
-          env: { PSBT_LAB_FIXTURE_COMMITMENTS: musig2Commitments },
+          env: {
+            PSBT_LAB_FIXTURE_COMMITMENTS: musig2Commitments,
+            PSBT_LAB_MUSIG2_WITNESS_VALUE_SATS: "312500000",
+          },
         },
       },
       {

@@ -20,6 +20,7 @@ const MAX_COMMITMENTS_BYTES = 4 * 1024;
 const MAX_SESSIONS = 64;
 const MAX_CONSUMED_SESSION_IDS = 1024;
 const SESSION_TTL_MS = 15 * 60 * 1000;
+const MAX_BITCOIN_SATS = 2_100_000_000_000_000n;
 const ADAPTER_VERSION = "0.1.0";
 const SOURCE_REVISION = "@scure/btc-signer@2.2.0+bitcoinjs-lib@7.0.1";
 const FIXTURE_ID = "p2tr-musig2";
@@ -115,6 +116,19 @@ export function parseFixtureCommitments(raw) {
   }
 }
 
+export function parseAuthorizedWitnessValue(raw) {
+  if (raw === undefined) {
+    return { authorizedWitnessValue: null, authorizedWitnessValueError: "missing" };
+  }
+  if (!/^[1-9][0-9]{0,15}$/.test(raw)) {
+    return { authorizedWitnessValue: null, authorizedWitnessValueError: "invalid" };
+  }
+  const value = BigInt(raw);
+  return value <= MAX_BITCOIN_SATS
+    ? { authorizedWitnessValue: value }
+    : { authorizedWitnessValue: null, authorizedWitnessValueError: "invalid" };
+}
+
 function parsePsbt(encoded) {
   if (
     typeof encoded !== "string" ||
@@ -171,14 +185,18 @@ function addField(psbt, type, participant, value) {
   psbt.addUnknownKeyValToInput(0, { key, value: Buffer.from(value) });
 }
 
-function validateParticipantField(psbt) {
+function validateParticipantField(psbt, authorizedWitnessValue) {
   const participantKey = fieldKey(0x1a);
   const participantFields = unknownEntries(psbt).filter(({ key }) => key[0] === 0x1a);
   const field = participantFields.find(({ key }) => Buffer.from(key).equals(participantKey));
   if (!field || participantFields.length !== 1) return false;
   if (!Buffer.from(field.value).equals(Buffer.concat(PUBLIC_KEYS))) return false;
   const witness = psbt.data.inputs[0]?.witnessUtxo;
-  return Boolean(witness && Buffer.from(witness.script).equals(EXPECTED_SCRIPT));
+  return Boolean(
+    witness &&
+      witness.value === authorizedWitnessValue &&
+      Buffer.from(witness.script).equals(EXPECTED_SCRIPT),
+  );
 }
 
 function taprootMessage(psbt) {
@@ -246,7 +264,13 @@ function committedPsbt(payload, config) {
   if (config.fixtureCommitments.get(FIXTURE_ID) !== unsignedCommitment(parsed.psbt)) {
     return { parsed: null, error: "fixture.commitment_mismatch" };
   }
-  if (!validateParticipantField(parsed.psbt)) {
+  if (config.authorizedWitnessValue === null || config.authorizedWitnessValue === undefined) {
+    return {
+      parsed: null,
+      error: `fixture.witness_value_${config.authorizedWitnessValueError ?? "missing"}`,
+    };
+  }
+  if (!validateParticipantField(parsed.psbt, config.authorizedWitnessValue)) {
     return { parsed: null, error: "bip373.invalid" };
   }
   return { parsed, error: null };
@@ -273,6 +297,8 @@ function errorMessage(errorClass) {
     "fixture.commitment_missing": "Fixture commitments are unavailable",
     "fixture.commitment_invalid": "Fixture commitments are invalid",
     "fixture.commitment_mismatch": "PSBT does not match the authorized fixture",
+    "fixture.witness_value_missing": "The authorized witness value is unavailable",
+    "fixture.witness_value_invalid": "The authorized witness value is invalid",
     "bip373.invalid": "The BIP373 participant field or Taproot output is invalid",
   };
   return messages[errorClass] ?? "MuSig2 request was rejected";
@@ -325,13 +351,17 @@ function handleNativeParse(id, digest, payload) {
   });
 }
 
-function handleRoundtrip(id, digest, payload) {
+function handleRoundtrip(id, digest, payload, config) {
   if (!exactFields(payload, ["psbt"]) || typeof payload.psbt !== "string") {
     return failure(id, digest, "protocol.invalid_payload", "roundtrip expects one psbt field");
   }
   const parsed = parsePsbt(payload.psbt);
   if (!parsed) return failure(id, digest, "psbt.parse_failed", "bitcoinjs-lib rejected the PSBT");
-  if (!validateParticipantField(parsed.psbt)) {
+  if (
+    config.authorizedWitnessValue === null ||
+    config.authorizedWitnessValue === undefined ||
+    !validateParticipantField(parsed.psbt, config.authorizedWitnessValue)
+  ) {
     return failure(id, digest, "bip373.invalid", "The BIP373 participant field is invalid");
   }
   const serialized = Buffer.from(parsed.psbt.toBuffer());
@@ -360,6 +390,7 @@ export function createMusig2ScureAdapter(config = parseFixtureCommitments()) {
   function pruneExpired() {
     for (const [sessionId, session] of sessions) {
       if (now() - session.createdAt >= SESSION_TTL_MS) {
+        session.secretNonce.fill(0);
         sessions.delete(sessionId);
         markConsumed(sessionId);
       }
@@ -386,16 +417,20 @@ export function createMusig2ScureAdapter(config = parseFixtureCommitments()) {
     }
     const message = taprootMessage(parsed.psbt);
     if (!message) return failure(id, digest, "musig2.sighash", "Taproot sighash failed");
+    let seedSource;
     let seed;
     try {
-      seed = Buffer.from(randomBytes(32));
+      seedSource = randomBytes(32);
+      seed = Buffer.from(seedSource);
       if (seed.length !== 32) throw new Error("invalid");
     } catch {
+      seed?.fill(0);
+      if (seedSource && typeof seedSource.fill === "function") seedSource.fill(0);
       return failure(id, digest, "musig2.randomness", "The operating system CSPRNG failed");
     }
-    let nonces;
+    let secretNonce;
     try {
-      nonces = musig2.nonceGen(
+      const nonces = musig2.nonceGen(
         PUBLIC_TWO,
         SECRET_TWO,
         AGGREGATE_X_ONLY,
@@ -404,18 +439,24 @@ export function createMusig2ScureAdapter(config = parseFixtureCommitments()) {
         seed,
       );
       addField(parsed.psbt, 0x1b, PUBLIC_TWO, nonces.public);
+      secretNonce = Buffer.from(nonces.secret);
+      sessions.set(parsed.sessionId, {
+        createdAt: now(),
+        message: Buffer.from(message),
+        secretNonce,
+      });
+      secretNonce = undefined;
+      return success(id, digest, {
+        psbt: parsed.psbt.toBase64(),
+        publicNonce: Buffer.from(nonces.public).toString("hex"),
+      });
     } catch {
+      secretNonce?.fill(0);
       return failure(id, digest, "musig2.nonce", "MuSig2 nonce generation failed");
+    } finally {
+      seed.fill(0);
+      if (seedSource && typeof seedSource.fill === "function") seedSource.fill(0);
     }
-    sessions.set(parsed.sessionId, {
-      createdAt: now(),
-      message: Buffer.from(message),
-      secretNonce: Buffer.from(nonces.secret),
-    });
-    return success(id, digest, {
-      psbt: parsed.psbt.toBase64(),
-      publicNonce: Buffer.from(nonces.public).toString("hex"),
-    });
   }
 
   function handlePartialSign(id, digest, payload) {
@@ -430,39 +471,42 @@ export function createMusig2ScureAdapter(config = parseFixtureCommitments()) {
         "No live secret nonce exists for this session",
       );
     }
+    const secretNonce = Buffer.from(session.secretNonce);
+    session.secretNonce.fill(0);
     sessions.delete(parsed.sessionId);
     markConsumed(parsed.sessionId);
-    if (now() - session.createdAt >= SESSION_TTL_MS) {
-      return failure(id, digest, "musig2.session_expired", "The secret nonce expired");
-    }
-    const message = taprootMessage(parsed.psbt);
-    if (!message || !Buffer.from(message).equals(session.message)) {
-      return failure(id, digest, "musig2.session_mismatch", "The PSBT sighash changed");
-    }
-    const publicNonces = orderedFields(parsed.psbt, 0x1b, 66);
-    if (!publicNonces) {
-      return failure(id, digest, "bip373.nonce_set", "The public nonce set is incomplete");
-    }
-    if (findField(parsed.psbt, 0x1c, PUBLIC_TWO)) {
-      return failure(id, digest, "musig2.duplicate_partial", "The signer partial already exists");
-    }
-    let partial;
     try {
+      if (now() - session.createdAt >= SESSION_TTL_MS) {
+        return failure(id, digest, "musig2.session_expired", "The secret nonce expired");
+      }
+      const message = taprootMessage(parsed.psbt);
+      if (!message || !Buffer.from(message).equals(session.message)) {
+        return failure(id, digest, "musig2.session_mismatch", "The PSBT sighash changed");
+      }
+      const publicNonces = orderedFields(parsed.psbt, 0x1b, 66);
+      if (!publicNonces) {
+        return failure(id, digest, "bip373.nonce_set", "The public nonce set is incomplete");
+      }
+      if (findField(parsed.psbt, 0x1c, PUBLIC_TWO)) {
+        return failure(id, digest, "musig2.duplicate_partial", "The signer partial already exists");
+      }
       const signingSession = new musig2.Session(
         musig2.nonceAggregate(publicNonces),
         PUBLIC_KEYS,
         message,
       );
-      partial = Buffer.from(signingSession.sign(Buffer.from(session.secretNonce), SECRET_TWO));
+      const partial = Buffer.from(signingSession.sign(secretNonce, SECRET_TWO));
       if (!signingSession.partialSigVerify(partial, publicNonces, 1)) throw new Error("invalid");
       addField(parsed.psbt, 0x1c, PUBLIC_TWO, partial);
+      return success(id, digest, {
+        psbt: parsed.psbt.toBase64(),
+        partialSignature: partial.toString("hex"),
+      });
     } catch {
       return failure(id, digest, "musig2.partial_sign", "MuSig2 partial signing failed");
+    } finally {
+      secretNonce.fill(0);
     }
-    return success(id, digest, {
-      psbt: parsed.psbt.toBase64(),
-      partialSignature: partial.toString("hex"),
-    });
   }
 
   function handleAggregate(id, digest, payload) {
@@ -539,7 +583,7 @@ export function createMusig2ScureAdapter(config = parseFixtureCommitments()) {
       case "native-parse":
         return handleNativeParse(id, digest, value.payload);
       case "roundtrip":
-        return handleRoundtrip(id, digest, value.payload);
+        return handleRoundtrip(id, digest, value.payload, config);
       case "musig2-nonce":
         return handleNonce(id, digest, value.payload);
       case "musig2-partial-sign":
@@ -562,56 +606,87 @@ export function createMusig2ScureAdapter(config = parseFixtureCommitments()) {
 
 async function run() {
   const digest = artifactDigest();
-  const adapter = createMusig2ScureAdapter(
-    parseFixtureCommitments(process.env["PSBT_LAB_FIXTURE_COMMITMENTS"]),
-  );
-  let buffered = "";
-  process.stdin.setEncoding("utf8");
-  process.stdin.on("data", (chunk) => {
-    buffered += chunk;
-    if (Buffer.byteLength(buffered, "utf8") > MAX_LINE_BYTES) {
-      process.exitCode = 1;
-      process.stdin.destroy(new Error("Request line exceeded the adapter limit"));
-      return;
-    }
-    let newline = buffered.indexOf("\n");
-    while (newline >= 0) {
-      const line = buffered.slice(0, newline);
-      buffered = buffered.slice(newline + 1);
-      if (line.length > 0) {
-        let response;
-        try {
-          response = adapter.handleValue(JSON.parse(line), digest);
-        } catch {
-          response = failure(
-            "invalid-1",
-            digest,
-            "protocol.invalid_json",
-            "Request line is not valid JSON",
-          );
-        }
-        process.stdout.write(`${JSON.stringify(response)}\n`);
-      }
-      newline = buffered.indexOf("\n");
-    }
+  const adapter = createMusig2ScureAdapter({
+    ...parseFixtureCommitments(process.env["PSBT_LAB_FIXTURE_COMMITMENTS"]),
+    ...parseAuthorizedWitnessValue(process.env["PSBT_LAB_MUSIG2_WITNESS_VALUE_SATS"]),
   });
-  await once(process.stdin, "end");
-  if (buffered.length > 0) {
-    let response;
-    try {
-      response = adapter.handleValue(JSON.parse(buffered), digest);
-    } catch {
-      response = failure(
+  const writeResponse = async (response) => {
+    if (!process.stdout.write(`${JSON.stringify(response)}\n`)) {
+      await once(process.stdout, "drain");
+    }
+  };
+  const rejectOversized = () =>
+    writeResponse(
+      failure(
         "invalid-1",
         digest,
-        "protocol.invalid_json",
-        "Request line is not valid JSON",
+        "protocol.line_too_large",
+        "Request line exceeds the 4 MiB limit",
+      ),
+    );
+  const handleLine = async (line) => {
+    let value;
+    try {
+      value = JSON.parse(line.toString("utf8"));
+    } catch {
+      await writeResponse(
+        failure("invalid-1", digest, "protocol.invalid_json", "Request line is not valid JSON"),
+      );
+      return;
+    }
+    try {
+      await writeResponse(adapter.handleValue(value, digest));
+    } catch {
+      await writeResponse(
+        failure(
+          fallbackId(value),
+          digest,
+          "adapter.internal_error",
+          "The adapter failed while handling the request",
+          "crashed",
+        ),
       );
     }
-    process.stdout.write(`${JSON.stringify(response)}\n`);
+  };
+
+  let fragments = [];
+  let lineBytes = 0;
+  let discarding = false;
+  for await (const rawChunk of process.stdin) {
+    const chunk = Buffer.isBuffer(rawChunk) ? rawChunk : Buffer.from(rawChunk);
+    let start = 0;
+    while (start < chunk.length) {
+      const newline = chunk.indexOf(0x0a, start);
+      const end = newline === -1 ? chunk.length : newline;
+      const length = end - start;
+      if (discarding) {
+        if (newline !== -1) {
+          await rejectOversized();
+          discarding = false;
+        }
+      } else if (lineBytes + length > MAX_LINE_BYTES) {
+        fragments = [];
+        lineBytes = 0;
+        if (newline === -1) discarding = true;
+        else await rejectOversized();
+      } else {
+        if (length > 0) fragments.push(chunk.subarray(start, end));
+        lineBytes += length;
+        if (newline !== -1) {
+          if (lineBytes > 0) await handleLine(Buffer.concat(fragments, lineBytes));
+          fragments = [];
+          lineBytes = 0;
+        }
+      }
+      start = newline === -1 ? chunk.length : newline + 1;
+    }
   }
+  if (discarding) await rejectOversized();
+  else if (lineBytes > 0) await handleLine(Buffer.concat(fragments, lineBytes));
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
-  await run();
+  await run().catch(() => {
+    process.exitCode = 1;
+  });
 }

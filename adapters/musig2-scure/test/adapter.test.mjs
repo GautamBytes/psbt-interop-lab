@@ -9,7 +9,13 @@ import * as musig2 from "@scure/btc-signer/musig2.js";
 import * as bitcoin from "bitcoinjs-lib";
 import * as ecc from "tiny-secp256k1";
 
-import { createMusig2ScureAdapter, PROTOCOL, parseFixtureCommitments } from "../adapter.mjs";
+import {
+  createMusig2ScureAdapter,
+  MAX_LINE_BYTES,
+  PROTOCOL,
+  parseAuthorizedWitnessValue,
+  parseFixtureCommitments,
+} from "../adapter.mjs";
 
 bitcoin.initEccLib(ecc);
 
@@ -74,6 +80,7 @@ function unsignedCommitment(psbt) {
 function fixtureConfig(psbt, overrides = {}) {
   return {
     fixtureCommitments: new Map([["p2tr-musig2", unsignedCommitment(psbt)]]),
+    authorizedWitnessValue: psbt.data.inputs[0].witnessUtxo.value,
     randomBytes: () => Buffer.alloc(32, 7),
     now: () => 1_000,
     ...overrides,
@@ -215,6 +222,27 @@ test("refuses nonce reuse and consumes a secret nonce after partial signing", ()
   assert.equal(repeated.error.class, "musig2.session_missing");
 });
 
+test("zeroes transient CSPRNG seed material after nonce generation", () => {
+  const source = fixturePsbt();
+  const seed = Buffer.alloc(32, 9);
+  const adapter = createMusig2ScureAdapter(
+    fixtureConfig(source, {
+      randomBytes: () => seed,
+    }),
+  );
+  const result = adapter.handleValue(
+    request("musig2-nonce", {
+      psbt: source.toBase64(),
+      fixtureId: "p2tr-musig2",
+      sessionId: "zero-seed",
+    }),
+    DIGEST,
+  );
+
+  assert.equal(result.status, "ok");
+  assert.deepEqual(seed, Buffer.alloc(32));
+});
+
 test("bounds live nonce sessions and permanently consumes expired session identifiers", () => {
   const source = fixturePsbt();
   let clock = 1_000;
@@ -280,6 +308,20 @@ test("rejects uncommitted fixtures and malformed request shapes", () => {
   const malformed = adapter.handleValue(request("native-parse", { psbt: "cHNidP8" }), DIGEST);
   assert.equal(malformed.status, "rejected");
   assert.equal(malformed.error.class, "psbt.native_parse_failed");
+
+  const authorizedWitness = fixturePsbt();
+  const wrongWitnessAmount = fixturePsbt();
+  wrongWitnessAmount.data.inputs[0].witnessUtxo.value -= 1n;
+  const amountResult = createMusig2ScureAdapter(fixtureConfig(authorizedWitness)).handleValue(
+    request("musig2-nonce", {
+      psbt: wrongWitnessAmount.toBase64(),
+      fixtureId: "p2tr-musig2",
+      sessionId: "wrong-witness-amount",
+    }),
+    DIGEST,
+  );
+  assert.equal(amountResult.status, "rejected");
+  assert.equal(amountResult.error.class, "bip373.invalid");
 });
 
 test("strictly parses one bounded fixture commitment", () => {
@@ -292,6 +334,18 @@ test("strictly parses one bounded fixture commitment", () => {
   assert.equal(
     parseFixtureCommitments(JSON.stringify({ "p2tr-musig2": valid, extra: valid }))
       .fixtureCommitmentsError,
+    "invalid",
+  );
+});
+
+test("strictly parses the separately authorized witness value", () => {
+  assert.deepEqual(parseAuthorizedWitnessValue("312500000"), {
+    authorizedWitnessValue: 312_500_000n,
+  });
+  assert.equal(parseAuthorizedWitnessValue(undefined).authorizedWitnessValueError, "missing");
+  assert.equal(parseAuthorizedWitnessValue("0").authorizedWitnessValueError, "invalid");
+  assert.equal(
+    parseAuthorizedWitnessValue("2100000000000001").authorizedWitnessValueError,
     "invalid",
   );
 });
@@ -311,4 +365,26 @@ test("process returns one protocol response for one JSONL request", () => {
   const response = JSON.parse(child.stdout);
   assert.equal(response.status, "ok");
   assert.equal(response.implementation.name, "musig2-scure-signer-2");
+});
+
+test("process rejects and discards an oversized JSONL request without crashing", () => {
+  const child = spawnSync(process.execPath, [ENTRYPOINT], {
+    input: `${"x".repeat(MAX_LINE_BYTES + 1)}\n${JSON.stringify(request("hello"))}\n`,
+    encoding: "utf8",
+    env: {
+      PATH: process.env.PATH,
+      PSBT_LAB_FIXTURE_COMMITMENTS: JSON.stringify({
+        "p2tr-musig2": `sha256:${"c".repeat(64)}`,
+      }),
+    },
+  });
+  assert.equal(child.status, 0, child.stderr);
+  const responses = child.stdout
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line));
+  assert.equal(responses.length, 2);
+  assert.equal(responses[0].status, "rejected");
+  assert.equal(responses[0].error.class, "protocol.line_too_large");
+  assert.equal(responses[1].status, "ok");
 });

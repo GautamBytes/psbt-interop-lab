@@ -5,9 +5,10 @@ This adapter supplies participant two in the bundled BIP373 proof. It uses
 crate. The lab exchanges their public nonces and partial signatures, verifies both contributions,
 aggregates a BIP340 signature, and requires Bitcoin Core to accept the resulting Taproot spend.
 
-The signer accepts only the committed public `p2tr-musig2` regtest fixture. Secret nonces are kept
-in bounded process memory, expire after 15 minutes, and are consumed once. The fixed scalar two is
-public test material with no economic value.
+The signer accepts only the committed public `p2tr-musig2` regtest fixture, including its separately
+authorized witness value. Secret nonces are kept in bounded process memory, expire after 15 minutes,
+are consumed once, and are explicitly zeroed when discarded. The fixed scalar two is public test
+material with no economic value.
 
 ```bash
 npm ci --ignore-scripts

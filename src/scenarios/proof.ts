@@ -1123,6 +1123,7 @@ const PSBTV2_COMMITMENT_FIXTURES: readonly BuiltInFixtureId[] = [
 ];
 const MUSIG2_COMMITMENT_FIXTURES: readonly BuiltInFixtureId[] = ["p2tr-musig2"];
 const HWI_COMMITMENT_FIXTURES: readonly BuiltInFixtureId[] = ["p2wpkh"];
+const MUSIG2_WITNESS_VALUE_ENV = "PSBT_LAB_MUSIG2_WITNESS_VALUE_SATS";
 
 function preparedFixture(
   fixtures: PreparedFixtureSet | undefined,
@@ -1187,10 +1188,27 @@ function adapterOptions(
   if (commitments.length === 0) {
     return signerSelector ? { env: { PSBT_LAB_MUSIG2_SIGNER: signerSelector } } : {};
   }
+  const scureWitnessValue = (() => {
+    if (id !== "musig2-scure-signer-2") return undefined;
+    const fixture = commitments[0];
+    const outpoint = fixture?.outpoints[0];
+    if (
+      commitments.length !== 1 ||
+      fixture?.inputCount !== 1 ||
+      fixture.outpoints.length !== 1 ||
+      !outpoint ||
+      !Number.isSafeInteger(outpoint.amountSats) ||
+      outpoint.amountSats <= 0
+    ) {
+      throw new Error("The Scure MuSig2 signer requires one authorized fixture witness value");
+    }
+    return String(outpoint.amountSats);
+  })();
   return {
     env: {
       [FIXTURE_COMMITMENTS_ENV]: serializeFixtureCommitments(commitments),
       ...(signerSelector ? { PSBT_LAB_MUSIG2_SIGNER: signerSelector } : {}),
+      ...(scureWitnessValue ? { [MUSIG2_WITNESS_VALUE_ENV]: scureWitnessValue } : {}),
     },
   };
 }
