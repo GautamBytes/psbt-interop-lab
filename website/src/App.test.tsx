@@ -52,6 +52,33 @@ describe("PSBT Interop Lab website", () => {
     expect(screen.getByText(/available now as version 0\.9\.0/i)).toBeInTheDocument();
   });
 
+  it("replaces footer resources with the maintainer reach-out links", () => {
+    render(<App />);
+
+    const footer = screen.getByText("PSBT Interop Lab 0.9.0").closest("footer");
+    if (!footer) throw new Error("Expected the site footer");
+    const profiles = within(footer).getByRole("navigation", {
+      name: "Gautam Manchandani profiles",
+    });
+    expect(within(footer).queryByRole("link", { name: "Security" })).not.toBeInTheDocument();
+    expect(within(profiles).getByText("Reach out")).toBeInTheDocument();
+
+    const links = [
+      ["X", "https://x.com/GautamM96"],
+      ["LinkedIn", "https://www.linkedin.com/in/gautam-manchandani/"],
+      ["GitHub", "https://github.com/GautamBytes"],
+    ] as const;
+
+    for (const [name, href] of links) {
+      expect(within(profiles).getByRole("link", { name })).toHaveAttribute("href", href);
+      expect(within(profiles).getByRole("link", { name })).toHaveAttribute("target", "_blank");
+      expect(within(profiles).getByRole("link", { name })).toHaveAttribute(
+        "rel",
+        "noreferrer noopener",
+      );
+    }
+  });
+
   it("groups the complete coverage surface into four scannable areas", () => {
     render(<App />);
 

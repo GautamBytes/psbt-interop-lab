@@ -1694,11 +1694,30 @@ svg {
   display: flex;
   min-height: 72px;
   align-items: center;
+  justify-content: space-between;
+}
+
+.site-footer__meta,
+.site-footer__profiles {
+  display: flex;
+  align-items: center;
   gap: 24px;
 }
 
-.site-footer a:first-of-type {
+.site-footer__profiles {
   margin-left: auto;
+}
+
+.site-footer__profiles > span {
+  color: var(--text-muted);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.site-footer__profiles a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .dialog-backdrop {
@@ -3275,7 +3294,14 @@ svg {
     gap: 10px 18px;
   }
 
-  .site-footer a:first-of-type {
+  .site-footer__meta,
+  .site-footer__profiles {
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 10px 18px;
+  }
+
+  .site-footer__profiles {
     margin-left: 0;
   }
 
