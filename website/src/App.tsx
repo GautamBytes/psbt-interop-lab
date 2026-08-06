@@ -8,8 +8,6 @@ import { ProofWalkthrough } from "./components/ProofWalkthrough";
 import { RepositoryResourcePage } from "./components/RepositoryResourcePage";
 import { SearchDialog } from "./components/SearchDialog";
 import { Sections } from "./components/Sections";
-import { SiteLink } from "./components/SiteLink";
-import { repositoryUrl } from "./content";
 import { useRoute } from "./hooks/useRoute";
 import { findDocument } from "./pages/documents";
 import { NotFoundPage } from "./pages/NotFoundPage";
@@ -133,10 +131,26 @@ export function App() {
       <main id="main-content">{page}</main>
       <footer className="site-footer">
         <div className="page-shell">
-          <span>PSBT Interop Lab {releaseFacts.version}</span>
-          <span>MIT licensed</span>
-          <SiteLink href={routes.security}>Security</SiteLink>
-          <a href={repositoryUrl}>GitHub</a>
+          <div className="site-footer__meta">
+            <span>PSBT Interop Lab {releaseFacts.version}</span>
+            <span>MIT licensed</span>
+          </div>
+          <nav aria-label="Gautam Manchandani profiles" className="site-footer__profiles">
+            <span>Reach out</span>
+            <a href="https://x.com/GautamM96" rel="noreferrer noopener" target="_blank">
+              X <span aria-hidden="true">↗</span>
+            </a>
+            <a
+              href="https://www.linkedin.com/in/gautam-manchandani/"
+              rel="noreferrer noopener"
+              target="_blank"
+            >
+              LinkedIn <span aria-hidden="true">↗</span>
+            </a>
+            <a href="https://github.com/GautamBytes" rel="noreferrer noopener" target="_blank">
+              GitHub <span aria-hidden="true">↗</span>
+            </a>
+          </nav>
         </div>
       </footer>
       <SearchDialog open={searchOpen} onClose={closeSearch} />
