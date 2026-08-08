@@ -103,6 +103,10 @@ function validV2Output(): Buffer[] {
   ];
 }
 
+function silentPaymentInfo(scanKey = secp256k1Generator, spendKey = secp256k1Scalar2): Buffer {
+  return Buffer.concat([scanKey, spendKey]);
+}
+
 interface XpubOptions {
   version?: Buffer;
   depth?: number;
@@ -310,6 +314,269 @@ describe("parsePsbtDocument", () => {
     );
 
     expectDocumentError(psbt, "MISSING_REQUIRED_FIELD", { kind: "output", index: 0 }, missingType);
+  });
+
+  test("accepts an in-progress BIP375 output without PSBT_OUT_SCRIPT", () => {
+    const document = parsePsbtDocument(
+      framedPsbt(validV2Global(), validV2Input(), [
+        entry(0x03, Buffer.from("1027000000000000", "hex")),
+        entry(0x09, silentPaymentInfo()),
+      ]).toString("base64"),
+    );
+
+    expect(document.maps[2]?.entries.map(({ keyType }) => keyType)).toEqual([0x03, 0x09]);
+  });
+
+  test("requires PSBT_OUT_SP_V0_INFO when a Silent Payment label is present", () => {
+    expectDocumentError(
+      framedPsbt(validV2Global(), validV2Input(), [
+        entry(0x03, Buffer.from("1027000000000000", "hex")),
+        entry(0x04, Buffer.from("51", "hex")),
+        entry(0x0a, Buffer.from("01000000", "hex")),
+      ]),
+      "MISSING_REQUIRED_FIELD",
+      { kind: "output", index: 0 },
+      0x09,
+    );
+    expectDocumentError(
+      framedPsbt(validV2Global(), validV2Input(), [
+        entry(0x03, Buffer.from("1027000000000000", "hex")),
+        entry(0x0a, Buffer.from("01000000", "hex")),
+      ]),
+      "MISSING_REQUIRED_FIELD",
+      { kind: "output", index: 0 },
+      0x09,
+    );
+  });
+
+  test("requires paired BIP375 ECDH shares and DLEQ proofs", () => {
+    expectDocumentError(
+      framedPsbt(
+        [...validV2Global(), entry(0x07, secp256k1Scalar2, secp256k1Generator)],
+        validV2Input(),
+        validV2Output(),
+      ),
+      "MISSING_REQUIRED_FIELD",
+      { kind: "global" },
+      0x08,
+    );
+    expectDocumentError(
+      framedPsbt(
+        validV2Global(),
+        [...validV2Input(), entry(0x1e, Buffer.alloc(64), secp256k1Generator)],
+        validV2Output(),
+      ),
+      "MISSING_REQUIRED_FIELD",
+      { kind: "input", index: 0 },
+      0x1d,
+    );
+  });
+
+  test("accepts structurally paired BIP375 global and input contributions", () => {
+    const document = parsePsbtDocument(
+      framedPsbt(
+        [
+          ...validV2Global(),
+          entry(0x07, secp256k1Scalar2, secp256k1Generator),
+          entry(0x08, Buffer.alloc(64, 0x11), secp256k1Generator),
+        ],
+        [
+          ...validV2Input(),
+          entry(0x1d, secp256k1Scalar2, secp256k1Generator),
+          entry(0x1e, Buffer.alloc(64, 0x22), secp256k1Generator),
+        ],
+        validV2Output(),
+      ).toString("base64"),
+    );
+
+    expect(document.maps[0]?.entries.slice(-2).map(({ keyType }) => keyType)).toEqual([0x07, 0x08]);
+    expect(document.maps[1]?.entries.slice(-2).map(({ keyType }) => keyType)).toEqual([0x1d, 0x1e]);
+  });
+
+  test("requires PSBT_GLOBAL_TX_MODIFIABLE to be zero after computing a Silent Payment script", () => {
+    const output = [...validV2Output(), entry(0x09, silentPaymentInfo())];
+
+    expectDocumentError(
+      framedPsbt(validV2Global(), validV2Input(), output),
+      "MISSING_REQUIRED_FIELD",
+      { kind: "global" },
+      0x06,
+    );
+    expectDocumentError(
+      framedPsbt([...validV2Global(), entry(0x06, Buffer.from([1]))], validV2Input(), output),
+      "INVALID_FIELD",
+      { kind: "global" },
+      0x06,
+    );
+    expect(() =>
+      parsePsbtDocument(
+        framedPsbt(
+          [...validV2Global(), entry(0x06, Buffer.from([0]))],
+          validV2Input(),
+          output,
+        ).toString("base64"),
+      ),
+    ).not.toThrow();
+  });
+
+  test("accepts structurally valid BIP376 spend fields", () => {
+    const document = parsePsbtDocument(
+      framedPsbt(
+        validV2Global(),
+        [
+          ...validV2Input(),
+          entry(0x1f, Buffer.from("0000000001000080", "hex"), secp256k1Generator),
+          entry(0x20, Buffer.alloc(32, 0x44)),
+        ],
+        validV2Output(),
+      ).toString("base64"),
+    );
+
+    expect(document.maps[1]?.entries.slice(-2).map(({ keyType }) => keyType)).toEqual([0x1f, 0x20]);
+  });
+
+  test.each([
+    {
+      name: "global ECDH scan key",
+      global: [entry(0x07, secp256k1Scalar2, Buffer.alloc(32))],
+      input: [],
+      output: [],
+      location: { kind: "global" } as const,
+      keyType: 0x07,
+    },
+    {
+      name: "global ECDH share",
+      global: [entry(0x07, Buffer.alloc(32), secp256k1Generator)],
+      input: [],
+      output: [],
+      location: { kind: "global" } as const,
+      keyType: 0x07,
+    },
+    {
+      name: "global DLEQ proof",
+      global: [entry(0x08, Buffer.alloc(63), secp256k1Generator)],
+      input: [],
+      output: [],
+      location: { kind: "global" } as const,
+      keyType: 0x08,
+    },
+    {
+      name: "input ECDH share",
+      global: [],
+      input: [entry(0x1d, Buffer.alloc(34), secp256k1Generator)],
+      output: [],
+      location: { kind: "input", index: 0 } as const,
+      keyType: 0x1d,
+    },
+    {
+      name: "input DLEQ scan key",
+      global: [],
+      input: [entry(0x1e, Buffer.alloc(64), invalidSecp256k1X)],
+      output: [],
+      location: { kind: "input", index: 0 } as const,
+      keyType: 0x1e,
+    },
+    {
+      name: "Silent Payment info key data",
+      global: [],
+      input: [],
+      output: [entry(0x09, silentPaymentInfo(), Buffer.from([1]))],
+      location: { kind: "output", index: 0 } as const,
+      keyType: 0x09,
+    },
+    {
+      name: "Silent Payment info length",
+      global: [],
+      input: [],
+      output: [entry(0x09, Buffer.alloc(65))],
+      location: { kind: "output", index: 0 } as const,
+      keyType: 0x09,
+    },
+    {
+      name: "Silent Payment info public key",
+      global: [],
+      input: [],
+      output: [entry(0x09, silentPaymentInfo(Buffer.alloc(33), secp256k1Scalar2))],
+      location: { kind: "output", index: 0 } as const,
+      keyType: 0x09,
+    },
+    {
+      name: "Silent Payment label key data",
+      global: [],
+      input: [],
+      output: [entry(0x0a, Buffer.alloc(4), Buffer.from([1]))],
+      location: { kind: "output", index: 0 } as const,
+      keyType: 0x0a,
+    },
+    {
+      name: "Silent Payment label length",
+      global: [],
+      input: [],
+      output: [entry(0x0a, Buffer.alloc(3))],
+      location: { kind: "output", index: 0 } as const,
+      keyType: 0x0a,
+    },
+    {
+      name: "Silent Payment spend derivation key",
+      global: [],
+      input: [entry(0x1f, Buffer.alloc(4), Buffer.alloc(32))],
+      output: [],
+      location: { kind: "input", index: 0 } as const,
+      keyType: 0x1f,
+    },
+    {
+      name: "Silent Payment spend derivation value",
+      global: [],
+      input: [entry(0x1f, Buffer.alloc(5), secp256k1Generator)],
+      output: [],
+      location: { kind: "input", index: 0 } as const,
+      keyType: 0x1f,
+    },
+    {
+      name: "Silent Payment tweak key data",
+      global: [],
+      input: [entry(0x20, Buffer.alloc(32), Buffer.from([1]))],
+      output: [],
+      location: { kind: "input", index: 0 } as const,
+      keyType: 0x20,
+    },
+    {
+      name: "Silent Payment tweak length",
+      global: [],
+      input: [entry(0x20, Buffer.alloc(31))],
+      output: [],
+      location: { kind: "input", index: 0 } as const,
+      keyType: 0x20,
+    },
+  ])("rejects malformed $name fields", ({ global, input, output, location, keyType }) => {
+    const outputEntries = output.length > 0 ? [...validV2Output(), ...output] : validV2Output();
+    expectDocumentError(
+      framedPsbt([...validV2Global(), ...global], [...validV2Input(), ...input], outputEntries),
+      "INVALID_FIELD",
+      location,
+      keyType,
+    );
+  });
+
+  test("rejects BIP375 and BIP376 fields outside PSBTv2", () => {
+    expectDocumentError(
+      psbtV0([entry(0x07, secp256k1Scalar2, secp256k1Generator)]),
+      "FORBIDDEN_FIELD",
+      { kind: "global" },
+      0x07,
+    );
+    expectDocumentError(
+      psbtV0([], [entry(0x20, Buffer.alloc(32))]),
+      "FORBIDDEN_FIELD",
+      { kind: "input", index: 0 },
+      0x20,
+    );
+    expectDocumentError(
+      psbtV0([], [], [entry(0x09, silentPaymentInfo())]),
+      "FORBIDDEN_FIELD",
+      { kind: "output", index: 0 },
+      0x09,
+    );
   });
 
   test("rejects PSBTv2-only fields in PSBTv0 maps", () => {
