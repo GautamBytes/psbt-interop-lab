@@ -359,6 +359,46 @@ describe("CLI program", () => {
     }
   }, 35_000);
 
+  test("runs a zero-resource reference scenario without invoking Docker", () => {
+    const directory = mkdtempSync(resolve(tmpdir(), "psbt-lab-reference-"));
+    const marker = resolve(directory, "docker-invoked");
+    const docker = resolve(directory, "docker");
+    const artifacts = resolve(directory, "artifacts");
+    const entrypoint = fileURLToPath(new URL("../src/cli.ts", import.meta.url));
+    writeFileSync(docker, `#!/bin/sh\ntouch ${JSON.stringify(marker)}\nexit 99\n`);
+    chmodSync(docker, 0o700);
+
+    try {
+      const result = spawnSync(
+        process.execPath,
+        [
+          "--import",
+          "tsx",
+          entrypoint,
+          "run",
+          "--scenario",
+          "bip375-official-reference-vectors",
+          "--artifacts",
+          artifacts,
+        ],
+        {
+          encoding: "utf8",
+          timeout: 30_000,
+          env: { ...process.env, PATH: `${directory}:${process.env["PATH"] ?? ""}` },
+        },
+      );
+
+      expect(result.status).toBe(0);
+      expect(result.stderr).toBe("");
+      expect(result.stdout).toContain("PSBT Interop Lab: PASSED");
+      expect(result.stdout).toContain("PASS  bip375-official-reference-vectors");
+      expect(result.stdout).toContain("Core: not required by selected scenarios");
+      expect(existsSync(marker)).toBe(false);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  }, 35_000);
+
   test("runs when launched through an npm-style executable symlink", () => {
     const directory = mkdtempSync(resolve(tmpdir(), "psbt-lab-cli-"));
     const entrypoint = resolve(directory, "psbt-lab.ts");

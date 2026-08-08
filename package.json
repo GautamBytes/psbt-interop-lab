@@ -124,6 +124,7 @@
   },
   "packageManager": "pnpm@10.30.2",
   "dependencies": {
+    "@noble/curves": "2.3.0",
     "commander": "15.0.0"
   },
   "devDependencies": {

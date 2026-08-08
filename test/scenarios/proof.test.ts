@@ -701,6 +701,7 @@ describe("proof runtime", () => {
       "bip371-official-vectors-bdk-wallet-current",
       "psbtv2-taproot-rust-to-libwally",
       "psbtv2-taproot-libwally-to-rust",
+      "bip375-official-reference-vectors",
     ]);
   });
 
