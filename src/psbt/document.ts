@@ -131,6 +131,33 @@ function requireField(
   }
 }
 
+function requirePairedFields(
+  entries: InternalEntry[],
+  location: PsbtMapLocation,
+  leftType: number,
+  leftLabel: string,
+  rightType: number,
+  rightLabel: string,
+): void {
+  for (const entry of entries.filter(
+    (candidate) => candidate.keyType === leftType || candidate.keyType === rightType,
+  )) {
+    const pairedType = entry.keyType === leftType ? rightType : leftType;
+    const pairedLabel = entry.keyType === leftType ? rightLabel : leftLabel;
+    const hasPair = entries.some(
+      (candidate) => candidate.keyType === pairedType && candidate.keyData.equals(entry.keyData),
+    );
+    if (!hasPair) {
+      fieldError(
+        "MISSING_REQUIRED_FIELD",
+        location,
+        pairedType,
+        `${pairedLabel} is required for the matching Silent Payment scan key`,
+      );
+    }
+  }
+}
+
 function assertNoKeyData(entry: InternalEntry, location: PsbtMapLocation, label: string): void {
   if (entry.keyData.byteLength !== 0) {
     invalidField(location, entry, label, "must not contain key data");
@@ -627,6 +654,9 @@ function validateGlobalMap(entries: InternalEntry[], version: number): void {
     if (version === 2 && entry.keyType === 0x00) {
       forbiddenField(location, entry, "PSBT_GLOBAL_UNSIGNED_TX", version);
     }
+    if (version === 0 && (entry.keyType === 0x07 || entry.keyType === 0x08)) {
+      forbiddenField(location, entry, "BIP375 global field", version);
+    }
 
     switch (entry.keyType) {
       case 0x00:
@@ -661,6 +691,29 @@ function validateGlobalMap(entries: InternalEntry[], version: number): void {
         assertNoKeyData(entry, location, "PSBT_GLOBAL_TX_MODIFIABLE");
         assertValueLength(entry, location, "PSBT_GLOBAL_TX_MODIFIABLE", 1);
         break;
+      case 0x07:
+        assertCompressedPublicKeyBytes(
+          entry.keyData,
+          entry,
+          location,
+          "PSBT_GLOBAL_SP_ECDH_SHARE scan key",
+        );
+        assertCompressedPublicKeyBytes(
+          entry.value,
+          entry,
+          location,
+          "PSBT_GLOBAL_SP_ECDH_SHARE value",
+        );
+        break;
+      case 0x08:
+        assertCompressedPublicKeyBytes(
+          entry.keyData,
+          entry,
+          location,
+          "PSBT_GLOBAL_SP_DLEQ scan key",
+        );
+        assertValueLength(entry, location, "PSBT_GLOBAL_SP_DLEQ", 64);
+        break;
       case 0xfb:
         assertNoKeyData(entry, location, "PSBT_GLOBAL_VERSION");
         assertValueLength(entry, location, "PSBT_GLOBAL_VERSION", 4);
@@ -678,6 +731,14 @@ function validateGlobalMap(entries: InternalEntry[], version: number): void {
     requireField(entries, location, 0x02, "PSBT_GLOBAL_TX_VERSION");
     requireField(entries, location, 0x04, "PSBT_GLOBAL_INPUT_COUNT");
     requireField(entries, location, 0x05, "PSBT_GLOBAL_OUTPUT_COUNT");
+    requirePairedFields(
+      entries,
+      location,
+      0x07,
+      "PSBT_GLOBAL_SP_ECDH_SHARE",
+      0x08,
+      "PSBT_GLOBAL_SP_DLEQ",
+    );
   }
 }
 
@@ -686,6 +747,9 @@ function validateInputMap(map: InternalMap, version: number): void {
   for (const entry of entries) {
     if (version === 0 && entry.keyType >= 0x0e && entry.keyType <= 0x12) {
       forbiddenField(location, entry, "BIP370 input field", version);
+    }
+    if (version === 0 && entry.keyType >= 0x1d && entry.keyType <= 0x20) {
+      forbiddenField(location, entry, "Silent Payment input field", version);
     }
 
     switch (entry.keyType) {
@@ -815,6 +879,32 @@ function validateInputMap(map: InternalMap, version: number): void {
       case 0x1c:
         assertMusig2PartialSignature(entry, location, "PSBT_IN_MUSIG2_PARTIAL_SIG");
         break;
+      case 0x1d:
+        assertCompressedPublicKeyBytes(
+          entry.keyData,
+          entry,
+          location,
+          "PSBT_IN_SP_ECDH_SHARE scan key",
+        );
+        assertCompressedPublicKeyBytes(entry.value, entry, location, "PSBT_IN_SP_ECDH_SHARE value");
+        break;
+      case 0x1e:
+        assertCompressedPublicKeyBytes(entry.keyData, entry, location, "PSBT_IN_SP_DLEQ scan key");
+        assertValueLength(entry, location, "PSBT_IN_SP_DLEQ", 64);
+        break;
+      case 0x1f:
+        assertCompressedPublicKeyBytes(
+          entry.keyData,
+          entry,
+          location,
+          "PSBT_IN_SP_SPEND_BIP32_DERIVATION spend key",
+        );
+        assertDerivationValue(entry, location, "PSBT_IN_SP_SPEND_BIP32_DERIVATION");
+        break;
+      case 0x20:
+        assertNoKeyData(entry, location, "PSBT_IN_SP_TWEAK");
+        assertValueLength(entry, location, "PSBT_IN_SP_TWEAK", 32);
+        break;
       case 0xfc:
         assertProprietaryKey(entry, location, "PSBT_IN_PROPRIETARY");
         break;
@@ -824,6 +914,7 @@ function validateInputMap(map: InternalMap, version: number): void {
   if (version === 2) {
     requireField(entries, location, 0x0e, "PSBT_IN_PREVIOUS_TXID");
     requireField(entries, location, 0x0f, "PSBT_IN_OUTPUT_INDEX");
+    requirePairedFields(entries, location, 0x1d, "PSBT_IN_SP_ECDH_SHARE", 0x1e, "PSBT_IN_SP_DLEQ");
   }
 }
 
@@ -832,6 +923,9 @@ function validateOutputMap(map: InternalMap, version: number): void {
   for (const entry of entries) {
     if (version === 0 && (entry.keyType === 0x03 || entry.keyType === 0x04)) {
       forbiddenField(location, entry, "BIP370 output field", version);
+    }
+    if (version === 0 && (entry.keyType === 0x09 || entry.keyType === 0x0a)) {
+      forbiddenField(location, entry, "BIP375 output field", version);
     }
 
     switch (entry.keyType) {
@@ -866,6 +960,26 @@ function validateOutputMap(map: InternalMap, version: number): void {
       case 0x08:
         assertMusig2Participants(entry, location, "PSBT_OUT_MUSIG2_PARTICIPANT_PUBKEYS");
         break;
+      case 0x09:
+        assertNoKeyData(entry, location, "PSBT_OUT_SP_V0_INFO");
+        assertValueLength(entry, location, "PSBT_OUT_SP_V0_INFO", 66);
+        assertCompressedPublicKeyBytes(
+          entry.value.subarray(0, 33),
+          entry,
+          location,
+          "PSBT_OUT_SP_V0_INFO scan key",
+        );
+        assertCompressedPublicKeyBytes(
+          entry.value.subarray(33),
+          entry,
+          location,
+          "PSBT_OUT_SP_V0_INFO spend key",
+        );
+        break;
+      case 0x0a:
+        assertNoKeyData(entry, location, "PSBT_OUT_SP_V0_LABEL");
+        assertValueLength(entry, location, "PSBT_OUT_SP_V0_LABEL", 4);
+        break;
       case 0xfc:
         assertProprietaryKey(entry, location, "PSBT_OUT_PROPRIETARY");
         break;
@@ -874,7 +988,53 @@ function validateOutputMap(map: InternalMap, version: number): void {
 
   if (version === 2) {
     requireField(entries, location, 0x03, "PSBT_OUT_AMOUNT");
-    requireField(entries, location, 0x04, "PSBT_OUT_SCRIPT");
+    const hasScript = entries.some((entry) => entry.keyType === 0x04);
+    const hasSilentPaymentInfo = entries.some((entry) => entry.keyType === 0x09);
+    if (entries.some((entry) => entry.keyType === 0x0a) && !hasSilentPaymentInfo) {
+      requireField(entries, location, 0x09, "PSBT_OUT_SP_V0_INFO");
+    }
+    if (!hasScript && !hasSilentPaymentInfo) {
+      requireField(entries, location, 0x04, "PSBT_OUT_SCRIPT");
+    }
+  }
+}
+
+function validateSilentPaymentState(maps: InternalMap[], version: number): void {
+  if (version !== 2) {
+    return;
+  }
+  const hasComputedSilentPaymentOutput = maps.some(
+    (map) =>
+      map.location.kind === "output" &&
+      map.entries.some((entry) => entry.keyType === 0x09) &&
+      map.entries.some((entry) => entry.keyType === 0x04),
+  );
+  if (!hasComputedSilentPaymentOutput) {
+    return;
+  }
+
+  const globalMap = maps[0];
+  if (globalMap?.location.kind !== "global") {
+    throw new PsbtDocumentError("PSBT is missing its global map");
+  }
+  const transactionModifiable = globalMap.entries.find(
+    (entry) => entry.keyType === 0x06 && entry.keyData.byteLength === 0,
+  );
+  if (!transactionModifiable) {
+    fieldError(
+      "MISSING_REQUIRED_FIELD",
+      globalMap.location,
+      0x06,
+      "PSBT_GLOBAL_TX_MODIFIABLE is required after a Silent Payment output script is computed",
+    );
+  }
+  if (!transactionModifiable.value.equals(Buffer.from([0]))) {
+    invalidField(
+      globalMap.location,
+      transactionModifiable,
+      "PSBT_GLOBAL_TX_MODIFIABLE",
+      "must be zero after a Silent Payment output script is computed",
+    );
   }
 }
 
@@ -886,6 +1046,7 @@ function validateMaps(maps: InternalMap[], version: number): void {
       validateOutputMap(map, version);
     }
   }
+  validateSilentPaymentState(maps, version);
 }
 
 function parseUnsignedTransactionCounts(transaction: Buffer): {
