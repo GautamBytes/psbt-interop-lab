@@ -226,12 +226,14 @@ async function prepareRuntime(
       ...(resources.core ? ["core"] : []),
       ...resources.adapters.map((id) => ADAPTER_COMPOSE_SERVICES[id]),
     ];
-    process.stderr.write("Building required pinned images...\n");
-    await runCommand("docker", ["compose", "build", ...services], {
-      cwd: PROJECT_DIRECTORY,
-      timeoutMs: 10 * 60_000,
-      maxOutputBytes: 8 * 1024 * 1024,
-    });
+    if (services.length > 0) {
+      process.stderr.write("Building required pinned images...\n");
+      await runCommand("docker", ["compose", "build", ...services], {
+        cwd: PROJECT_DIRECTORY,
+        timeoutMs: 10 * 60_000,
+        maxOutputBytes: 8 * 1024 * 1024,
+      });
+    }
   }
   if (options.startCore && resources.core) {
     process.stderr.write("Starting isolated Bitcoin Core regtest...\n");

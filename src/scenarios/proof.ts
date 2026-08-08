@@ -31,6 +31,7 @@ import { createAdversarialSignerScenario } from "./adversarial-signers.js";
 import { classifyRegression, createBdkRegressionScenario } from "./bdk-regression.js";
 import { createBip370VectorScenario } from "./bip370.js";
 import { createBip371VectorScenario } from "./bip371.js";
+import { createBip375ReferenceScenario } from "./bip375.js";
 import { createCombinerConflictScenario } from "./combiner-conflicts.js";
 import { type CorePolicyResult, ScenarioExecutionContext } from "./context.js";
 import {
@@ -372,6 +373,11 @@ export const PROOF_SCENARIOS: readonly ProofScenarioSummary[] = [
     id: "psbtv2-taproot-libwally-to-rust",
     title: "PSBTv2 Taproot libwally to rust-psbt-v2",
     category: "psbtv2-taproot",
+  },
+  {
+    id: "bip375-official-reference-vectors",
+    title: "Official BIP375 Silent Payment reference vectors",
+    category: "silent-payment-conformance",
   },
 ];
 
@@ -876,6 +882,11 @@ export const PROOF_SCENARIO_REGISTRATIONS: readonly ProofScenarioRegistration[] 
       },
       () => taprootPsbtv2Handoff(id),
     ),
+  ),
+  registerScenario(
+    "bip375-official-reference-vectors",
+    { core: false, fixtures: [], adapters: [] },
+    () => createBip375ReferenceScenario(),
   ),
 ];
 
