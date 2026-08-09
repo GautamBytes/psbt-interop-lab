@@ -172,7 +172,7 @@ protocol specification.
   CLI parsing.
 - [Vitest documentation](https://vitest.dev/guide/) defines the test-runner behavior used by the
   TypeScript suite.
-- [Mermaid 11.16.0](https://www.npmjs.com/package/mermaid/v/11.16.0) and its
+- [Mermaid 11.16.1](https://www.npmjs.com/package/mermaid/v/11.16.1) and its
   [render API documentation](https://mermaid.js.org/config/usage.html#api-usage) define the
   strict, lazy-loaded architecture diagram renderer used by the project website.
 - [Docker Compose documentation](https://docs.docker.com/compose/) is the container orchestration

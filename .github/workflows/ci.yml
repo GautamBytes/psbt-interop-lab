@@ -64,6 +64,8 @@ jobs:
       - run: npm test
       - run: npm run typecheck
       - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:browser
 
   rust-adapter:
     name: Rust adapter
