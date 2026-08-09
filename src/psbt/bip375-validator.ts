@@ -37,13 +37,29 @@ export type Bip375ValidationStage =
   | "input eligibility"
   | "output scripts";
 
+export type Bip375FailureClass =
+  | "silent_payment.invalid_dleq"
+  | "silent_payment.missing_dleq"
+  | "silent_payment.incomplete_coverage"
+  | "silent_payment.sighash_not_allowed"
+  | "silent_payment.output_script_mismatch"
+  | "silent_payment.output_order_mismatch"
+  | "silent_payment.invalid_psbt";
+
 export type Bip375ValidationResult =
   | { readonly valid: true }
   | {
       readonly valid: false;
       readonly stage: Bip375ValidationStage;
       readonly message: string;
+      readonly failureClass: Bip375FailureClass;
     };
+
+export type ClassifiedBip375ValidationResult =
+  | { readonly valid: true }
+  | (Extract<Bip375ValidationResult, { valid: false }> & {
+      readonly class: Bip375FailureClass;
+    });
 
 class Bip375ValidationError extends Error {
   override readonly name = "Bip375ValidationError";
@@ -51,13 +67,18 @@ class Bip375ValidationError extends Error {
   constructor(
     readonly stage: Bip375ValidationStage,
     message: string,
+    readonly failureClass: Bip375FailureClass = "silent_payment.invalid_psbt",
   ) {
     super(message);
   }
 }
 
-function fail(stage: Bip375ValidationStage, message: string): never {
-  throw new Bip375ValidationError(stage, message);
+function fail(
+  stage: Bip375ValidationStage,
+  message: string,
+  failureClass: Bip375FailureClass = "silent_payment.invalid_psbt",
+): never {
+  throw new Bip375ValidationError(stage, message, failureClass);
 }
 
 function mapAt(document: PsbtDocument, kind: "global"): PsbtDocumentMap;
@@ -368,19 +389,31 @@ function validateEcdhCoverage(document: PsbtDocument): void {
     const anyInputShare = inputMaps.some((map) => keyed(map, IN_SP_ECDH_SHARE, scanKey));
     const computed = hasComputedOutput(document, scanKey);
     if (computed && !globalShare && !anyInputShare) {
-      fail("ecdh coverage", "Computed Silent Payment output has no ECDH share for its scan key");
+      fail(
+        "ecdh coverage",
+        "Computed Silent Payment output has no ECDH share for its scan key",
+        "silent_payment.incomplete_coverage",
+      );
     }
     if (globalShare) {
       const proof = keyed(globalMap, GLOBAL_SP_DLEQ, scanKey);
       if (!proof) {
-        fail("ecdh coverage", "Global ECDH share is missing its DLEQ proof");
+        fail(
+          "ecdh coverage",
+          "Global ECDH share is missing its DLEQ proof",
+          "silent_payment.missing_dleq",
+        );
       }
       const inputKey = sumPoints(eligibleInputKeys(inputMaps, "ecdh coverage"));
       if (!inputKey) {
         fail("ecdh coverage", "Global ECDH share has no eligible input public keys");
       }
       if (!verifyDleq(inputKey, scanKey, globalShare.value, proof.value)) {
-        fail("ecdh coverage", "Global BIP374 DLEQ proof verification failed");
+        fail(
+          "ecdh coverage",
+          "Global BIP374 DLEQ proof verification failed",
+          "silent_payment.invalid_dleq",
+        );
       }
     } else if (computed) {
       for (const [index, map] of inputMaps.entries()) {
@@ -389,18 +422,30 @@ function validateEcdhCoverage(document: PsbtDocument): void {
         }
         const share = keyed(map, IN_SP_ECDH_SHARE, scanKey);
         if (!share) {
-          fail("ecdh coverage", `Eligible input ${index} is missing an ECDH share`);
+          fail(
+            "ecdh coverage",
+            `Eligible input ${index} is missing an ECDH share`,
+            "silent_payment.incomplete_coverage",
+          );
         }
         const proof = keyed(map, IN_SP_DLEQ, scanKey);
         if (!proof) {
-          fail("ecdh coverage", `Input ${index} ECDH share is missing its DLEQ proof`);
+          fail(
+            "ecdh coverage",
+            `Input ${index} ECDH share is missing its DLEQ proof`,
+            "silent_payment.missing_dleq",
+          );
         }
         const inputKey = inputPublicKey(map, "ecdh coverage");
         if (!inputKey) {
           fail("ecdh coverage", `Input ${index} is missing its public key for DLEQ verification`);
         }
         if (!verifyDleq(inputKey, scanKey, share.value, proof.value)) {
-          fail("ecdh coverage", `Input ${index} BIP374 DLEQ proof verification failed`);
+          fail(
+            "ecdh coverage",
+            `Input ${index} BIP374 DLEQ proof verification failed`,
+            "silent_payment.invalid_dleq",
+          );
         }
       }
     }
@@ -429,7 +474,11 @@ function validateInputEligibility(document: PsbtDocument): void {
     }
     const sighash = singleton(map, IN_SIGHASH_TYPE);
     if (sighash && sighash.value.readUInt32LE(0) !== 1) {
-      fail("input eligibility", `Input ${index} uses a non-SIGHASH_ALL signature`);
+      fail(
+        "input eligibility",
+        `Input ${index} uses a non-SIGHASH_ALL signature`,
+        "silent_payment.sighash_not_allowed",
+      );
     }
   }
 }
@@ -513,6 +562,23 @@ function deriveOutputScript(
 }
 
 function validateOutputScripts(document: PsbtDocument): void {
+  const outputMaps = document.maps.filter(({ location }) => location.kind === "output");
+  const outputOrder = new Map<number, number>();
+  const byScanKey = new Map<string, number[]>();
+  for (const [index, map] of outputMaps.entries()) {
+    const info = singleton(map, OUT_SP_V0_INFO);
+    if (!info) continue;
+    const scanKey = Buffer.from(info.value.subarray(0, 33)).toString("hex");
+    const group = byScanKey.get(scanKey) ?? [];
+    group.push(index);
+    byScanKey.set(scanKey, group);
+  }
+  for (const group of byScanKey.values()) {
+    group.forEach((index, k) => {
+      outputOrder.set(index, k);
+    });
+  }
+
   const transactionOutpoints = outpoints(document);
   const nextK = new Map<string, number>();
   for (let index = 0; index < document.outputCount; index += 1) {
@@ -524,7 +590,7 @@ function validateOutputScripts(document: PsbtDocument): void {
     const scanKey = Buffer.from(info.value.subarray(0, 33));
     const spendKey = Buffer.from(info.value.subarray(33));
     const key = scanKey.toString("hex");
-    const k = nextK.get(key) ?? 0;
+    const k = outputOrder.get(index) ?? nextK.get(key) ?? 0;
     const collected = collectEcdhAndInputKey(document, scanKey);
     const actualScript = singleton(map, OUT_SCRIPT);
     if (collected) {
@@ -536,13 +602,34 @@ function validateOutputScripts(document: PsbtDocument): void {
         k,
       );
       if (actualScript && !actualScript.value.equals(expectedScript)) {
-        fail("output scripts", `Output ${index} does not match its BIP352 derivation`);
+        const groupSize = byScanKey.get(key)?.length ?? 1;
+        const matchesAnotherK = Array.from({ length: groupSize }, (_, candidateK) => candidateK)
+          .filter((candidateK) => candidateK !== k)
+          .some((candidateK) =>
+            actualScript.value.equals(
+              deriveOutputScript(
+                transactionOutpoints,
+                collected.inputKey,
+                collected.ecdhShare,
+                spendKey,
+                candidateK,
+              ),
+            ),
+          );
+        fail(
+          "output scripts",
+          `Output ${index} does not match its BIP352 derivation`,
+          matchesAnotherK
+            ? "silent_payment.output_order_mismatch"
+            : "silent_payment.output_script_mismatch",
+        );
       }
       nextK.set(key, k + 1);
     } else if (actualScript) {
       fail(
         "output scripts",
         `Output ${index} lacks the ECDH share or input keys needed to derive it`,
+        "silent_payment.incomplete_coverage",
       );
     }
   }
@@ -571,17 +658,34 @@ export function validateBip375ReferencePsbt(encoded: string): Bip375ValidationRe
     return { valid: true };
   } catch (error) {
     if (error instanceof Bip375ValidationError) {
-      return { valid: false, stage: error.stage, message: error.message };
+      return {
+        valid: false,
+        stage: error.stage,
+        message: error.message,
+        failureClass: error.failureClass,
+      };
     }
     if (error instanceof PsbtDocumentError) {
-      return { valid: false, stage: parserFailureStage(error), message: error.message };
+      return {
+        valid: false,
+        stage: parserFailureStage(error),
+        message: error.message,
+        failureClass: "silent_payment.invalid_psbt",
+      };
     }
     return {
       valid: false,
       stage: "psbt structure",
       message: error instanceof Error ? error.message : "Unknown BIP375 validation failure",
+      failureClass: "silent_payment.invalid_psbt",
     };
   }
+}
+
+export function classifyBip375ReferencePsbt(encoded: string): ClassifiedBip375ValidationResult {
+  const result = validateBip375ReferencePsbt(encoded);
+  if (result.valid) return result;
+  return { ...result, class: result.failureClass };
 }
 
 function runValidationStage(stage: Bip375ValidationStage, validate: () => void): void {

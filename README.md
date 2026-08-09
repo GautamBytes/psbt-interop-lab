@@ -36,7 +36,7 @@ semantic detector canaries, then completes one real Bitcoin Core -> rust-bitcoin
 signing and finalization handoff. It writes the same replayable reports as the full suite and stops
 the local regtest node automatically.
 
-For exhaustive compatibility testing, install the CLI once and run the complete 51-scenario matrix:
+For exhaustive compatibility testing, install the CLI once and run the complete 52-scenario matrix:
 
 ```bash
 npm install --global psbt-interop-lab@0.9.0
@@ -165,7 +165,7 @@ preservation. It executes the configured command directly with `shell: false`; t
 manifest must therefore be treated as trusted local code. See [the adapter guide](docs/adapters.md)
 and the bundled [manifest schema](src/conformance/adapter-manifest.schema.json).
 
-The matrix keeps all 51 bundled scenarios and appends native-parse and semantic-roundtrip cells for
+The matrix keeps all 52 bundled scenarios and appends native-parse and semantic-roundtrip cells for
 each external adapter across P2WPKH, nested P2SH-P2WPKH, P2WSH, Taproot key-path, and Taproot
 script-path fixtures. It also appends signing handoffs when the adapter declares the matching
 signer capabilities and the `fixture-commitment-sha256` safety feature.
@@ -256,7 +256,7 @@ fixtures. Custom signing is capability-gated and runs only when an adapter expli
 
 ## Current Coverage
 
-The suite currently runs 51 scenarios:
+The suite currently runs 52 scenarios:
 
 - Core-created P2PKH, P2WPKH, P2WSH, nested P2SH-P2WSH, and Taproot key-path signing handoffs
   through rust-bitcoin, btcsuite, bitcoinjs-lib, and current BDK Wallet
@@ -279,6 +279,11 @@ The suite currently runs 51 scenarios:
 - All 14 valid and 21 invalid official BIP370 vectors through rust-psbt-v2 and libwally
 - A bounded BIP375 sender workflow that derives and verifies the Silent Payment share, DLEQ proof,
   and output script from an official fixture before signing, finalizing, and extracting on regtest
+- An advanced BIP375 sender workflow over five additional official fixtures covering global
+  multi-input aggregation, per-input shares, multiple scan keys, labels with ordinary change, and
+  repeated-recipient output ordering. It independently checks returned output scripts and
+  partial-signature fields, reports the fixtures' explicit non-finalization boundary, and verifies
+  stable classifications for invalid proof, coverage, sighash, script, and order cases
 - A bounded BIP376 receiver-spend workflow that preserves the spend key and output tweak through a
   PSBTv2 handoff, derives and verifies the Taproot output key, signs and finalizes natively, removes
   spent signing material, rejects mainnet and wrong-tweak canaries, and requires Core policy acceptance

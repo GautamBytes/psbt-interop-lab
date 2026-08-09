@@ -9,6 +9,11 @@ All notable changes to PSBT Interop Lab are recorded here.
 - A bounded BIP375 Silent Payment sender workflow that derives and independently validates the
   BIP374 DLEQ proof and BIP352 output script, signs and finalizes the pinned official fixture on
   regtest, and rejects mainnet or transaction-intent mutations before signing.
+- An advanced BIP375 sender workflow covering global multi-input aggregation, per-input shares,
+  multiple recipients, labels with ordinary change, and deterministic repeated-recipient ordering
+  across five SHA256-pinned official fixtures. The report also proves five stable invalid-vector
+  classifications, independently checks output scripts and partial-signature fields, and states
+  when an upstream fixture cannot be finalized by its supplied keys.
 
 ## [0.9.0] - 2026-08-05
 

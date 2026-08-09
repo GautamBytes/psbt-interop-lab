@@ -204,7 +204,7 @@ The detailed assumptions, abuse paths, and residual risks are recorded in the
 
 ## Proof Scenarios
 
-The executable catalog currently contains 51 scenarios. Twelve independent Core-to-library
+The executable catalog currently contains 52 scenarios. Twelve independent Core-to-library
 handoffs exercise rust-bitcoin, btcsuite, bitcoinjs, and current BDK signing for P2WSH, P2WPKH, and
 P2TR key-path inputs. Additional rust-bitcoin handoffs prove legacy P2PKH signing from an exact
 `non_witness_utxo` and nested P2SH-P2WSH 2-of-3 signing and finalization.
@@ -271,6 +271,17 @@ and output mutation, signs with `SIGHASH_ALL`, verifies the finalized P2PKH scri
 transaction. The orchestrator independently validates the cryptography and exact field transition,
 then confirms that mainnet and transaction-intent mutations are rejected before signing.
 
+The advanced BIP375 sender scenario uses SHA256-pinned official valid vectors 02, 03, 06, 07, and
+13. It covers global aggregation over multiple eligible inputs, per-input share placement, multiple
+recipient scan keys, labels alongside ordinary change, and deterministic `k` ordering when a
+recipient is repeated. The orchestrator independently validates every derived share, proof, and
+output script, requires partial-signature fields in every returned input map, then requires exact
+stable classifications for invalid vectors 11, 16, 18, 20, and 21. Those official fixtures'
+supplied signing keys do not control their declared funding scripts, so the partial-signature
+fields are not claimed as spend-valid and the scenario explicitly reports that finalization is
+unavailable. The valid-01 sender and BIP376 receiver-spend scenarios remain the end-to-end
+finalized and Core-policy-accepted Silent Payment proofs.
+
 A separate bounded BIP376 receiver-spend scenario starts from a Core-funded deterministic Taproot
 output and uses libwally for the PSBTv0-to-v2 handoff. The rust-psbt-v2 adapter reads the registered
 spend-key and output-tweak fields, derives and verifies the corresponding key-path output, signs and
@@ -328,7 +339,7 @@ the expected identity and baseline parser capabilities, probes valid and malform
 and requires semantic roundtrip preservation.
 
 `psbt-lab matrix --adapter-manifest <manifest>` then registers each external process by its manifest
-ID while retaining the separately validated implementation identity. The runner preserves all 51
+ID while retaining the separately validated implementation identity. The runner preserves all 52
 bundled scenarios and appends capability-gated P2WPKH, nested P2SH-P2WPKH, P2WSH, Taproot key-path,
 and Taproot script-path parse and roundtrip scenarios, plus signing where declared. Run-scoped
 unsigned-transaction commitments authorize only deterministic regtest fixtures. See

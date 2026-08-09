@@ -6,9 +6,11 @@ sign, combine, finalize, extract, and construct BIP370 PSBTs. Its
 `silent-payments` feature also exposes BIP375 ECDH shares, DLEQ proofs, recipient
 data, and labels as typed fields. A separate bounded sender operation completes
 one pinned official BIP375 fixture, derives and proves its Silent Payment output,
-signs it with `SIGHASH_ALL`, finalizes it, and extracts the transaction. A bounded
-BIP376 operation derives and verifies one committed receiver output from its spend
-key and tweak, signs the Taproot key path, finalizes it, and extracts the spend. Signing
+signs it with `SIGHASH_ALL`, finalizes it, and extracts the transaction. An advanced
+sender operation handles five more committed official fixtures covering global and
+per-input shares, multiple recipients, labels, and output ordering. A bounded BIP376
+operation derives and verifies one committed receiver output from its spend key and
+tweak, signs the Taproot key path, finalizes it, and extracts the spend. Signing
 operations are restricted to committed deterministic regtest fixtures;
 constructor actions operate only on caller-supplied PSBTv2 documents.
 
@@ -30,6 +32,8 @@ vectors through the native parser. Every valid vector must expose the expected
 typed Silent Payment fields and survive a semantic native roundtrip. The sender
 workflow independently checks the generated BIP374 DLEQ proof and BIP352 output
 script, then exercises native signing, script verification, and extraction. The
+advanced sender workflow independently checks every derived share, proof, and output
+script and reports the official fixtures' explicit non-finalization boundary. The
 receiver workflow checks the BIP376 spend-key and tweak fields, verifies the derived
 Taproot output key and Schnorr signature, and extracts a Core-accepted transaction.
 
@@ -39,7 +43,7 @@ The `hello` response declares:
 
 ```json
 {
-  "operations": ["hello", "native-parse", "inspect", "roundtrip", "sign", "combine", "finalize", "extract", "construct", "silent-payment-send", "silent-payment-spend"],
+  "operations": ["hello", "native-parse", "inspect", "roundtrip", "sign", "combine", "finalize", "extract", "construct", "silent-payment-send", "silent-payment-send-advanced", "silent-payment-spend"],
   "roles": ["parser", "updater", "signer", "combiner", "finalizer", "extractor", "constructor"],
   "psbtVersions": [2],
   "scriptTypes": ["p2pkh", "p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"]
@@ -54,7 +58,9 @@ version conversion. The
 `bip375-silent-payments` feature means the parser recognizes BIP375 fields
 natively. `bip375-sender-workflow` additionally covers the single pinned sender
 fixture described below. `bip376-spend-workflow` covers one committed receiver-spend
-fixture; neither feature claims arbitrary Silent Payment construction or scanning.
+fixture. `bip375-advanced-sender-workflows` covers five committed advanced official
+fixtures; none of these features claims arbitrary Silent Payment construction or
+scanning.
 
 `roundtrip` uses the native serializer. PSBT map order is not semantically
 significant, and the library may materialize an explicit default field, so the
@@ -78,6 +84,16 @@ derives the BIP352 output script, locks input/output mutation, signs with
 `SIGHASH_ALL`, verifies the finalized P2PKH script, and extracts the transaction.
 The operation rejects mainnet, caller-supplied keys, unknown fixture IDs, and any
 transaction-intent mutation before signing.
+
+`silent-payment-send-advanced` accepts only the pre-sign forms of official BIP375 valid vectors
+02, 03, 06, 07, and 13 on regtest. It derives global or per-input BIP374 shares and proofs, derives
+all BIP352 output scripts, preserves labels and ordinary outputs, locks transaction mutation, and
+materializes partial-signature fields with `SIGHASH_ALL`. The response reports the number of input
+maps containing those fields and sets `finalizationAvailable` to `false`: the private keys supplied
+by these official fixtures do not control their declared funding scripts, so the fields are not
+claimed as spend-valid and finalizing them would be dishonest. The orchestrator independently
+verifies the complete result and checks stable failure classes for invalid vectors 11, 16, 18, 20,
+and 21.
 
 `silent-payment-spend` accepts only the committed `bip376-spend` regtest fixture. It
 requires the BIP376 spend-key and output-tweak fields, derives the tweaked secret,
