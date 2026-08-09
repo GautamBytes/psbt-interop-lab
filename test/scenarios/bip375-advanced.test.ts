@@ -52,6 +52,7 @@ function removePartialSignatures(psbt: string): string {
 
 async function runAdvancedScenario(
   outputPsbt: (fixtureId: (typeof BIP375_ADVANCED_FIXTURE_IDS)[number]) => string,
+  failFixture?: (typeof BIP375_ADVANCED_FIXTURE_IDS)[number],
 ) {
   const checkpoints: string[] = [];
   const adapter = {
@@ -61,6 +62,18 @@ async function runAdvancedScenario(
         | undefined;
       if (!fixtureId || !BIP375_ADVANCED_FIXTURE_IDS.includes(fixtureId)) {
         throw new Error("Unexpected advanced fixture request");
+      }
+      if (fixtureId === failFixture) {
+        return {
+          protocol: "psbt-lab.adapter/0.2",
+          id: request.id,
+          status: "rejected",
+          implementation,
+          error: {
+            class: "policy.fixture_commitment_mismatch",
+            message: "deliberate adapter failure",
+          },
+        };
       }
       return {
         protocol: "psbt-lab.adapter/0.2",
@@ -207,6 +220,21 @@ describe("advanced BIP375 sender fixtures", () => {
     expect(result?.assertions[0]).toMatchObject({
       name: "bip375-advanced-workflow-coverage",
       passed: false,
+    });
+  });
+
+  test("does not report the finalization boundary as passed after an adapter failure", async () => {
+    const { result } = await runAdvancedScenario(
+      (fixtureId) => bip375AdvancedFixture(fixtureId).completedPsbt,
+      "valid-02",
+    );
+
+    expect(result?.outcome).toBe("failed");
+    expect(result?.assertions).toContainEqual({
+      name: "bip375-advanced-finalization-boundary",
+      passed: false,
+      summary:
+        "The finalization boundary was verified for 4 of 5 advanced workflows; failed or incomplete workflows cannot prove this boundary",
     });
   });
 });
