@@ -4,6 +4,23 @@ All notable changes to PSBT Interop Lab are recorded here.
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-08-09
+
+### Changed
+
+- The website report rail now explicitly presents representative samples and includes bounded
+  BIP375 conformance and BIP376 receiver-spend evidence.
+- The public diagnostic-field inventory now includes BIP375 alongside BIP174, BIP370, and BIP371.
+
+### Fixed
+
+- The basic BIP375 workflow now reports Core policy as unavailable when its official external
+  parent transaction is absent from isolated regtest, rather than classifying the result as a Core
+  policy rejection.
+- Markdown reports now label transaction IDs as policy-accepted only when Core policy acceptance
+  was actually established; otherwise they identify the independently Core-confirmed transaction
+  ID.
+
 ## [0.10.0] - 2026-08-09
 
 ### Added
@@ -34,10 +51,6 @@ All notable changes to PSBT Interop Lab are recorded here.
 
 - Silent Payment workflow reports now retain signed and finalized PSBT checkpoints and require
   explicit finalization evidence instead of allowing a missing artifact to appear successful.
-- The basic BIP375 workflow now reports Core policy as unavailable when its official external
-  parent transaction is absent from isolated regtest, while still proving finalization, parsing,
-  and transaction identity.
-
 ### Security
 
 - Updated the website dependency graph, tightened its content-security policy, moved the initial

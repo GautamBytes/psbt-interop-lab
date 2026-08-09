@@ -28,7 +28,7 @@ export function ProofWalkthrough() {
           <div>
             <span className="eyebrow">
               Evidence from the complete {releaseFacts.walkthroughScenarioCount}-scenario matrix | v
-              {releaseFacts.version} capture
+              {releaseFacts.walkthroughVersion} capture
             </span>
             <h2 id="proof-title">The complete matrix, one replayable artifact.</h2>
           </div>
@@ -56,7 +56,7 @@ export function ProofWalkthrough() {
             />
             <figcaption>
               <span>01</span>
-              <strong>Inspect the v{releaseFacts.version} report</strong>
+              <strong>Inspect the v{releaseFacts.walkthroughVersion} report</strong>
               <small>
                 Direct capture of the {releaseFacts.walkthroughScenarioCount}-scenario,
                 self-contained HTML artifact.

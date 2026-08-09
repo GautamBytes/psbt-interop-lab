@@ -27,7 +27,7 @@ export function actionConfiguration(environment = process.env) {
     ),
     artifacts: pathInput("PSBT_LAB_ARTIFACTS", "psbt-interop-artifacts"),
     packageSpec: required(
-      environment.PSBT_LAB_PACKAGE_SPEC ?? "psbt-interop-lab@0.10.0",
+      environment.PSBT_LAB_PACKAGE_SPEC ?? "psbt-interop-lab@0.10.1",
       "package-spec",
     ),
     junit: pathInput("PSBT_LAB_JUNIT", "psbt-interop-junit.xml"),
