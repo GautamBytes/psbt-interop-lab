@@ -124,7 +124,7 @@ describe("generated TypeScript adapter project", () => {
     });
     expect(workflow).toContain("actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10");
     expect(workflow).toContain(
-      "GautamBytes/psbt-interop-lab@be10bae35542aa1adae605dbe1d19c662f8f540d # v0.10.1",
+      "GautamBytes/psbt-interop-lab@f2fdb317c1ab55d0dc366b80c17f644515b5fd61 # v0.10.1",
     );
     expect(workflow).not.toContain("GautamBytes/psbt-interop-lab@v0.10.1");
     expect(workflow).toContain("adapter-manifest: adapter-manifest.json");
