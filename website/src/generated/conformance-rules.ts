@@ -75,6 +75,21 @@ export const publicConformanceRules = {
     "repairability": "code-or-dependency-change",
     "confidence": "high"
   },
+  "bip375.invalid-vectors.rejected": {
+    "id": "bip375.invalid-vectors.rejected",
+    "title": "Invalid Silent Payment PSBT vectors rejected",
+    "category": "implementation-divergence",
+    "normativeLevel": "must",
+    "source": {
+      "name": "BIP375",
+      "url": "https://github.com/bitcoin/bips/blob/master/bip-0375.mediawiki",
+      "section": "Test vectors"
+    },
+    "expected": "PSBTs identified as invalid by the official BIP375 vectors are rejected at the indicated validation stage.",
+    "severity": "review",
+    "repairability": "code-or-dependency-change",
+    "confidence": "high"
+  },
   "lab.transaction-intent.unchanged": {
     "id": "lab.transaction-intent.unchanged",
     "title": "Transaction intent preservation",

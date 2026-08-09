@@ -31,7 +31,7 @@ import { createAdversarialSignerScenario } from "./adversarial-signers.js";
 import { classifyRegression, createBdkRegressionScenario } from "./bdk-regression.js";
 import { createBip370VectorScenario } from "./bip370.js";
 import { createBip371VectorScenario } from "./bip371.js";
-import { createBip375ReferenceScenario } from "./bip375.js";
+import { createBip375NativeParserScenario, createBip375ReferenceScenario } from "./bip375.js";
 import { createCombinerConflictScenario } from "./combiner-conflicts.js";
 import { type CorePolicyResult, ScenarioExecutionContext } from "./context.js";
 import {
@@ -378,6 +378,11 @@ export const PROOF_SCENARIOS: readonly ProofScenarioSummary[] = [
     id: "bip375-official-reference-vectors",
     title: "Official BIP375 Silent Payment reference vectors",
     category: "silent-payment-conformance",
+  },
+  {
+    id: "bip375-official-vectors-rust-psbt-v2",
+    title: "Official BIP375 vectors through rust-psbt-v2",
+    category: "silent-payment-interop",
   },
 ];
 
@@ -887,6 +892,11 @@ export const PROOF_SCENARIO_REGISTRATIONS: readonly ProofScenarioRegistration[] 
     "bip375-official-reference-vectors",
     { core: false, fixtures: [], adapters: [] },
     () => createBip375ReferenceScenario(),
+  ),
+  registerScenario(
+    "bip375-official-vectors-rust-psbt-v2",
+    { core: false, fixtures: [], adapters: ["rust-psbt-v2"] },
+    () => createBip375NativeParserScenario("rust-psbt-v2"),
   ),
 ];
 

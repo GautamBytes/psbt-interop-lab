@@ -425,6 +425,17 @@ fn parse_psbt(encoded: &str) -> Option<ParsedPsbt> {
     Some(ParsedPsbt { bytes, psbt })
 }
 
+fn silent_payment_fields(psbt: &Psbt) -> Value {
+    json!({
+        "globalEcdhShares": psbt.global.sp_ecdh_shares.len(),
+        "globalDleqProofs": psbt.global.sp_dleq_proofs.len(),
+        "inputEcdhShares": psbt.inputs.iter().map(|input| input.sp_ecdh_shares.len()).sum::<usize>(),
+        "inputDleqProofs": psbt.inputs.iter().map(|input| input.sp_dleq_proofs.len()).sum::<usize>(),
+        "outputsWithInfo": psbt.outputs.iter().filter(|output| output.sp_v0_info.is_some()).count(),
+        "outputsWithLabel": psbt.outputs.iter().filter(|output| output.sp_v0_label.is_some()).count()
+    })
+}
+
 fn psbt_payload(request: &Request) -> Option<&str> {
     if !exact_fields(&request.payload, &["psbt"]) {
         return None;
@@ -999,7 +1010,8 @@ fn native_parse(request: &Request, digest: &str) -> Value {
                 "nativeParser": "rust-psbt-v2",
                 "psbtVersion": 2,
                 "inputs": parsed.psbt.inputs.len(),
-                "outputs": parsed.psbt.outputs.len()
+                "outputs": parsed.psbt.outputs.len(),
+                "silentPaymentFields": silent_payment_fields(&parsed.psbt)
             }),
         ),
         None => failure(
@@ -1529,13 +1541,15 @@ fn roundtrip(request: &Request, digest: &str) -> Value {
         );
     };
     let serialized = parsed.psbt.serialize();
+    let silent_payment_fields = silent_payment_fields(&parsed.psbt);
     success(
         &request.id,
         digest,
         json!({
             "psbt": STANDARD.encode(&serialized),
             "byteIdentical": serialized == parsed.bytes,
-            "psbtVersion": 2
+            "psbtVersion": 2,
+            "silentPaymentFields": silent_payment_fields
         }),
     )
 }
@@ -1598,7 +1612,8 @@ pub fn handle_value_with_commitments(
                     "unsigned-tx-sha256",
                     "bip370-constructor",
                     "bip370-locktime",
-                    "bip371-taproot-roundtrip"
+                    "bip371-taproot-roundtrip",
+                    "bip375-silent-payments"
                 ]
             }),
         ),

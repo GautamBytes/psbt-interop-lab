@@ -163,6 +163,7 @@ export const PSBTV2_ADAPTER_CONTRACT = {
     "bip370-constructor",
     "bip370-locktime",
     "bip371-taproot-roundtrip",
+    "bip375-silent-payments",
   ],
 } as const satisfies ExpectedAdapterContract;
 

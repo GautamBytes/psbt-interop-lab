@@ -31,6 +31,7 @@ export interface ConformanceRule {
 const BIP174_URL = "https://github.com/bitcoin/bips/blob/master/bip-0174.mediawiki";
 const BIP370_URL = "https://github.com/bitcoin/bips/blob/master/bip-0370.mediawiki";
 const BIP371_URL = "https://github.com/bitcoin/bips/blob/master/bip-0371.mediawiki";
+const BIP375_URL = "https://github.com/bitcoin/bips/blob/master/bip-0375.mediawiki";
 const CORE_POLICY_URL =
   "https://bitcoincore.org/en/doc/31.0.0/rpc/rawtransactions/testmempoolaccept/";
 const LAB_POLICY_URL =
@@ -93,6 +94,18 @@ export const CONFORMANCE_RULES = Object.freeze({
     source: { name: "BIP371", url: BIP371_URL, section: "Finalizer" },
     expected:
       "Taproot output derivation fields may be removed only as finalization cleanup after every input has final script data.",
+    severity: "review",
+    repairability: "code-or-dependency-change",
+    confidence: "high",
+  }),
+  "bip375.invalid-vectors.rejected": freezeRule({
+    id: "bip375.invalid-vectors.rejected",
+    title: "Invalid Silent Payment PSBT vectors rejected",
+    category: "implementation-divergence",
+    normativeLevel: "must",
+    source: { name: "BIP375", url: BIP375_URL, section: "Test vectors" },
+    expected:
+      "PSBTs identified as invalid by the official BIP375 vectors are rejected at the indicated validation stage.",
     severity: "review",
     repairability: "code-or-dependency-change",
     confidence: "high",
