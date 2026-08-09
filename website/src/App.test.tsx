@@ -51,14 +51,15 @@ describe("PSBT Interop Lab website", () => {
     expect(
       screen.getByText(/BIP375 sender workflows and BIP376 receiver-spend workflow/i),
     ).toBeInTheDocument();
-    expect(screen.getByText("PSBT Interop Lab 0.10.0")).toBeInTheDocument();
-    expect(screen.getByText(/available now as version 0\.10\.0/i)).toBeInTheDocument();
+    expect(screen.getByText("PSBT Interop Lab 0.10.1")).toBeInTheDocument();
+    expect(screen.getByText(/available now as version 0\.10\.1/i)).toBeInTheDocument();
+    expect(screen.getByText(/v0\.10\.0 capture/i)).toBeInTheDocument();
   });
 
   it("replaces footer resources with the maintainer reach-out links", () => {
     render(<App />);
 
-    const footer = screen.getByText("PSBT Interop Lab 0.10.0").closest("footer");
+    const footer = screen.getByText("PSBT Interop Lab 0.10.1").closest("footer");
     if (!footer) throw new Error("Expected the site footer");
     const profiles = within(footer).getByRole("navigation", {
       name: "Gautam Manchandani profiles",
@@ -217,7 +218,7 @@ describe("PSBT Interop Lab website", () => {
     await user.click(screen.getByRole("button", { name: "Copy install command" }));
 
     expect(screen.getByText(installCommand)).toBeInTheDocument();
-    expect(installCommand).toContain("psbt-interop-lab@0.10.0");
+    expect(installCommand).toContain("psbt-interop-lab@0.10.1");
     expect(screen.getByText("Install command copied")).toBeInTheDocument();
   });
 

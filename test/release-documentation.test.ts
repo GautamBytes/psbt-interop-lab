@@ -52,7 +52,7 @@ describe("release documentation", () => {
     const packageVersion = JSON.parse(read("package.json")).version as string;
     const publicFiles = ["README.md", "src/version.ts", "website/AGENTS.md"];
 
-    expect(packageVersion).toBe("0.10.0");
+    expect(packageVersion).toBe("0.10.1");
     for (const path of publicFiles) {
       expect(read(path), path).toContain(packageVersion);
     }

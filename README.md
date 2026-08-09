@@ -7,11 +7,13 @@ writes replayable compatibility reports.
 
 The current suite integrates Bitcoin Core 31.1, rust-bitcoin 0.32.102, btcsuite PSBT 1.2.0,
 bitcoinjs-lib 7.0.1, BDK Wallet 3.1.0, rust-psbt's PSBTv2 0.3.0 implementation, and libwally
-1.5.4. Version 0.10.0 adds complete BIP375 field and official-vector conformance, bounded basic and
-advanced Silent Payment sender workflows, and a BIP376 receiver-spend workflow. It retains the
-generated TypeScript adapter project, reproducible upstream issue bundles, replay-verified
-compatibility history, a MuSig2 proof crossing independent Rust `musig2` 0.4.1 and TypeScript Scure
-2.2.0 signer processes, and an HWI-compatible JSON process simulator backed by bitcoinjs-lib. A
+1.5.4. Version 0.10.1 corrects Core policy-availability reporting and transaction-ID labels for the
+Silent Payment workflows introduced in 0.10.0. It retains complete BIP375 field and official-vector
+conformance, bounded basic and advanced Silent Payment sender workflows, a BIP376 receiver-spend
+workflow, the generated TypeScript adapter project, reproducible upstream issue bundles,
+replay-verified compatibility history, a MuSig2 proof crossing independent Rust `musig2` 0.4.1 and
+TypeScript Scure 2.2.0 signer processes, and an HWI-compatible JSON process simulator backed by
+bitcoinjs-lib. A
 frozen bdkpython 2.3.1 adapter remains as a real regression specimen. Everything runs on regtest;
 the tool never broadcasts and has no mainnet mode.
 
@@ -29,7 +31,7 @@ Requirements:
 - Node.js 22 or 24
 
 ```bash
-npx --yes psbt-interop-lab@0.10.0 quickstart
+npx --yes psbt-interop-lab@0.10.1 quickstart
 ```
 
 `quickstart` is the bounded first-run proof. It checks Node.js, Docker, and Compose, runs five
@@ -40,7 +42,7 @@ the local regtest node automatically.
 For exhaustive compatibility testing, install the CLI once and run the complete 52-scenario matrix:
 
 ```bash
-npm install --global psbt-interop-lab@0.10.0
+npm install --global psbt-interop-lab@0.10.1
 psbt-lab matrix
 ```
 
@@ -179,7 +181,7 @@ independently installed [bitcoinjs-lib consumer example](examples/wallet-ci-adap
 GitHub Action:
 
 ```yaml
-- uses: GautamBytes/psbt-interop-lab@v0.10.0
+- uses: GautamBytes/psbt-interop-lab@v0.10.1
   with:
     adapter-manifest: ./adapters.json
 ```
