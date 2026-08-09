@@ -81,8 +81,8 @@ describe("generated TypeScript adapter project", () => {
     expect(packageLock.name).toBe("psbt-adapter-wallet-example");
     expect(packageLock.packages?.[""]?.name).toBe("psbt-adapter-wallet-example");
     expect(packageLock.packages?.["node_modules/psbt-interop-lab"]).toMatchObject({
-      version: "0.9.0",
-      resolved: "https://registry.npmjs.org/psbt-interop-lab/-/psbt-interop-lab-0.9.0.tgz",
+      version: "0.10.0",
+      resolved: "https://registry.npmjs.org/psbt-interop-lab/-/psbt-interop-lab-0.10.0.tgz",
     });
     expect(packageLock.packages?.["node_modules/psbt-interop-lab"]?.integrity).toBeUndefined();
     expect(manifest.adapters[0]).toEqual({
@@ -119,18 +119,18 @@ describe("generated TypeScript adapter project", () => {
     expect(packageJson.dependencies).toEqual({ "bitcoinjs-lib": "7.0.1" });
     expect(packageJson.devDependencies).toEqual({
       "@types/node": "24.13.3",
-      "psbt-interop-lab": "0.9.0",
+      "psbt-interop-lab": "0.10.0",
       typescript: "7.0.2",
     });
     expect(workflow).toContain("actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10");
     expect(workflow).toContain(
-      "GautamBytes/psbt-interop-lab@efd5dc2f8dd9f82c4d871b17ff978dcc2cfeef9a # v0.9.0",
+      "GautamBytes/psbt-interop-lab@be10bae35542aa1adae605dbe1d19c662f8f540d # v0.10.0",
     );
-    expect(workflow).not.toContain("GautamBytes/psbt-interop-lab@v0.9.0");
+    expect(workflow).not.toContain("GautamBytes/psbt-interop-lab@v0.10.0");
     expect(workflow).toContain("adapter-manifest: adapter-manifest.json");
     expect(readme).toContain("it cannot contain its own digest");
     expect(readme).toContain(
-      "npm install --save-dev --package-lock-only --ignore-scripts psbt-interop-lab@0.9.0",
+      "npm install --save-dev --package-lock-only --ignore-scripts psbt-interop-lab@0.10.0",
     );
   });
 

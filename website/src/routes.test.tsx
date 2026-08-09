@@ -338,7 +338,7 @@ describe("website documentation routes", () => {
 
   it("maps the public npm walkthrough image URL to the bundled website asset", () => {
     const publicSource =
-      "https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/main/docs/assets/walkthrough/compatibility-report.png";
+      "https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/be10bae35542aa1adae605dbe1d19c662f8f540d/docs/assets/walkthrough/compatibility-report.png";
 
     const resolved = resolveDocumentImageSrc(publicSource, "");
 

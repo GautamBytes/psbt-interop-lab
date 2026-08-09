@@ -117,7 +117,7 @@ evidence still matches its manifest:
 psbt-lab replay artifacts/<run-id>
 ```
 
-![Complete matrix generated report](https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/main/docs/assets/walkthrough/compatibility-report.png)
+![Complete matrix generated report](https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/be10bae35542aa1adae605dbe1d19c662f8f540d/docs/assets/walkthrough/compatibility-report.png)
 
 The report screenshot comes directly from that run's generated, self-contained HTML artifact. The
 capture shows the same 52-scenario outcome from the fresh v0.10.0 run. The report includes
@@ -126,7 +126,7 @@ normative levels, authoritative sources, expected-versus-observed behavior, seve
 repairability, confidence, exact evidence, adapter failure cells, and replay-verified artifact
 comparison.
 
-![Silent Payment workflow report evidence](https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/main/docs/assets/walkthrough/silent-payments-report.png)
+![Silent Payment workflow report evidence](https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/be10bae35542aa1adae605dbe1d19c662f8f540d/docs/assets/walkthrough/silent-payments-report.png)
 
 The Silent Payment capture shows all 41 official BIP375 vectors and the two explicit native-library
 compatibility findings. The same run also finalizes the bounded BIP375 sender and confirms its

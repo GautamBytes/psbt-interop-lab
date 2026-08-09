@@ -89,7 +89,7 @@ function normalizeRepoPath(baseDir: string, href: string): string {
 }
 
 const publicWalkthroughAssetBase =
-  "https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/main/docs/assets/walkthrough/";
+  "https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/be10bae35542aa1adae605dbe1d19c662f8f540d/docs/assets/walkthrough/";
 
 const bundledImages: Readonly<Record<string, string>> = {
   "docs/assets/walkthrough/compatibility-report.png": reportProof,
