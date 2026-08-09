@@ -242,7 +242,9 @@ export function generateMarkdownReport(manifest: RunManifest): string {
       );
     }
     if (scenario.transactionId) {
-      lines.push(`Policy-accepted txid: ${markdownCode(scenario.transactionId)}`, "");
+      const transactionIdLabel =
+        scenario.policyAccepted === true ? "Policy-accepted txid" : "Core-confirmed txid";
+      lines.push(`${transactionIdLabel}: ${markdownCode(scenario.transactionId)}`, "");
     }
     if (scenario.skipReason) {
       lines.push(`Skip reason: ${markdownText(scenario.skipReason)}`, "");

@@ -37,7 +37,7 @@ export function CompatibilityReport() {
           <div>
             <span className="eyebrow">Semantic compatibility report</span>
             <h2 id="report-title">A compatibility report you can act on.</h2>
-            <p>See exactly what changed, where it changed, and what evidence to replay.</p>
+            <p>Browse sample scenarios to see what changed, where, and what evidence to replay.</p>
           </div>
           <span className="network-status">
             Network <strong>regtest</strong>
@@ -45,8 +45,8 @@ export function CompatibilityReport() {
         </header>
 
         <div className="report-console__body">
-          <aside className="scenario-list" aria-label="Report scenarios">
-            <span className="scenario-list__title">Scenarios</span>
+          <aside className="scenario-list" aria-label="Sample report scenarios">
+            <span className="scenario-list__title">Sample scenarios</span>
             {reportScenarios.map((scenario, index) => {
               const Icon = statusIcon[scenario.status];
               return (
@@ -63,7 +63,10 @@ export function CompatibilityReport() {
                 </button>
               );
             })}
-            <small>{releaseFacts.scenarioCount} bundled scenarios</small>
+            <small>
+              {reportScenarios.length} samples shown · {releaseFacts.scenarioCount} bundled
+              scenarios
+            </small>
           </aside>
 
           <div className="evidence-panel">

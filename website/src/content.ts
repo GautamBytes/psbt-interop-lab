@@ -243,6 +243,83 @@ export const reportScenarios: ReportScenario[] = [
     replay: "psbt-lab replay artifacts/<run-id>",
   },
   {
+    id: "bip375-conformance",
+    shortLabel: "BIP375 conformance",
+    title: "Silent Payment field conformance",
+    status: "finding",
+    statusLabel: "Compatibility finding",
+    handoff: "Official vectors -> reference validator -> rust-psbt PSBTv2",
+    summary:
+      "All 41 official BIP375 vectors are checked independently and through rust-psbt. The complete report keeps two native-library divergences explicit; this sample highlights one of two without hiding the bounded workflow result.",
+    implementations: ["rust-psbt PSBTv2"],
+    classification: {
+      ruleId: "bip375.invalid-vectors.rejected",
+      observedAt: "rust-psbt-v2",
+      evidence: "finding:bip375-cross-field-invalid-accepted",
+      actual:
+        "rust-psbt-v2 accepted an official invalid vector whose failure requires BIP375 cross-field validation.",
+    },
+    evidence: [
+      {
+        field: "Official BIP375 vectors",
+        expected: "19 valid accepted; 22 invalid rejected",
+        actual: "all 41 matched by the independent validator",
+        implementation: "PSBT Interop Lab reference validator",
+        nextStep: "Keep the pinned corpus in every parser regression run.",
+      },
+      {
+        field: "Typed Silent Payment fields",
+        expected: "recognized and preserved",
+        actual: "native semantic roundtrip completed",
+        implementation: "rust-psbt PSBTv2 0.3.0",
+        nextStep: "Retain typed-field roundtrip coverage.",
+      },
+      {
+        field: "Cross-field invalid vector",
+        expected: publicConformanceRules["bip375.invalid-vectors.rejected"].expected,
+        actual: "accepted by the native parser and classified by the lab",
+        implementation: "rust-psbt-v2",
+        nextStep: "Validate BIP375 field relationships before downstream use.",
+      },
+    ],
+    replay: "psbt-lab replay artifacts/<run-id>",
+  },
+  {
+    id: "bip376-receiver-spend",
+    shortLabel: "BIP376 receiver spend",
+    title: "Silent Payment receiver-spend handoff",
+    status: "pass",
+    statusLabel: "Passed",
+    handoff: "Core -> libwally PSBTv2 -> rust-psbt PSBTv2 -> Core",
+    summary:
+      "A bounded Core-funded receiver output survives the PSBTv2 handoff, is signed and finalized natively, and requires Core policy acceptance on regtest.",
+    implementations: ["Bitcoin Core", "rust-psbt PSBTv2", "libwally"],
+    evidence: [
+      {
+        field: "Taproot output key",
+        expected: "derived from the spend key and output tweak",
+        actual: "independently verified",
+        implementation: "PSBT Interop Lab / rust-psbt-v2",
+        nextStep: "Reject a wrong tweak before signing.",
+      },
+      {
+        field: "BIP376 signing material",
+        expected: "removed after finalization",
+        actual: "spent fields cleaned",
+        implementation: "rust-psbt PSBTv2 0.3.0",
+        nextStep: "Keep cleanup as a finalization invariant.",
+      },
+      {
+        field: "Final transaction",
+        expected: "Bitcoin Core policy accepted",
+        actual: "accepted on isolated regtest",
+        implementation: "Bitcoin Core 31.1",
+        nextStep: "Treat this as bounded Draft-BIP evidence, not broad wallet support.",
+      },
+    ],
+    replay: "psbt-lab replay artifacts/<run-id>",
+  },
+  {
     id: "hwi",
     shortLabel: "HWI simulator",
     title: "Simulator-backed hardware signing handoff",
