@@ -41,12 +41,15 @@ describe("PSBT Interop Lab website", () => {
       "/docs#quick-start",
     );
     expect(screen.getByText(/quickstart proves one real handoff/i)).toBeInTheDocument();
-    expect(screen.getByText(/matrix runs all 48 bundled scenarios/i)).toBeInTheDocument();
+    expect(screen.getByText(/matrix runs all 51 bundled scenarios/i)).toBeInTheDocument();
     expect(
       screen.getByText(/BIP373 MuSig2 nonce exchange, partial verification, and aggregation/i),
     ).toBeInTheDocument();
     expect(
       screen.getByText(/HWI-compatible simulator confirmation and key-origin policy/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/BIP375 sender and BIP376 receiver-spend workflows/i),
     ).toBeInTheDocument();
     expect(screen.getByText("PSBT Interop Lab 0.9.0")).toBeInTheDocument();
     expect(screen.getByText(/available now as version 0\.9\.0/i)).toBeInTheDocument();

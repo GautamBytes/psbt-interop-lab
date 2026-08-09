@@ -45,7 +45,7 @@ const coverageGroups = [
       "BIP373 MuSig2 nonce exchange, partial verification, and aggregation",
       "HWI-compatible simulator confirmation and key-origin policy",
       "All official BIP370 and BIP371 valid and invalid vectors",
-      "Native PSBTv2 constructors and bidirectional Taproot handoffs",
+      "BIP375 sender and BIP376 receiver-spend workflows",
     ],
   },
   {

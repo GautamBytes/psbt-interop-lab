@@ -6,7 +6,9 @@ sign, combine, finalize, extract, and construct BIP370 PSBTs. Its
 `silent-payments` feature also exposes BIP375 ECDH shares, DLEQ proofs, recipient
 data, and labels as typed fields. A separate bounded sender operation completes
 one pinned official BIP375 fixture, derives and proves its Silent Payment output,
-signs it with `SIGHASH_ALL`, finalizes it, and extracts the transaction. Signing
+signs it with `SIGHASH_ALL`, finalizes it, and extracts the transaction. A bounded
+BIP376 operation derives and verifies one committed receiver output from its spend
+key and tweak, signs the Taproot key path, finalizes it, and extracts the spend. Signing
 operations are restricted to committed deterministic regtest fixtures;
 constructor actions operate only on caller-supplied PSBTv2 documents.
 
@@ -16,7 +18,7 @@ constructor actions operate only on caller-supplied PSBTv2 documents.
 - Repository: [`rust-bitcoin/rust-psbt`](https://github.com/rust-bitcoin/rust-psbt)
 - Tag: `psbt-v2-0.3.0`
 - Peeled tag commit: `8ca657c333b6b391f2501e8b31627ccbb6a67f66`
-- Specifications: [BIP370](https://bips.dev/370/) and [BIP375](https://bips.dev/375/)
+- Specifications: [BIP370](https://bips.dev/370/), [BIP375](https://bips.dev/375/), and [BIP376](https://bips.dev/376/)
 
 `Cargo.toml` pins the crate exactly and `Cargo.lock` commits the complete
 dependency resolution. The tests copy the exact 14 valid and 21 invalid BIP370
@@ -27,7 +29,9 @@ finalization, and extraction. It additionally sends all 41 official BIP375
 vectors through the native parser. Every valid vector must expose the expected
 typed Silent Payment fields and survive a semantic native roundtrip. The sender
 workflow independently checks the generated BIP374 DLEQ proof and BIP352 output
-script, then exercises native signing, script verification, and extraction.
+script, then exercises native signing, script verification, and extraction. The
+receiver workflow checks the BIP376 spend-key and tweak fields, verifies the derived
+Taproot output key and Schnorr signature, and extracts a Core-accepted transaction.
 
 ## Capabilities
 
@@ -35,7 +39,7 @@ The `hello` response declares:
 
 ```json
 {
-  "operations": ["hello", "native-parse", "inspect", "roundtrip", "sign", "combine", "finalize", "extract", "construct", "silent-payment-send"],
+  "operations": ["hello", "native-parse", "inspect", "roundtrip", "sign", "combine", "finalize", "extract", "construct", "silent-payment-send", "silent-payment-spend"],
   "roles": ["parser", "updater", "signer", "combiner", "finalizer", "extractor", "constructor"],
   "psbtVersions": [2],
   "scriptTypes": ["p2pkh", "p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"]
@@ -49,8 +53,8 @@ script-path PSBTv2 data, but the adapter does not claim Taproot signing or PSBT
 version conversion. The
 `bip375-silent-payments` feature means the parser recognizes BIP375 fields
 natively. `bip375-sender-workflow` additionally covers the single pinned sender
-fixture described below; it does not claim arbitrary Silent Payment transaction
-construction, scanning, or spend support.
+fixture described below. `bip376-spend-workflow` covers one committed receiver-spend
+fixture; neither feature claims arbitrary Silent Payment construction or scanning.
 
 `roundtrip` uses the native serializer. PSBT map order is not semantically
 significant, and the library may materialize an explicit default field, so the
@@ -74,6 +78,13 @@ derives the BIP352 output script, locks input/output mutation, signs with
 `SIGHASH_ALL`, verifies the finalized P2PKH script, and extracts the transaction.
 The operation rejects mainnet, caller-supplied keys, unknown fixture IDs, and any
 transaction-intent mutation before signing.
+
+`silent-payment-spend` accepts only the committed `bip376-spend` regtest fixture. It
+requires the BIP376 spend-key and output-tweak fields, derives the tweaked secret,
+verifies that its x-only key matches the witness UTXO, creates and verifies a BIP340
+key-path signature, finalizes the witness, removes spent signing material, and
+extracts the transaction. It rejects mainnet, unknown fixtures, mismatched keys or
+tweaks, and transaction-intent mutations before signing.
 
 `sign` and `finalize` accept only `p2wpkh`, `intent-rich-p2wpkh`, or
 `p2wsh-2-of-3` and require a startup `PSBT_LAB_FIXTURE_COMMITMENTS` entry whose

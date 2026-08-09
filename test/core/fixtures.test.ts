@@ -31,6 +31,7 @@ const TXIDS = {
   tr3: "9a".repeat(32),
   tr4: "9b".repeat(32),
   trMusig: "ad".repeat(32),
+  trSilentPayment: "ae".repeat(32),
   trScript: "cc".repeat(32),
 } as const;
 
@@ -57,6 +58,7 @@ const FIXTURE_ADDRESSES = {
   [FIXTURE_DESCRIPTORS["p2wsh-2-of-3"]]: "bcrt1qfixturemultisig",
   [FIXTURE_DESCRIPTORS["p2tr-keypath"]]: "bcrt1pfixturetaproot",
   [FIXTURE_DESCRIPTORS["p2tr-musig2"]]: "bcrt1pfixturemusig",
+  [FIXTURE_DESCRIPTORS["p2tr-silent-payment"]]: "bcrt1pfixturesilentpayment",
   [FIXTURE_DESCRIPTORS["p2tr-scriptpath"]]:
     "bcrt1pg44et8f66qnjn5fd0hu6dnnx7tczqslmt3dkzpccjlzeg99psshqfkkdep",
 } as const;
@@ -73,6 +75,8 @@ const FIXTURE_SCRIPT_PUBKEYS = {
     "5120da4710964f7852695de2da025290e24af6d8c281de5a0b902b7135fd9fd74d21",
   [FIXTURE_DESCRIPTORS["p2tr-musig2"]]:
     "51203b46d262d2f610e9038b44beabdfe97ab5a0feb89870acc2264edfb7f63ec2ec",
+  [FIXTURE_DESCRIPTORS["p2tr-silent-payment"]]:
+    "5120f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
   [FIXTURE_DESCRIPTORS["p2tr-scriptpath"]]:
     "5120456b959d3ad02729d12d7df9a6ce66f2f02043fb5c5b61071897c59414a1842e",
 } as const;
@@ -399,6 +403,9 @@ function createFixtureRpc(options: FakeRpcOptions = {}): {
     [FIXTURE_DESCRIPTORS["p2tr-musig2"]]: [
       { txid: TXIDS.trMusig, vout: 0, amount: "50.00000000", height: 17 },
     ],
+    [FIXTURE_DESCRIPTORS["p2tr-silent-payment"]]: [
+      { txid: TXIDS.trSilentPayment, vout: 0, amount: "50.00000000", height: 18 },
+    ],
     [FIXTURE_DESCRIPTORS["p2tr-scriptpath"]]: [
       { txid: TXIDS.trScript, vout: 0, amount: "50.00000000", height: 12 },
     ],
@@ -457,6 +464,7 @@ function createFixtureRpc(options: FakeRpcOptions = {}): {
                 witness_version:
                   descriptor === FIXTURE_DESCRIPTORS["p2tr-keypath"] ||
                   descriptor === FIXTURE_DESCRIPTORS["p2tr-musig2"] ||
+                  descriptor === FIXTURE_DESCRIPTORS["p2tr-silent-payment"] ||
                   descriptor === FIXTURE_DESCRIPTORS["p2tr-scriptpath"]
                     ? 1
                     : 0,
@@ -920,9 +928,9 @@ describe("prepareFixtures", () => {
         const request = paramObject(call.params);
         return { version: request["version"], psbtVersion: request["psbt_version"] };
       });
-    expect(versions).toHaveLength(15);
+    expect(versions).toHaveLength(16);
     expect(versions).toEqual(
-      Array.from({ length: 15 }, () => ({ version: 2, psbtVersion: undefined })),
+      Array.from({ length: 16 }, () => ({ version: 2, psbtVersion: undefined })),
     );
   });
 
@@ -1089,6 +1097,7 @@ describe("prepareFixtures", () => {
     expect(inputKeyTypes(fixtures.profiles["p2wsh-2-of-3"].initialPsbt)).toEqual([[0x01, 0x05]]);
     expect(inputKeyTypes(fixtures.profiles["p2tr-keypath"].initialPsbt)).toEqual([[0x01, 0x17]]);
     expect(inputKeyTypes(fixtures.profiles["p2tr-musig2"].initialPsbt)).toEqual([[0x01]]);
+    expect(inputKeyTypes(fixtures.profiles["bip376-spend"].initialPsbt)).toEqual([[0x01]]);
     expect(inputKeyTypes(fixtures.profiles["p2tr-scriptpath"].initialPsbt)).toEqual([
       [0x01, 0x15, 0x17],
     ]);
@@ -1162,6 +1171,12 @@ describe("prepareFixtures", () => {
       feeSats: 14_250,
       scriptTypes: ["p2tr-keypath"],
     });
+    expect(fixtures.profiles["bip376-spend"]).toMatchObject({
+      feeSats: 14_750,
+      scriptTypes: ["p2tr-keypath"],
+      inputDescriptors: [FIXTURE_DESCRIPTORS["p2tr-silent-payment"]],
+      outputDescriptor: FIXTURE_DESCRIPTORS.p2wpkh,
+    });
     expect(
       calls
         .filter((call) => call.method === "utxoupdatepsbt")
@@ -1177,6 +1192,7 @@ describe("prepareFixtures", () => {
       [FIXTURE_DESCRIPTORS["p2wsh-2-of-3"]],
       [FIXTURE_DESCRIPTORS["p2tr-keypath"]],
       [FIXTURE_DESCRIPTORS["p2tr-musig2"]],
+      [FIXTURE_DESCRIPTORS["p2tr-silent-payment"]],
       [FIXTURE_DESCRIPTORS["p2tr-scriptpath"]],
       [FIXTURE_DESCRIPTORS.p2wpkh, FIXTURE_DESCRIPTORS["p2tr-keypath"]],
       [FIXTURE_DESCRIPTORS.p2wpkh],
@@ -1196,8 +1212,8 @@ describe("prepareFixtures", () => {
       calls
         .filter((call) => call.method === "generatetoaddress")
         .map((call) => paramObject(call.params)["nblocks"]),
-    ).toEqual([1, 5, 1, 1, 4, 1, 4, 1, 1, 100]);
-    expect(fixtures.core.blocks).toBe(619);
+    ).toEqual([1, 5, 1, 1, 4, 1, 4, 1, 1, 1, 100]);
+    expect(fixtures.core.blocks).toBe(620);
     for (const fixture of [
       fixtures.happy,
       fixtures.regression,

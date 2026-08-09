@@ -36,6 +36,7 @@ import {
   createBip375ReferenceScenario,
   createBip375SenderScenario,
 } from "./bip375.js";
+import { createBip376SpendScenario } from "./bip376.js";
 import { createCombinerConflictScenario } from "./combiner-conflicts.js";
 import { type CorePolicyResult, ScenarioExecutionContext } from "./context.js";
 import {
@@ -391,6 +392,11 @@ export const PROOF_SCENARIOS: readonly ProofScenarioSummary[] = [
   {
     id: "bip375-sender-workflow-rust-psbt-v2",
     title: "BIP375 Silent Payment sender workflow through rust-psbt-v2",
+    category: "silent-payment-interop",
+  },
+  {
+    id: "bip376-spend-workflow-rust-psbt-v2",
+    title: "BIP376 Silent Payment receiver spend through rust-psbt-v2",
     category: "silent-payment-interop",
   },
 ];
@@ -912,6 +918,15 @@ export const PROOF_SCENARIO_REGISTRATIONS: readonly ProofScenarioRegistration[] 
     { core: false, fixtures: [], adapters: ["rust-psbt-v2"] },
     () => createBip375SenderScenario("rust-psbt-v2"),
   ),
+  registerScenario(
+    "bip376-spend-workflow-rust-psbt-v2",
+    {
+      core: true,
+      fixtures: ["bip376-spend"],
+      adapters: ["rust-psbt-v2", "libwally"],
+    },
+    (fixtures) => createBip376SpendScenario(requiredFixture(fixtures, "bip376-spend")),
+  ),
 ];
 
 export function resolveProofSelection(selectors: ProofSelectors = {}): ResolvedProofSelection {
@@ -1155,6 +1170,12 @@ const PSBTV2_COMMITMENT_FIXTURES: readonly BuiltInFixtureId[] = [
   "p2wpkh",
   "intent-rich-p2wpkh",
   "p2wsh-2-of-3",
+  "bip376-spend",
+];
+const LIBWALLY_COMMITMENT_FIXTURES: readonly BuiltInFixtureId[] = [
+  "p2wpkh",
+  "intent-rich-p2wpkh",
+  "p2wsh-2-of-3",
 ];
 const MUSIG2_COMMITMENT_FIXTURES: readonly BuiltInFixtureId[] = ["p2tr-musig2"];
 const HWI_COMMITMENT_FIXTURES: readonly BuiltInFixtureId[] = ["p2wpkh"];
@@ -1208,13 +1229,15 @@ function adapterOptions(
         ? BITCOINJS_COMMITMENT_FIXTURES
         : id === "bdk-wallet-current"
           ? BDK_CURRENT_COMMITMENT_FIXTURES
-          : id === "rust-psbt-v2" || id === "libwally"
+          : id === "rust-psbt-v2"
             ? PSBTV2_COMMITMENT_FIXTURES
-            : id === "musig2-rust-signer-1" || id === "musig2-scure-signer-2"
-              ? MUSIG2_COMMITMENT_FIXTURES
-              : id === "hwi-simulator"
-                ? HWI_COMMITMENT_FIXTURES
-                : COMMON_COMMITMENT_FIXTURES;
+            : id === "libwally"
+              ? LIBWALLY_COMMITMENT_FIXTURES
+              : id === "musig2-rust-signer-1" || id === "musig2-scure-signer-2"
+                ? MUSIG2_COMMITMENT_FIXTURES
+                : id === "hwi-simulator"
+                  ? HWI_COMMITMENT_FIXTURES
+                  : COMMON_COMMITMENT_FIXTURES;
   const commitments = commitmentIds.flatMap((fixtureId) => {
     const fixture = preparedFixture(fixtures, fixtureId);
     return fixture ? [fixture] : [];

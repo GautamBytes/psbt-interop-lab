@@ -23,6 +23,7 @@ describe("fixture profile definitions", () => {
       "p2wsh-2-of-3",
       "p2tr-keypath",
       "p2tr-musig2",
+      "bip376-spend",
       "p2tr-scriptpath",
       "mixed-p2wpkh-p2tr",
       "intent-rich-p2wpkh",
@@ -72,6 +73,12 @@ describe("fixture profile definitions", () => {
         id: "p2tr-musig2",
         scriptTypes: ["p2tr-keypath"],
         inputDescriptorIds: ["p2tr-musig2"],
+      },
+      {
+        id: "bip376-spend",
+        scriptTypes: ["p2tr-keypath"],
+        inputDescriptorIds: ["p2tr-silent-payment"],
+        outputDescriptorIds: ["p2wpkh"],
       },
       {
         id: "p2tr-scriptpath",
@@ -125,6 +132,9 @@ describe("fixture profile definitions", () => {
     expect(descriptors.join("\n")).not.toMatch(/xprv|tprv|priv|secret/i);
     expect(FIXTURE_DESCRIPTORS["p2tr-musig2"]).toBe(
       "rawtr(3b46d262d2f610e9038b44beabdfe97ab5a0feb89870acc2264edfb7f63ec2ec)",
+    );
+    expect(FIXTURE_DESCRIPTORS["p2tr-silent-payment"]).toBe(
+      "rawtr(f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9)",
     );
   });
 });
