@@ -34,7 +34,8 @@ fn advertises_native_psbt_v2_workflow_capabilities() {
             "combine",
             "finalize",
             "extract",
-            "construct"
+            "construct",
+            "silent-payment-send"
         ])
     );
     assert_eq!(
@@ -52,11 +53,23 @@ fn advertises_native_psbt_v2_workflow_capabilities() {
     assert_eq!(response["output"]["psbtVersions"], json!([2]));
     assert_eq!(
         response["output"]["scriptTypes"],
-        json!(["p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"])
+        json!([
+            "p2pkh",
+            "p2wpkh",
+            "p2wsh",
+            "p2tr-keypath",
+            "p2tr-scriptpath"
+        ])
     );
     assert_eq!(
         response["output"]["operationScriptTypes"]["roundtrip"],
-        json!(["p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"])
+        json!([
+            "p2pkh",
+            "p2wpkh",
+            "p2wsh",
+            "p2tr-keypath",
+            "p2tr-scriptpath"
+        ])
     );
     assert!(
         response["output"]["features"]
@@ -69,6 +82,12 @@ fn advertises_native_psbt_v2_workflow_capabilities() {
             .as_array()
             .expect("features array")
             .contains(&json!("bip375-silent-payments"))
+    );
+    assert!(
+        response["output"]["features"]
+            .as_array()
+            .expect("features array")
+            .contains(&json!("bip375-sender-workflow"))
     );
     assert!(
         !response["output"]["operations"]

@@ -39,7 +39,7 @@ new field families after fixtures and at least one native implementation are ava
 Candidate work:
 
 - Taproot script-path threshold leaves and selected legacy profiles.
-- Silent Payment send and spend fields from BIP375 and BIP376.
+- Additional BIP375 sender fixtures and full BIP376 Silent Payment spend workflows.
 - Proof-of-reserves, generic signed-message, and DNSSEC proof PSBT fields.
 - Capability-gated custom signing for reviewed public fixture templates.
 

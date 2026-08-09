@@ -6,16 +6,16 @@ use psbt_v2::bitcoin::bip32::{DerivationPath, Fingerprint};
 use psbt_v2::bitcoin::consensus;
 use psbt_v2::bitcoin::hex::{DisplayHex as _, FromHex as _};
 use psbt_v2::bitcoin::opcodes::all::OP_CHECKMULTISIG;
-use psbt_v2::bitcoin::script::Builder;
-use psbt_v2::bitcoin::secp256k1::Secp256k1;
+use psbt_v2::bitcoin::script::{Builder, PushBytesBuf};
+use psbt_v2::bitcoin::secp256k1::{PublicKey as SecpPublicKey, Scalar, Secp256k1, SecretKey};
 use psbt_v2::bitcoin::sighash::EcdsaSighashType;
 use psbt_v2::bitcoin::{
-    Amount, OutPoint, PrivateKey, PublicKey, ScriptBuf, Sequence, TxOut, Txid, Witness, absolute,
-    transaction,
+    Amount, CompressedPublicKey, Network, OutPoint, PrivateKey, PublicKey, ScriptBuf, Sequence,
+    Transaction, TxOut, Txid, Witness, absolute, transaction,
 };
 use psbt_v2::v2::{
-    Constructor, Creator, Extractor, Finalizer, Input, InputsOnlyModifiable, Modifiable, Output,
-    OutputsOnlyModifiable, Psbt, Signer, Updater,
+    Constructor, Creator, DleqProof, Extractor, Finalizer, Input, InputsOnlyModifiable, Modifiable,
+    Output, OutputsOnlyModifiable, Psbt, Signer, Updater,
 };
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
@@ -35,6 +35,21 @@ const SCALAR_TWO_PUBLIC_KEY: &str =
     "02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5";
 const SCALAR_THREE_PUBLIC_KEY: &str =
     "02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9";
+const BIP375_FIXTURE_ID: &str = "bip375-valid-01";
+const BIP375_FIXTURE_PSBT_SHA256: [u8; 32] = [
+    0x5a, 0x9c, 0x02, 0xc4, 0xfc, 0x20, 0xcc, 0x1c, 0x22, 0xe8, 0x43, 0x3b, 0x01, 0x1e, 0x03, 0xbe,
+    0x01, 0x54, 0x44, 0x21, 0xe4, 0x58, 0x4b, 0x7f, 0x05, 0xcc, 0x91, 0xa3, 0xcc, 0x14, 0x7d, 0xd5,
+];
+const BIP375_PRIVATE_KEY: [u8; 32] = [
+    0x7e, 0x31, 0xee, 0xeb, 0x1a, 0xa2, 0x59, 0x7b, 0x6d, 0x63, 0xb3, 0x57, 0x54, 0x14, 0x61, 0xd7,
+    0x5d, 0xda, 0xe7, 0x6b, 0x76, 0x03, 0xd2, 0x46, 0x19, 0xf5, 0xeb, 0xed, 0x9e, 0x88, 0xec, 0x31,
+];
+const BIP375_SCAN_KEY: [u8; 33] = [
+    0x02, 0x7a, 0x48, 0x7f, 0xc1, 0x9f, 0xb7, 0x69, 0x87, 0x7b, 0x87, 0x42, 0xd6, 0xea, 0x18, 0x11,
+    0x8f, 0x3c, 0x4e, 0x72, 0xb1, 0xea, 0x8c, 0x6d, 0xe6, 0x02, 0xa7, 0xad, 0x4a, 0x41, 0xdb, 0xe0,
+    0x68,
+];
+const BIP375_AUX: [u8; 32] = [0x42; 32];
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -1554,6 +1569,278 @@ fn roundtrip(request: &Request, digest: &str) -> Value {
     )
 }
 
+fn tagged_hash(tag: &str, message: &[u8]) -> [u8; 32] {
+    let tag_hash = Sha256::digest(tag.as_bytes());
+    let mut engine = Sha256::new();
+    engine.update(tag_hash);
+    engine.update(tag_hash);
+    engine.update(message);
+    engine.finalize().into()
+}
+
+fn scalar_from_hash(bytes: [u8; 32]) -> Result<Scalar, &'static str> {
+    Scalar::from_be_bytes(bytes).map_err(|_| "Tagged hash is outside the secp256k1 scalar range")
+}
+
+fn bip375_dleq_proof(
+    secret: SecretKey,
+    scan_key: SecpPublicKey,
+) -> Result<(SecpPublicKey, DleqProof), &'static str> {
+    let secp = Secp256k1::new();
+    let input_key = SecpPublicKey::from_secret_key(&secp, &secret);
+    let secret_scalar = Scalar::from_be_bytes(secret.secret_bytes())
+        .map_err(|_| "Silent Payment fixture secret is invalid")?;
+    let share = scan_key
+        .mul_tweak(&secp, &secret_scalar)
+        .map_err(|_| "Silent Payment ECDH share is invalid")?;
+
+    let aux_hash = tagged_hash("BIP0374/aux", &BIP375_AUX);
+    let mut masked_secret = secret.secret_bytes();
+    for (byte, mask) in masked_secret.iter_mut().zip(aux_hash) {
+        *byte ^= mask;
+    }
+    let mut nonce_message = Vec::with_capacity(32 + 33 + 33);
+    nonce_message.extend_from_slice(&masked_secret);
+    nonce_message.extend_from_slice(&input_key.serialize());
+    nonce_message.extend_from_slice(&share.serialize());
+    let nonce = SecretKey::from_slice(&tagged_hash("BIP0374/nonce", &nonce_message))
+        .map_err(|_| "Deterministic BIP374 nonce is invalid")?;
+    let nonce_scalar = Scalar::from_be_bytes(nonce.secret_bytes())
+        .map_err(|_| "Deterministic BIP374 nonce is invalid")?;
+    let r1 = SecpPublicKey::from_secret_key(&secp, &nonce);
+    let r2 = scan_key
+        .mul_tweak(&secp, &nonce_scalar)
+        .map_err(|_| "BIP374 nonce point is invalid")?;
+    let generator = SecpPublicKey::from_secret_key(
+        &secp,
+        &SecretKey::from_slice(&[
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 1,
+        ])
+        .map_err(|_| "secp256k1 generator scalar is invalid")?,
+    );
+    let mut challenge_message = Vec::with_capacity(33 * 6);
+    for point in [input_key, scan_key, share, generator, r1, r2] {
+        challenge_message.extend_from_slice(&point.serialize());
+    }
+    let challenge = tagged_hash("BIP0374/challenge", &challenge_message);
+    let challenge_scalar = scalar_from_hash(challenge)?;
+    let response = secret
+        .mul_tweak(&challenge_scalar)
+        .and_then(|value| value.add_tweak(&nonce_scalar))
+        .map_err(|_| "BIP374 response scalar is invalid")?;
+    let mut proof = [0_u8; 64];
+    proof[..32].copy_from_slice(&challenge);
+    proof[32..].copy_from_slice(&response.secret_bytes());
+    Ok((share, DleqProof::from(proof)))
+}
+
+fn bip375_output_script(
+    psbt: &Psbt,
+    input_key: SecpPublicKey,
+    ecdh_share: SecpPublicKey,
+) -> Result<ScriptBuf, &'static str> {
+    let output = psbt
+        .outputs
+        .first()
+        .ok_or("Silent Payment fixture has no output")?;
+    let info = output
+        .sp_v0_info
+        .as_ref()
+        .filter(|value| value.len() == 66)
+        .ok_or("Silent Payment output info is invalid")?;
+    let spend_key = SecpPublicKey::from_slice(&info[33..])
+        .map_err(|_| "Silent Payment spend key is invalid")?;
+    let input = psbt
+        .inputs
+        .first()
+        .ok_or("Silent Payment fixture has no input")?;
+    let mut outpoint = Vec::with_capacity(36);
+    outpoint.extend_from_slice(&consensus::serialize(&input.previous_txid));
+    outpoint.extend_from_slice(&input.spent_output_index.to_le_bytes());
+    let mut input_hash_message = outpoint;
+    input_hash_message.extend_from_slice(&input_key.serialize());
+    let input_hash = scalar_from_hash(tagged_hash("BIP0352/Inputs", &input_hash_message))?;
+    let shared_secret = ecdh_share
+        .mul_tweak(&Secp256k1::new(), &input_hash)
+        .map_err(|_| "Silent Payment shared secret is invalid")?;
+    let mut output_message = Vec::with_capacity(37);
+    output_message.extend_from_slice(&shared_secret.serialize());
+    output_message.extend_from_slice(&0_u32.to_be_bytes());
+    let output_tweak_bytes = tagged_hash("BIP0352/SharedSecret", &output_message);
+    let _output_tweak = scalar_from_hash(output_tweak_bytes)?;
+    let tweak_secret = SecretKey::from_slice(&output_tweak_bytes)
+        .map_err(|_| "Silent Payment output tweak is invalid")?;
+    let tweak_key = SecpPublicKey::from_secret_key(&Secp256k1::new(), &tweak_secret);
+    let output_key = spend_key
+        .combine(&tweak_key)
+        .map_err(|_| "Silent Payment output key is invalid")?;
+    let mut script = Vec::with_capacity(34);
+    script.extend_from_slice(&[0x51, 0x20]);
+    script.extend_from_slice(&output_key.serialize()[1..]);
+    Ok(ScriptBuf::from_bytes(script))
+}
+
+fn finalize_silent_payment_p2pkh(
+    mut psbt: Psbt,
+    public_key: &PublicKey,
+) -> Result<Psbt, &'static str> {
+    let input = psbt
+        .inputs
+        .first_mut()
+        .ok_or("Silent Payment fixture has no input")?;
+    let signature = input
+        .partial_sigs
+        .get(public_key)
+        .ok_or("Silent Payment input lacks its fixture signature")?;
+    let signature = PushBytesBuf::try_from(signature.to_vec())
+        .map_err(|_| "Silent Payment signature is too large for scriptSig")?;
+    input.final_script_sig = Some(
+        Builder::new()
+            .push_slice(signature)
+            .push_key(public_key)
+            .into_script(),
+    );
+    input.final_script_witness = Some(Witness::default());
+    clear_non_final_fields(input);
+    psbt.interpreter_check(&Secp256k1::verification_only())
+        .map_err(|_| "Finalized Silent Payment P2PKH script did not verify")?;
+    Ok(psbt)
+}
+
+fn silent_payment_send(request: &Request, digest: &str) -> Value {
+    if !exact_fields(&request.payload, &["psbt", "network", "fixtureId"]) {
+        return failure(
+            &request.id,
+            digest,
+            "rejected",
+            "protocol.invalid_payload",
+            "silent-payment-send expects psbt, network, and fixtureId",
+        );
+    }
+    if payload_string(&request.payload, "network") != Some("regtest") {
+        return failure(
+            &request.id,
+            digest,
+            "rejected",
+            "policy.network_not_allowed",
+            "Silent Payment sender proofs are restricted to regtest fixtures",
+        );
+    }
+    if payload_string(&request.payload, "fixtureId") != Some(BIP375_FIXTURE_ID) {
+        return failure(
+            &request.id,
+            digest,
+            "rejected",
+            "policy.fixture_not_allowed",
+            "Unknown Silent Payment sender fixture",
+        );
+    }
+    let Some(encoded) = payload_string(&request.payload, "psbt") else {
+        return failure(
+            &request.id,
+            digest,
+            "rejected",
+            "protocol.invalid_payload",
+            "psbt must be a base64 string",
+        );
+    };
+    let Some(parsed) = parse_psbt(encoded) else {
+        return failure(
+            &request.id,
+            digest,
+            "rejected",
+            "psbt.parse_failed",
+            "Silent Payment PSBTv2 could not be parsed",
+        );
+    };
+    let actual: [u8; 32] = Sha256::digest(&parsed.bytes).into();
+    if actual
+        .iter()
+        .zip(BIP375_FIXTURE_PSBT_SHA256)
+        .fold(0_u8, |difference, (left, right)| {
+            difference | (left ^ right)
+        })
+        != 0
+    {
+        return failure(
+            &request.id,
+            digest,
+            "rejected",
+            "policy.fixture_commitment_mismatch",
+            "The PSBT does not match the pinned BIP375 sender fixture",
+        );
+    }
+
+    let result = (|| -> Result<(Psbt, Psbt, Transaction), &'static str> {
+        let mut psbt = parsed.psbt;
+        let secp = Secp256k1::new();
+        let secret = SecretKey::from_slice(&BIP375_PRIVATE_KEY)
+            .map_err(|_| "Silent Payment fixture key is invalid")?;
+        let private_key = PrivateKey::new(secret, Network::Regtest);
+        let public_key = private_key.public_key(&secp);
+        let scan_key = SecpPublicKey::from_slice(&BIP375_SCAN_KEY)
+            .map_err(|_| "Silent Payment scan key is invalid")?;
+        let (share, proof) = bip375_dleq_proof(secret, scan_key)?;
+        let script = bip375_output_script(&psbt, public_key.inner, share)?;
+        let compressed_scan = CompressedPublicKey(scan_key);
+        psbt.inputs[0]
+            .sp_ecdh_shares
+            .insert(compressed_scan, CompressedPublicKey(share));
+        psbt.inputs[0].sp_dleq_proofs.insert(compressed_scan, proof);
+        psbt.outputs[0].script_pubkey = script;
+        psbt.global.tx_modifiable_flags &= !0x03;
+
+        let mut keys = BTreeMap::new();
+        keys.insert(public_key, private_key);
+        let signer = Signer::new(psbt).map_err(|_| "Silent Payment PSBT locktime is invalid")?;
+        let (signed, signing_keys) = signer
+            .sign(&keys, &secp)
+            .map_err(|_| "Native signer could not sign the Silent Payment input")?;
+        if signing_keys
+            .values()
+            .filter(|keys| keys.contains(&public_key))
+            .count()
+            != 1
+        {
+            return Err("Fixture key did not sign the Silent Payment input");
+        }
+        let signed_copy = signed.clone();
+        let mut finalized = finalize_silent_payment_p2pkh(signed, &public_key)?;
+        omit_empty_final_script_sigs(&mut finalized);
+        let transaction = Extractor::new(native_extractable_psbt(finalized.clone()))
+            .map_err(|_| "Finalized Silent Payment PSBT is not extractable")?
+            .extract_tx()
+            .map_err(|_| "Native Silent Payment extraction failed")?;
+        Ok((signed_copy, finalized, transaction))
+    })();
+
+    match result {
+        Ok((signed, finalized, transaction)) => success(
+            &request.id,
+            digest,
+            json!({
+                "psbt": STANDARD.encode(signed.serialize()),
+                "finalizedPsbt": STANDARD.encode(finalized.serialize()),
+                "finalized": true,
+                "signedInputs": 1,
+                "silentPaymentOutputs": 1,
+                "outputScript": signed.outputs[0].script_pubkey.to_hex_string(),
+                "transaction": consensus::serialize(&transaction).to_lower_hex_string(),
+                "transactionId": transaction.compute_txid().to_string(),
+                "witnessTransactionId": transaction.compute_wtxid().to_string()
+            }),
+        ),
+        Err(message) => failure(
+            &request.id,
+            digest,
+            "rejected",
+            "silent_payment.send_failed",
+            message,
+        ),
+    }
+}
+
 pub fn handle_value(value: Value, digest: &str) -> Value {
     handle_value_with_commitments(value, digest, &FixtureCommitments::default())
 }
@@ -1591,18 +1878,19 @@ pub fn handle_value_with_commitments(
             &request.id,
             digest,
             json!({
-                "operations": ["hello", "native-parse", "inspect", "roundtrip", "sign", "combine", "finalize", "extract", "construct"],
+                "operations": ["hello", "native-parse", "inspect", "roundtrip", "sign", "combine", "finalize", "extract", "construct", "silent-payment-send"],
                 "roles": ["parser", "updater", "signer", "combiner", "finalizer", "extractor", "constructor"],
                 "psbtVersions": [2],
-                "scriptTypes": ["p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
+                "scriptTypes": ["p2pkh", "p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
                 "operationScriptTypes": {
-                    "inspect": ["p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
-                    "roundtrip": ["p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
+                    "inspect": ["p2pkh", "p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
+                    "roundtrip": ["p2pkh", "p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
                     "sign": ["p2wpkh", "p2wsh"],
                     "combine": ["p2wpkh", "p2wsh"],
                     "finalize": ["p2wpkh", "p2wsh"],
                     "extract": ["p2wpkh", "p2wsh"],
-                    "construct": ["p2wpkh", "p2wsh"]
+                    "construct": ["p2wpkh", "p2wsh"],
+                    "silent-payment-send": ["p2pkh"]
                 },
                 "features": [
                     "bip370-official-vectors",
@@ -1613,7 +1901,8 @@ pub fn handle_value_with_commitments(
                     "bip370-constructor",
                     "bip370-locktime",
                     "bip371-taproot-roundtrip",
-                    "bip375-silent-payments"
+                    "bip375-silent-payments",
+                    "bip375-sender-workflow"
                 ]
             }),
         ),
@@ -1632,6 +1921,7 @@ pub fn handle_value_with_commitments(
         "finalize" => finalize(&request, digest, commitments),
         "extract" => extract(&request, digest),
         "construct" => construct(&request, digest),
+        "silent-payment-send" => silent_payment_send(&request, digest),
         "convert" => failure(
             &request.id,
             digest,

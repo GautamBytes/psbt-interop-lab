@@ -703,6 +703,7 @@ describe("proof runtime", () => {
       "psbtv2-taproot-libwally-to-rust",
       "bip375-official-reference-vectors",
       "bip375-official-vectors-rust-psbt-v2",
+      "bip375-sender-workflow-rust-psbt-v2",
     ]);
   });
 

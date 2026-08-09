@@ -141,18 +141,20 @@ export const PSBTV2_ADAPTER_CONTRACT = {
     "finalize",
     "extract",
     "construct",
+    "silent-payment-send",
   ],
   roles: ["parser", "updater", "signer", "combiner", "finalizer", "extractor", "constructor"],
   psbtVersions: [2],
-  scriptTypes: ["p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
+  scriptTypes: ["p2pkh", "p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
   operationScriptTypes: {
-    inspect: ["p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
-    roundtrip: ["p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
+    inspect: ["p2pkh", "p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
+    roundtrip: ["p2pkh", "p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
     sign: ["p2wpkh", "p2wsh"],
     combine: ["p2wpkh", "p2wsh"],
     finalize: ["p2wpkh", "p2wsh"],
     extract: ["p2wpkh", "p2wsh"],
     construct: ["p2wpkh", "p2wsh"],
+    "silent-payment-send": ["p2pkh"],
   },
   features: [
     "bip370-official-vectors",
@@ -164,6 +166,7 @@ export const PSBTV2_ADAPTER_CONTRACT = {
     "bip370-locktime",
     "bip371-taproot-roundtrip",
     "bip375-silent-payments",
+    "bip375-sender-workflow",
   ],
 } as const satisfies ExpectedAdapterContract;
 
