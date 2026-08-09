@@ -10,7 +10,7 @@ import {
 import { diffPsbtDocuments } from "../psbt/diff.js";
 import { parsePsbtDocument } from "../psbt/document.js";
 import { applyPsbtMutations, type PsbtMutationRecipe } from "../psbt/mutation.js";
-import type { ScenarioExecutionContext } from "./context.js";
+import type { CorePolicyResult, ScenarioExecutionContext } from "./context.js";
 import type { ScenarioAssertionEvidence, ScenarioDefinition } from "./definition.js";
 
 const INVALID_STAGES = [
@@ -517,6 +517,7 @@ export function createBip375SenderScenario(
             "finalization",
             "native-roundtrip",
             "bounded-canaries",
+            "core-validation",
           ].map((name) => ({
             name: `bip375-sender-${name}`,
             passed: false,
@@ -594,6 +595,23 @@ export function createBip375SenderScenario(
         mainnet.error.class === "policy.network_not_allowed" &&
         tampered.status === "rejected" &&
         tampered.error.class === "policy.fixture_commitment_mismatch";
+      const transactionIsHex =
+        typeof transaction === "string" &&
+        transaction.length > 0 &&
+        transaction.length % 2 === 0 &&
+        /^[0-9a-f]+$/i.test(transaction);
+      const policy: CorePolicyResult = transactionIsHex
+        ? await context.policyCheckTransaction(transaction)
+        : {
+            allowed: false,
+            rejectReason: "The adapter returned invalid transaction hex",
+          };
+      const coreTxidConfirmed =
+        typeof policy.txid === "string" &&
+        /^[0-9a-f]{64}$/.test(policy.txid) &&
+        transactionId === policy.txid;
+      const parentOutsideRegtest = !policy.allowed && policy.rejectReason === "missing-inputs";
+      const coreValidationPassed = coreTxidConfirmed && (policy.allowed || parentOutsideRegtest);
       const finalizationPassed =
         typeof finalized === "string" &&
         typeof transaction === "string" &&
@@ -603,6 +621,12 @@ export function createBip375SenderScenario(
         response.output["finalized"] === true &&
         response.output["signedInputs"] === 1 &&
         response.output["silentPaymentOutputs"] === 1;
+      if (typeof signed === "string") {
+        await context.checkpoint(`bip375-sender-workflow-${adapter}`, "signed", signed);
+      }
+      if (typeof finalized === "string") {
+        await context.checkpoint(`bip375-sender-workflow-${adapter}`, "finalized", finalized);
+      }
       const cryptographyPassed =
         reference?.valid === true && outputScript === fixture.expectedOutputScript;
       const assertions: ScenarioAssertionEvidence[] = [
@@ -643,13 +667,29 @@ export function createBip375SenderScenario(
             ? "Mainnet and transaction-intent mutations were rejected before signing"
             : "A forbidden network or altered fixture reached the signing path",
         },
+        {
+          name: "bip375-sender-core-validation",
+          passed: coreValidationPassed,
+          summary:
+            policy.allowed && coreTxidConfirmed
+              ? "Bitcoin Core accepted the extracted transaction and confirmed its txid"
+              : parentOutsideRegtest && coreTxidConfirmed
+                ? "Bitcoin Core parsed the transaction and confirmed its txid; policy evaluation is unavailable because the official fixture parent is outside regtest"
+                : policy.allowed
+                  ? "Bitcoin Core accepted the transaction, but its txid disagreed with the adapter"
+                  : `Bitcoin Core rejected the extracted transaction: ${policy.rejectReason ?? "unknown reason"}`,
+        },
       ];
+      const allPassed = assertions.every(({ passed }) => passed);
       return {
-        summary: assertions.every(({ passed }) => passed)
-          ? `${adapter} completed and extracted the pinned BIP375 Silent Payment sender transaction with independently verified cryptography.`
+        summary: allPassed
+          ? policy.allowed
+            ? `${adapter} completed the pinned BIP375 sender transaction with independently verified cryptography and Bitcoin Core policy acceptance.`
+            : `${adapter} completed the pinned BIP375 sender transaction with independently verified cryptography and a Core-confirmed transaction identity; policy evaluation remains bounded by the official fixture parent.`
           : `${adapter} failed one or more BIP375 sender workflow checks.`,
         assertions,
-        ...(typeof transactionId === "string" ? { transactionId } : {}),
+        policyAccepted: policy.allowed,
+        ...(coreValidationPassed ? { transactionId: policy.txid } : {}),
       };
     },
   };
@@ -679,7 +719,7 @@ export function createBip375AdvancedSenderScenario(
       const failures: string[] = [];
       let partialSignatureInputs = 0;
       let silentOutputs = 0;
-      let finalizationWasExplicit = true;
+      let explicitFinalizationBoundaries = 0;
       for (const id of BIP375_ADVANCED_FIXTURE_IDS) {
         const fixture = bip375AdvancedFixture(id);
         const response = await context.request(adapter, "silent-payment-send-advanced", {
@@ -716,10 +756,13 @@ export function createBip375AdvancedSenderScenario(
         );
         partialSignatureInputs += evidence.partialSignatureInputs;
         silentOutputs += fixture.silentPaymentOutputCount;
-        finalizationWasExplicit &&=
+        if (
           response.output["finalized"] === false &&
           response.output["finalizationAvailable"] === false &&
-          typeof response.output["finalizationReason"] === "string";
+          typeof response.output["finalizationReason"] === "string"
+        ) {
+          explicitFinalizationBoundaries += 1;
+        }
       }
 
       const expectedCanaries = new Map([
@@ -768,9 +811,14 @@ export function createBip375AdvancedSenderScenario(
         },
         {
           name: "bip375-advanced-finalization-boundary",
-          passed: finalizationWasExplicit,
+          passed:
+            failures.length === 0 &&
+            explicitFinalizationBoundaries === BIP375_ADVANCED_FIXTURE_IDS.length,
           summary:
-            "Official advanced vectors are reported as non-finalizable instead of claiming spend validity for unrelated funding keys",
+            failures.length === 0 &&
+            explicitFinalizationBoundaries === BIP375_ADVANCED_FIXTURE_IDS.length
+              ? "All five official advanced vectors were explicitly reported as non-finalizable for unrelated funding keys"
+              : `The finalization boundary was verified for ${explicitFinalizationBoundaries} of ${BIP375_ADVANCED_FIXTURE_IDS.length} advanced workflows; failed or incomplete workflows cannot prove this boundary`,
         },
       ];
       return {
