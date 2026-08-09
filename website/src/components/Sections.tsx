@@ -209,7 +209,7 @@ export function Sections() {
                 {"\n"}
                 <em>Adapter is ready for the matrix.</em>
                 {"\n\n"}
-                <span>$</span> psbt-lab compare artifacts/v0.8.0 artifacts/v0.9.0{"\n"}
+                <span>$</span> psbt-lab compare artifacts/v0.9.0 artifacts/v0.10.0{"\n"}
                 <b>PASS</b> replay-verified artifact comparison{"\n"}
               </code>
             </pre>

@@ -279,8 +279,10 @@ output script, requires partial-signature fields in every returned input map, th
 stable classifications for invalid vectors 11, 16, 18, 20, and 21. Those official fixtures'
 supplied signing keys do not control their declared funding scripts, so the partial-signature
 fields are not claimed as spend-valid and the scenario explicitly reports that finalization is
-unavailable. The valid-01 sender and BIP376 receiver-spend scenarios remain the end-to-end
-finalized and Core-policy-accepted Silent Payment proofs.
+unavailable. The valid-01 sender is finalized, extracted, parsed by Core, and checked against
+Core's txid calculation. Its official fixture spends an external parent that is not present in the
+isolated regtest chain, so the lab explicitly reports policy acceptance as unavailable. The
+Core-funded BIP376 receiver-spend scenario is finalized and Core-policy accepted.
 
 A separate bounded BIP376 receiver-spend scenario starts from a Core-funded deterministic Taproot
 output and uses libwally for the PSBTv0-to-v2 handoff. The rust-psbt-v2 adapter reads the registered

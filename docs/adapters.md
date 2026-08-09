@@ -116,12 +116,12 @@ custom suite, and requires an adapter manifest.
 The root composite action wraps this focused path:
 
 ```yaml
-- uses: GautamBytes/psbt-interop-lab@v0.9.0
+- uses: GautamBytes/psbt-interop-lab@v0.10.0
   with:
     adapter-manifest: ./adapters.json
 ```
 
-It installs the exact `psbt-interop-lab@0.9.0` release with lifecycle scripts disabled, checks the
+It installs the exact `psbt-interop-lab@0.10.0` release with lifecycle scripts disabled, checks the
 adapter, runs the matrix, and uploads the replay, JUnit, and SARIF outputs. `package-spec` can point
 to a trusted
 packed tarball for pre-release validation. The separately installed

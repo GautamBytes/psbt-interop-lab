@@ -4,16 +4,44 @@ All notable changes to PSBT Interop Lab are recorded here.
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-08-09
+
 ### Added
 
+- Complete BIP375 field validation plus all 19 valid and 22 invalid official vectors through an
+  independent reference validator and the native rust-psbt Silent Payment implementation.
 - A bounded BIP375 Silent Payment sender workflow that derives and independently validates the
   BIP374 DLEQ proof and BIP352 output script, signs and finalizes the pinned official fixture on
-  regtest, and rejects mainnet or transaction-intent mutations before signing.
+  regtest, confirms the extracted transaction identity with Bitcoin Core, and rejects mainnet or
+  transaction-intent mutations before signing.
 - An advanced BIP375 sender workflow covering global multi-input aggregation, per-input shares,
   multiple recipients, labels with ordinary change, and deterministic repeated-recipient ordering
   across five SHA256-pinned official fixtures. The report also proves five stable invalid-vector
   classifications, independently checks output scripts and partial-signature fields, and states
   when an upstream fixture cannot be finalized by its supplied keys.
+- A bounded BIP376 receiver-spend workflow that preserves spend fields through a PSBTv2 handoff,
+  derives and verifies the Taproot output key, signs and finalizes natively, removes spent signing
+  material, rejects wrong-network and wrong-tweak inputs, and passes Bitcoin Core regtest policy.
+
+### Changed
+
+- The npm package, reusable Action, generated adapter defaults, website, and documentation now
+  identify version 0.10.0 and the complete 52-scenario matrix.
+- The release walkthrough now uses a fresh complete-matrix artifact and calls out the exact
+  difference between Core transaction validation and Core policy acceptance for upstream fixtures.
+
+### Fixed
+
+- Silent Payment workflow reports now retain signed and finalized PSBT checkpoints and require
+  explicit finalization evidence instead of allowing a missing artifact to appear successful.
+- The basic BIP375 workflow now reports Core policy as unavailable when its official external
+  parent transaction is absent from isolated regtest, while still proving finalization, parsing,
+  and transaction identity.
+
+### Security
+
+- Updated the website dependency graph, tightened its content-security policy, moved the initial
+  theme bootstrap out of inline markup, and added browser-level security smoke coverage.
 
 ## [0.9.0] - 2026-08-05
 

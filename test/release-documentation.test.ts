@@ -52,7 +52,7 @@ describe("release documentation", () => {
     const packageVersion = JSON.parse(read("package.json")).version as string;
     const publicFiles = ["README.md", "src/version.ts", "website/AGENTS.md"];
 
-    expect(packageVersion).toBe("0.9.0");
+    expect(packageVersion).toBe("0.10.0");
     for (const path of publicFiles) {
       expect(read(path), path).toContain(packageVersion);
     }
@@ -226,6 +226,6 @@ describe("release documentation", () => {
     });
 
     expect(revisions.length).toBeGreaterThanOrEqual(4);
-    expect(new Set(revisions)).toEqual(new Set(["d29ac0fe83ce23e54a57707dc67c4d316b2b140d"]));
+    expect(new Set(revisions)).toEqual(new Set(["be10bae35542aa1adae605dbe1d19c662f8f540d"]));
   });
 });
