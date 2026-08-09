@@ -51,14 +51,14 @@ describe("PSBT Interop Lab website", () => {
     expect(
       screen.getByText(/BIP375 sender workflows and BIP376 receiver-spend workflow/i),
     ).toBeInTheDocument();
-    expect(screen.getByText("PSBT Interop Lab 0.9.0")).toBeInTheDocument();
-    expect(screen.getByText(/available now as version 0\.9\.0/i)).toBeInTheDocument();
+    expect(screen.getByText("PSBT Interop Lab 0.10.0")).toBeInTheDocument();
+    expect(screen.getByText(/available now as version 0\.10\.0/i)).toBeInTheDocument();
   });
 
   it("replaces footer resources with the maintainer reach-out links", () => {
     render(<App />);
 
-    const footer = screen.getByText("PSBT Interop Lab 0.9.0").closest("footer");
+    const footer = screen.getByText("PSBT Interop Lab 0.10.0").closest("footer");
     if (!footer) throw new Error("Expected the site footer");
     const profiles = within(footer).getByRole("navigation", {
       name: "Gautam Manchandani profiles",
@@ -125,13 +125,19 @@ describe("PSBT Interop Lab website", () => {
     expect(
       screen.getByRole("heading", { name: /the complete matrix, one replayable artifact/i }),
     ).toBeInTheDocument();
-    expect(screen.getByText(/evidence from the complete 47-scenario matrix/i)).toBeInTheDocument();
+    expect(screen.getByText(/evidence from the complete 52-scenario matrix/i)).toBeInTheDocument();
     expect(
       screen.getByRole("img", { name: /complete matrix generated report/i }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: /bip373 musig2 report evidence/i })).toBeInTheDocument();
     expect(
-      screen.getByText(/47 bundled scenarios across 9 integration stacks/i),
+      screen.getByRole("img", { name: /silent payment conformance report evidence/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/52 bundled scenarios across 9 integration stacks/i),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/3 compatibility findings remained visible/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/101 checkpoints verified from the same artifact/i),
     ).toBeInTheDocument();
     expect(screen.queryByText(/2 \/ 2 protocol scenarios passed/i)).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: /open the complete walkthrough/i })).toHaveAttribute(
@@ -211,7 +217,7 @@ describe("PSBT Interop Lab website", () => {
     await user.click(screen.getByRole("button", { name: "Copy install command" }));
 
     expect(screen.getByText(installCommand)).toBeInTheDocument();
-    expect(installCommand).toContain("psbt-interop-lab@0.9.0");
+    expect(installCommand).toContain("psbt-interop-lab@0.10.0");
     expect(screen.getByText("Install command copied")).toBeInTheDocument();
   });
 

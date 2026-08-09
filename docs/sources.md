@@ -50,12 +50,15 @@ protocol specification.
   ordered participant set across rust-bitcoin and bitcoinjs-lib, exchanges two public nonces and
   partial signatures, and aggregates a verified BIP340 key-path signature.
 - [BIP375](https://bips.dev/375/) defines Silent Payment PSBT send fields for ECDH shares, DLEQ
-  proofs, recipient scan keys, spend keys, labels, and eligible inputs. The lab parses the official
-  vectors, runs one bounded sender workflow through derivation, signing, and extraction, and runs
-  five advanced official fixtures through multi-input aggregation, per-input shares, multiple
-  recipients, labels, and deterministic output ordering. The advanced fixtures materialize
-  partial-signature fields but are explicitly not finalized because their supplied keys do not
-  control their funding scripts; the lab does not present those fields as spend-valid signatures.
+  proofs, recipient scan keys, spend keys, labels, and eligible inputs. The lab validates all 19
+  valid and 22 invalid official vectors with an independent reference validator and the native
+  rust-psbt implementation. It runs one bounded sender workflow through derivation, signing,
+  finalization, extraction, and Core transaction parsing, then runs five advanced official fixtures
+  through multi-input aggregation, per-input shares, multiple recipients, labels, and deterministic
+  output ordering. The basic fixture's external parent is not present in isolated regtest, so Core
+  policy acceptance is explicitly unavailable. The advanced fixtures materialize partial-signature
+  fields but are explicitly not finalized because their supplied keys do not control their funding
+  scripts; the lab does not present those fields as spend-valid signatures.
 - [BIP376](https://bips.dev/376/) defines Silent Payment PSBT spend fields for spend-key derivation
   and tweaks. The lab runs one deterministic regtest receiver-spend workflow that derives the
   output key, signs and finalizes the spend, cleans the spent fields, and requires Core policy

@@ -303,16 +303,19 @@ describe("website documentation routes", () => {
     const reportProof = screen.getByRole("img", {
       name: /complete matrix generated report/i,
     });
-    const musig2Proof = screen.getByRole("img", {
-      name: /bip373 musig2 report evidence/i,
+    const silentPaymentsProof = screen.getByRole("img", {
+      name: /silent payment workflow report evidence/i,
     });
 
     expect(reportProof).toHaveAttribute("src", expect.stringMatching(/compatibility-report/));
     expect(reportProof.getAttribute("src")).not.toMatch(/^https?:/);
-    expect(musig2Proof).toHaveAttribute("src", expect.stringMatching(/musig2-report/));
-    expect(musig2Proof.getAttribute("src")).not.toMatch(/^https?:/);
-    expect(screen.getByText(/fresh v0\.9\.0 run/i)).toBeInTheDocument();
-    expect(screen.getByText(/expected negative canary/i)).toBeInTheDocument();
+    expect(silentPaymentsProof).toHaveAttribute(
+      "src",
+      expect.stringMatching(/silent-payments-report/),
+    );
+    expect(silentPaymentsProof.getAttribute("src")).not.toMatch(/^https?:/);
+    expect(screen.getByText(/fresh v0\.10\.0 run/i)).toBeInTheDocument();
+    expect(screen.getByText(/external parent is not present/i)).toBeInTheDocument();
   });
 
   it("opens documentation screenshots in the shared image viewer", async () => {
@@ -335,7 +338,7 @@ describe("website documentation routes", () => {
 
   it("maps the public npm walkthrough image URL to the bundled website asset", () => {
     const publicSource =
-      "https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/d29ac0fe83ce23e54a57707dc67c4d316b2b140d/docs/assets/walkthrough/compatibility-report.png";
+      "https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/main/docs/assets/walkthrough/compatibility-report.png";
 
     const resolved = resolveDocumentImageSrc(publicSource, "");
 

@@ -4,7 +4,7 @@
 
 - Approved target: `exec-0ecd2c2e-7e45-4c41-9530-160a8738fce1.png`
 - Direction: centered protocol-map hero and semantic-diff report treatment
-- Review date: 2026-08-05
+- Review date: 2026-08-09
 
 ## Fresh visual checks
 
@@ -14,9 +14,9 @@
   search control, and mobile navigation trigger remain inside the viewport.
 - Contributing page at 1440 x 1024: the introduction, table of contents, prose, and code blocks keep
   the established documentation layout.
-- The walkthrough uses direct summary and MuSig2 captures from a complete v0.9.0 matrix artifact
-  created on the review date. The artifact records 47 passed scenarios, zero failures, and one
-  known finding.
+- The walkthrough uses direct summary and Silent Payment captures from a complete v0.10.0 matrix
+  artifact created on the review date. The artifact records 52 passed scenarios, zero failures,
+  three known findings, and 101 replay-verified checkpoints.
 
 ## Interaction checks
 
@@ -30,10 +30,11 @@
 
 ## Technical checks
 
-- Automated website tests: 55 passed.
+- Automated website tests: 56 passed.
 - TypeScript: passed.
 - Production build: passed.
-- Complete Docker matrix: 47 passed, zero failed, one known compatibility finding.
+- Complete Docker matrix: 52 passed, zero failed, three known compatibility findings.
+- Artifact replay: 101 checkpoints verified.
 
 ## Findings
 

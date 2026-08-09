@@ -1,6 +1,6 @@
 import { ArrowSquareOut } from "@phosphor-icons/react/ArrowSquareOut";
 import reportProof from "../../../docs/assets/walkthrough/compatibility-report.png";
-import musig2Proof from "../../../docs/assets/walkthrough/musig2-report.png";
+import silentPaymentsProof from "../../../docs/assets/walkthrough/silent-payments-report.png";
 import { releaseFacts } from "../release";
 import { SiteLink } from "./SiteLink";
 import { ZoomableImage } from "./ZoomableImage";
@@ -35,9 +35,9 @@ export function ProofWalkthrough() {
           <div>
             <p>
               This complete run executes every bundled workflow against pinned implementations and
-              Bitcoin Core on regtest. All {releaseFacts.walkthroughScenarioCount} scenarios passed,
-              one known parser compatibility finding remained visible, and the same artifact
-              replay-verified {releaseFacts.replayCheckpointCount} checkpoints.
+              Bitcoin Core on regtest. All {releaseFacts.walkthroughScenarioCount} scenarios passed,{" "}
+              {releaseFacts.compatibilityFindingCount} compatibility findings remained visible, and
+              the same artifact replay-verified {releaseFacts.replayCheckpointCount} checkpoints.
             </p>
             <SiteLink className="inline-link" href="/docs#walkthrough-verify-the-complete-matrix">
               Open the complete walkthrough <ArrowSquareOut aria-hidden="true" />
@@ -66,17 +66,17 @@ export function ProofWalkthrough() {
           <figure>
             <ZoomableImage
               triggerClassName="proof-media__trigger"
-              src={musig2Proof}
-              alt="BIP373 MuSig2 report evidence"
+              src={silentPaymentsProof}
+              alt="Silent Payment conformance report evidence"
               loading="lazy"
               decoding="async"
             />
             <figcaption>
               <span>02</span>
-              <strong>Trace independent MuSig2 signers</strong>
+              <strong>Inspect BIP375 conformance</strong>
               <small>
-                The expected nonce-reuse refusal appears as a red negative canary inside the passed
-                scenario.
+                All 41 official vectors and the native-library divergences stay visible in the same
+                report.
               </small>
             </figcaption>
           </figure>

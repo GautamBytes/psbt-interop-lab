@@ -7,12 +7,13 @@ writes replayable compatibility reports.
 
 The current suite integrates Bitcoin Core 31.1, rust-bitcoin 0.32.102, btcsuite PSBT 1.2.0,
 bitcoinjs-lib 7.0.1, BDK Wallet 3.1.0, rust-psbt's PSBTv2 0.3.0 implementation, and libwally
-1.5.4. Version 0.9.0 adds a generated TypeScript adapter project, reproducible upstream issue
-bundles, replay-verified compatibility history, and a MuSig2 proof crossing independent Rust
-`musig2` 0.4.1 and TypeScript Scure 2.2.0 signer processes. The suite also includes an
-HWI-compatible JSON process simulator backed by bitcoinjs-lib. A frozen bdkpython
-2.3.1 adapter remains as a real regression specimen. Everything runs on regtest; the tool never
-broadcasts and has no mainnet mode.
+1.5.4. Version 0.10.0 adds complete BIP375 field and official-vector conformance, bounded basic and
+advanced Silent Payment sender workflows, and a BIP376 receiver-spend workflow. It retains the
+generated TypeScript adapter project, reproducible upstream issue bundles, replay-verified
+compatibility history, a MuSig2 proof crossing independent Rust `musig2` 0.4.1 and TypeScript Scure
+2.2.0 signer processes, and an HWI-compatible JSON process simulator backed by bitcoinjs-lib. A
+frozen bdkpython 2.3.1 adapter remains as a real regression specimen. Everything runs on regtest;
+the tool never broadcasts and has no mainnet mode.
 
 Choose the shortest path for your role:
 
@@ -28,7 +29,7 @@ Requirements:
 - Node.js 22 or 24
 
 ```bash
-npx --yes psbt-interop-lab@0.9.0 quickstart
+npx --yes psbt-interop-lab@0.10.0 quickstart
 ```
 
 `quickstart` is the bounded first-run proof. It checks Node.js, Docker, and Compose, runs five
@@ -39,7 +40,7 @@ the local regtest node automatically.
 For exhaustive compatibility testing, install the CLI once and run the complete 52-scenario matrix:
 
 ```bash
-npm install --global psbt-interop-lab@0.9.0
+npm install --global psbt-interop-lab@0.10.0
 psbt-lab matrix
 ```
 
@@ -97,17 +98,17 @@ To work from a source checkout instead, install pnpm 10.30.2, run
 
 ## Walkthrough: Verify the Complete Matrix
 
-This real v0.9.0 run executes every bundled workflow against the pinned integration stacks and an
+This real v0.10.0 run executes every bundled workflow against the pinned integration stacks and an
 isolated Bitcoin Core regtest node:
 
 ```bash
 psbt-lab matrix
 ```
 
-The verified run completed all 47 bundled scenarios. The terminal proof keeps every scenario ID
-visible and records the real run ID, Core height, outcome, artifact path, and 91 replay-verified
-checkpoints. One known btcsuite duplicate-key compatibility finding remains visible while the
-scenario passes because the lab correctly detected and classified that behavior.
+The verified run completed all 52 bundled scenarios and replay-verified 101 checkpoints. The
+terminal proof keeps every scenario ID visible and records the real run ID, Core height, outcome,
+artifact path, and findings. Three known native-library compatibility findings remain visible while
+their containing scenarios pass only when the lab detects and classifies the expected behavior.
 
 Open `artifacts/<run-id>/report.html` for the complete result, or verify later that the recorded
 evidence still matches its manifest:
@@ -116,20 +117,22 @@ evidence still matches its manifest:
 psbt-lab replay artifacts/<run-id>
 ```
 
-![Complete matrix generated report](https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/d29ac0fe83ce23e54a57707dc67c4d316b2b140d/docs/assets/walkthrough/compatibility-report.png)
+![Complete matrix generated report](https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/main/docs/assets/walkthrough/compatibility-report.png)
 
 The report screenshot comes directly from that run's generated, self-contained HTML artifact. The
-capture shows the same 47-scenario outcome from the fresh v0.9.0 run. The report includes
+capture shows the same 52-scenario outcome from the fresh v0.10.0 run. The report includes
 per-request adapter cells, stable conformance rule IDs,
 normative levels, authoritative sources, expected-versus-observed behavior, severity,
 repairability, confidence, exact evidence, adapter failure cells, and replay-verified artifact
 comparison.
 
-![BIP373 MuSig2 report evidence](https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/d29ac0fe83ce23e54a57707dc67c4d316b2b140d/docs/assets/walkthrough/musig2-report.png)
+![Silent Payment workflow report evidence](https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/main/docs/assets/walkthrough/silent-payments-report.png)
 
-The MuSig2 capture follows independent Rust and TypeScript signer processes through nonce exchange,
-partial-signature verification, aggregation, and Taproot finalization. The red nonce-reuse cell is
-the expected negative canary: the scenario passes only when the signer refuses the reused session.
+The Silent Payment capture shows all 41 official BIP375 vectors and the two explicit native-library
+compatibility findings. The same run also finalizes the bounded BIP375 sender and confirms its
+transaction identity with Core, but its external parent is not present in the isolated regtest
+chain, so the lab makes no policy-acceptance claim for that fixture. The Core-funded BIP376 receiver
+spend does pass regtest policy.
 
 ## External Adapters
 
@@ -176,7 +179,7 @@ independently installed [bitcoinjs-lib consumer example](examples/wallet-ci-adap
 GitHub Action:
 
 ```yaml
-- uses: GautamBytes/psbt-interop-lab@v0.9.0
+- uses: GautamBytes/psbt-interop-lab@v0.10.0
   with:
     adapter-manifest: ./adapters.json
 ```
@@ -277,8 +280,12 @@ The suite currently runs 52 scenarios:
   checks a fixed regtest BIP84 key origin, proves simulated user cancellation, permits only the
   expected signature mutation, and requires Bitcoin Core finalization and policy acceptance
 - All 14 valid and 21 invalid official BIP370 vectors through rust-psbt-v2 and libwally
+- All 19 valid and 22 invalid official BIP375 vectors through the lab's independent reference
+  validator and the native rust-psbt Silent Payment implementation
 - A bounded BIP375 sender workflow that derives and verifies the Silent Payment share, DLEQ proof,
-  and output script from an official fixture before signing, finalizing, and extracting on regtest
+  and output script from an official fixture before signing, finalizing, extracting, and asking
+  Core to parse the transaction and confirm its txid. The official fixture's external parent is not
+  in the isolated regtest chain, so this workflow does not claim Core policy acceptance
 - An advanced BIP375 sender workflow over five additional official fixtures covering global
   multi-input aggregation, per-input shares, multiple scan keys, labels with ordinary change, and
   repeated-recipient output ordering. It independently checks returned output scripts and

@@ -1,6 +1,6 @@
 {
   "name": "psbt-interop-lab",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "description": "Deterministic PSBT interoperability testing for Bitcoin software",
   "keywords": [
     "bitcoin",
@@ -9,7 +9,7 @@
     "regtest",
     "testing"
   ],
-  "homepage": "https://github.com/GautamBytes/psbt-interop-lab#readme",
+  "homepage": "https://www.psbtlab.online/",
   "bugs": {
     "url": "https://github.com/GautamBytes/psbt-interop-lab/issues"
   },
