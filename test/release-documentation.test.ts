@@ -7,6 +7,47 @@ function read(path: string): string {
 }
 
 describe("release documentation", () => {
+  it("serves the website with a restrictive browser security baseline", () => {
+    const vercel = JSON.parse(read("vercel.json")) as {
+      headers?: Array<{
+        source: string;
+        headers: Array<{ key: string; value: string }>;
+      }>;
+    };
+    const catchAll = vercel.headers?.find(({ source }) => source === "/(.*)");
+    const headers = new Map(catchAll?.headers.map(({ key, value }) => [key, value]));
+    const csp = headers.get("Content-Security-Policy") ?? "";
+    const directives = new Map(
+      csp.split(";").flatMap((directive) => {
+        const [name, ...values] = directive.trim().split(/\s+/);
+        return name ? [[name, values] as const] : [];
+      }),
+    );
+    const index = read("website/index.html");
+
+    expect(catchAll).toBeDefined();
+    expect(directives.get("default-src")).toEqual(["'self'"]);
+    expect(directives.get("script-src")).toEqual(["'self'"]);
+    expect(directives.get("script-src-attr")).toEqual(["'none'"]);
+    expect(directives.get("object-src")).toEqual(["'none'"]);
+    expect(directives.get("frame-src")).toEqual(["'none'"]);
+    expect(directives.get("frame-ancestors")).toEqual(["'none'"]);
+    expect(directives.get("style-src")).toEqual(["'self'", "'unsafe-inline'"]);
+    expect(directives.get("img-src")).toEqual([
+      "'self'",
+      "data:",
+      "https://raw.githubusercontent.com",
+    ]);
+    expect(headers.get("X-Content-Type-Options")).toBe("nosniff");
+    expect(headers.get("X-Frame-Options")).toBe("DENY");
+    expect(headers.get("Referrer-Policy")).toBe("strict-origin-when-cross-origin");
+    expect(headers.get("Permissions-Policy")).toContain("camera=()");
+    expect(headers.get("Permissions-Policy")).toContain("microphone=()");
+    expect(index).toContain('<script src="/theme-bootstrap.js"></script>');
+    expect(index).not.toMatch(/<script(?:\s[^>]*)?>\s*\(\(\) =>/);
+    expect(read("website/public/theme-bootstrap.js")).toContain("psbt-lab-theme");
+  });
+
   it("keeps public version references on the package version", () => {
     const packageVersion = JSON.parse(read("package.json")).version as string;
     const publicFiles = ["README.md", "src/version.ts", "website/AGENTS.md"];
