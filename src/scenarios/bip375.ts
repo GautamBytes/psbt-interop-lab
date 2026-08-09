@@ -1,4 +1,7 @@
-import { validateBip375ReferencePsbt } from "../psbt/bip375-validator.js";
+import {
+  classifyBip375ReferencePsbt,
+  validateBip375ReferencePsbt,
+} from "../psbt/bip375-validator.js";
 import {
   BIP375_INVALID_VECTORS,
   BIP375_VALID_VECTORS,
@@ -6,7 +9,7 @@ import {
 } from "../psbt/bip375-vectors.js";
 import { diffPsbtDocuments } from "../psbt/diff.js";
 import { parsePsbtDocument } from "../psbt/document.js";
-import { applyPsbtMutations } from "../psbt/mutation.js";
+import { applyPsbtMutations, type PsbtMutationRecipe } from "../psbt/mutation.js";
 import type { ScenarioExecutionContext } from "./context.js";
 import type { ScenarioAssertionEvidence, ScenarioDefinition } from "./definition.js";
 
@@ -39,6 +42,86 @@ type SilentPaymentFieldCounts = Record<keyof typeof SILENT_PAYMENT_FIELD_TYPES, 
 export interface Bip375SenderFixture {
   readonly inProgressPsbt: string;
   readonly expectedOutputScript: string;
+}
+
+export const BIP375_ADVANCED_FIXTURE_IDS = [
+  "valid-02",
+  "valid-03",
+  "valid-06",
+  "valid-07",
+  "valid-13",
+] as const;
+
+export type Bip375AdvancedFixtureId = (typeof BIP375_ADVANCED_FIXTURE_IDS)[number];
+
+export interface Bip375AdvancedFixture {
+  readonly id: Bip375AdvancedFixtureId;
+  readonly inProgressPsbt: string;
+  readonly completedPsbt: string;
+  readonly shareScope: "global" | "per-input";
+  readonly inputCount: number;
+  readonly signerCount: number;
+  readonly silentPaymentOutputCount: number;
+  readonly ordinaryOutputCount: number;
+  readonly scanKeyCount: number;
+  readonly labelCount: number;
+  readonly expectedOutputScripts: readonly string[];
+}
+
+export function bip375AdvancedFixture(id: Bip375AdvancedFixtureId): Bip375AdvancedFixture {
+  const vector = BIP375_VALID_VECTORS.find((candidate) => candidate.id === id);
+  if (!vector) throw new Error(`Missing pinned BIP375 advanced fixture ${id}`);
+  const document = parsePsbtDocument(vector.base64);
+  const recipes: PsbtMutationRecipe[] = [];
+  for (const map of document.maps) {
+    for (const entry of map.entries) {
+      const remove =
+        (map.location.kind === "global" && [0x07, 0x08].includes(entry.keyType)) ||
+        (map.location.kind === "input" && [0x02, 0x1d, 0x1e].includes(entry.keyType)) ||
+        (map.location.kind === "output" &&
+          entry.keyType === 0x04 &&
+          map.entries.some((candidate) => candidate.keyType === 0x09));
+      if (!remove) continue;
+      recipes.push({
+        kind: "delete-entry",
+        location: map.location,
+        keyType: entry.keyType,
+        ...(entry.keyData.byteLength > 0 ? { keyDataHex: entry.keyData.toString("hex") } : {}),
+      });
+    }
+  }
+  recipes.push({
+    kind: "replace-value",
+    location: { kind: "global" },
+    keyType: 0x06,
+    valueHex: "03",
+  });
+
+  const supplementary = vector.supplementary as {
+    readonly inputs?: readonly { readonly private_key?: string }[];
+    readonly outputs?: readonly {
+      readonly sp_v0_info?: string;
+      readonly sp_v0_label?: number;
+      readonly script?: string;
+    }[];
+  };
+  const outputs = supplementary.outputs ?? [];
+  const silentOutputs = outputs.filter(({ sp_v0_info }) => sp_v0_info !== undefined);
+  const scanKeys = new Set(silentOutputs.map(({ sp_v0_info }) => sp_v0_info?.slice(0, 66)));
+  const globalMap = document.maps.find(({ location }) => location.kind === "global");
+  return {
+    id,
+    inProgressPsbt: applyPsbtMutations(vector.base64, recipes),
+    completedPsbt: vector.base64,
+    shareScope: globalMap?.entries.some(({ keyType }) => keyType === 0x07) ? "global" : "per-input",
+    inputCount: document.inputCount,
+    signerCount: supplementary.inputs?.length ?? document.inputCount,
+    silentPaymentOutputCount: silentOutputs.length,
+    ordinaryOutputCount: outputs.length - silentOutputs.length,
+    scanKeyCount: scanKeys.size,
+    labelCount: silentOutputs.filter(({ sp_v0_label }) => sp_v0_label !== undefined).length,
+    expectedOutputScripts: silentOutputs.flatMap(({ script }) => (script ? [script] : [])),
+  };
 }
 
 export function bip375SenderFixture(): Bip375SenderFixture {
@@ -145,6 +228,32 @@ function safeAdapterId(adapter: string): string {
     throw new TypeError("BIP375 adapter id must be a safe identifier");
   }
   return adapter;
+}
+
+function advancedWorkflowEvidence(psbt: string): {
+  readonly outputScripts: readonly string[];
+  readonly partialSignatureInputs: number;
+} {
+  const document = parsePsbtDocument(psbt);
+  const outputScripts = document.maps
+    .filter(({ location }) => location.kind === "output")
+    .flatMap((map) => {
+      if (
+        !map.entries.some(({ keyType, keyData }) => keyType === 0x09 && keyData.byteLength === 0)
+      ) {
+        return [];
+      }
+      const script = map.entries.find(
+        ({ keyType, keyData }) => keyType === 0x04 && keyData.byteLength === 0,
+      );
+      return script ? [script.value.toString("hex")] : [];
+    });
+  const partialSignatureInputs = document.maps.filter(
+    (map) =>
+      map.location.kind === "input" &&
+      map.entries.some(({ keyType, keyData }) => keyType === 0x02 && keyData.byteLength > 0),
+  ).length;
+  return { outputScripts, partialSignatureInputs };
 }
 
 function invalidStageAssertion(stage: Bip375VectorStage): ScenarioAssertionEvidence {
@@ -541,6 +650,134 @@ export function createBip375SenderScenario(
           : `${adapter} failed one or more BIP375 sender workflow checks.`,
         assertions,
         ...(typeof transactionId === "string" ? { transactionId } : {}),
+      };
+    },
+  };
+}
+
+export function createBip375AdvancedSenderScenario(
+  adapterName: string,
+): ScenarioDefinition<ScenarioExecutionContext> {
+  const adapter = safeAdapterId(adapterName);
+  return {
+    id: `bip375-advanced-sender-workflows-${adapter}`,
+    title: `Advanced BIP375 sender workflows through ${adapter}`,
+    category: "silent-payment-interop",
+    summary:
+      "Pinned official vectors exercise multi-input aggregation, per-input shares, multiple recipients, labels/change, and repeated-address output ordering.",
+    requirements: [
+      {
+        adapter,
+        operations: ["silent-payment-send-advanced"],
+        roles: ["updater", "signer"],
+        psbtVersions: [2],
+        scriptTypes: ["p2wpkh"],
+        features: ["bip375-advanced-sender-workflows"],
+      },
+    ],
+    async run(context) {
+      const failures: string[] = [];
+      let partialSignatureInputs = 0;
+      let silentOutputs = 0;
+      let finalizationWasExplicit = true;
+      for (const id of BIP375_ADVANCED_FIXTURE_IDS) {
+        const fixture = bip375AdvancedFixture(id);
+        const response = await context.request(adapter, "silent-payment-send-advanced", {
+          psbt: fixture.inProgressPsbt,
+          network: "regtest",
+          fixtureId: id,
+          signer: "all",
+        });
+        if (response.status !== "ok") {
+          failures.push(`${id}:${response.status}:${response.error.class}`);
+          continue;
+        }
+        const psbt = response.output["psbt"];
+        if (typeof psbt !== "string") {
+          failures.push(`${id}:missing-psbt`);
+          continue;
+        }
+        const reference = validateBip375ReferencePsbt(psbt);
+        const evidence = advancedWorkflowEvidence(psbt);
+        if (
+          reference?.valid !== true ||
+          JSON.stringify(evidence.outputScripts) !==
+            JSON.stringify(fixture.expectedOutputScripts) ||
+          evidence.outputScripts.length !== fixture.silentPaymentOutputCount ||
+          evidence.partialSignatureInputs !== fixture.inputCount
+        ) {
+          failures.push(`${id}:derived-result-mismatch`);
+          continue;
+        }
+        await context.checkpoint(
+          `bip375-advanced-sender-workflows-${adapter}`,
+          `${id}-completed`,
+          psbt,
+        );
+        partialSignatureInputs += evidence.partialSignatureInputs;
+        silentOutputs += fixture.silentPaymentOutputCount;
+        finalizationWasExplicit &&=
+          response.output["finalized"] === false &&
+          response.output["finalizationAvailable"] === false &&
+          typeof response.output["finalizationReason"] === "string";
+      }
+
+      const expectedCanaries = new Map([
+        ["invalid-11", "silent_payment.invalid_dleq"],
+        ["invalid-16", "silent_payment.incomplete_coverage"],
+        ["invalid-18", "silent_payment.sighash_not_allowed"],
+        ["invalid-20", "silent_payment.output_script_mismatch"],
+        ["invalid-21", "silent_payment.output_order_mismatch"],
+      ]);
+      const canaryFailures = [...expectedCanaries].flatMap(([id, expected]) => {
+        const vector = BIP375_INVALID_VECTORS.find((candidate) => candidate.id === id);
+        if (!vector) return [`${id}:missing-vector`];
+        const result = classifyBip375ReferencePsbt(vector.base64);
+        return !result.valid && result.class === expected
+          ? []
+          : [`${id}:${result.valid ? "accepted" : result.class}`];
+      });
+      const assertions: ScenarioAssertionEvidence[] = [
+        {
+          name: "bip375-advanced-workflow-coverage",
+          passed: failures.length === 0,
+          summary:
+            failures.length === 0
+              ? `All five advanced workflows derived ${silentOutputs} outputs and materialized partial signatures for ${partialSignatureInputs} input maps`
+              : `Failures: ${failures.join(", ")}`,
+        },
+        {
+          name: "bip375-advanced-global-and-per-input-shares",
+          passed:
+            failures.length === 0 &&
+            BIP375_ADVANCED_FIXTURE_IDS.some(
+              (id) => bip375AdvancedFixture(id).shareScope === "global",
+            ) &&
+            BIP375_ADVANCED_FIXTURE_IDS.some(
+              (id) => bip375AdvancedFixture(id).shareScope === "per-input",
+            ),
+          summary: "Both BIP375 ECDH share placement modes were exercised",
+        },
+        {
+          name: "bip375-advanced-stable-canary-classes",
+          passed: canaryFailures.length === 0,
+          summary:
+            canaryFailures.length === 0
+              ? "Five official invalid vectors produced exact developer-facing failure classes"
+              : `Classification failures: ${canaryFailures.join(", ")}`,
+        },
+        {
+          name: "bip375-advanced-finalization-boundary",
+          passed: finalizationWasExplicit,
+          summary:
+            "Official advanced vectors are reported as non-finalizable instead of claiming spend validity for unrelated funding keys",
+        },
+      ];
+      return {
+        summary: assertions.every(({ passed }) => passed)
+          ? `${adapter} completed all five bounded advanced BIP375 sender workflows with independently checked derivation and explicit fixture boundaries.`
+          : `${adapter} failed one or more advanced BIP375 workflow checks.`,
+        assertions,
       };
     },
   };

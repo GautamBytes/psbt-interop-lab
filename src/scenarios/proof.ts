@@ -32,6 +32,7 @@ import { classifyRegression, createBdkRegressionScenario } from "./bdk-regressio
 import { createBip370VectorScenario } from "./bip370.js";
 import { createBip371VectorScenario } from "./bip371.js";
 import {
+  createBip375AdvancedSenderScenario,
   createBip375NativeParserScenario,
   createBip375ReferenceScenario,
   createBip375SenderScenario,
@@ -392,6 +393,11 @@ export const PROOF_SCENARIOS: readonly ProofScenarioSummary[] = [
   {
     id: "bip375-sender-workflow-rust-psbt-v2",
     title: "BIP375 Silent Payment sender workflow through rust-psbt-v2",
+    category: "silent-payment-interop",
+  },
+  {
+    id: "bip375-advanced-sender-workflows-rust-psbt-v2",
+    title: "Advanced BIP375 sender workflows through rust-psbt-v2",
     category: "silent-payment-interop",
   },
   {
@@ -917,6 +923,11 @@ export const PROOF_SCENARIO_REGISTRATIONS: readonly ProofScenarioRegistration[] 
     "bip375-sender-workflow-rust-psbt-v2",
     { core: false, fixtures: [], adapters: ["rust-psbt-v2"] },
     () => createBip375SenderScenario("rust-psbt-v2"),
+  ),
+  registerScenario(
+    "bip375-advanced-sender-workflows-rust-psbt-v2",
+    { core: false, fixtures: [], adapters: ["rust-psbt-v2"] },
+    () => createBip375AdvancedSenderScenario("rust-psbt-v2"),
   ),
   registerScenario(
     "bip376-spend-workflow-rust-psbt-v2",

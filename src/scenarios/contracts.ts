@@ -142,6 +142,7 @@ export const PSBTV2_ADAPTER_CONTRACT = {
     "extract",
     "construct",
     "silent-payment-send",
+    "silent-payment-send-advanced",
     "silent-payment-spend",
   ],
   roles: ["parser", "updater", "signer", "combiner", "finalizer", "extractor", "constructor"],
@@ -156,6 +157,7 @@ export const PSBTV2_ADAPTER_CONTRACT = {
     extract: ["p2wpkh", "p2wsh"],
     construct: ["p2wpkh", "p2wsh"],
     "silent-payment-send": ["p2pkh"],
+    "silent-payment-send-advanced": ["p2wpkh"],
     "silent-payment-spend": ["p2tr-keypath"],
   },
   features: [
@@ -169,6 +171,7 @@ export const PSBTV2_ADAPTER_CONTRACT = {
     "bip371-taproot-roundtrip",
     "bip375-silent-payments",
     "bip375-sender-workflow",
+    "bip375-advanced-sender-workflows",
     "bip376-spend-workflow",
   ],
 } as const satisfies ExpectedAdapterContract;

@@ -95,6 +95,7 @@ describe("adapter contracts", () => {
         "extract",
         "construct",
         "silent-payment-send",
+        "silent-payment-send-advanced",
         "silent-payment-spend",
       ],
       roles: ["parser", "updater", "signer", "combiner", "finalizer", "extractor", "constructor"],
