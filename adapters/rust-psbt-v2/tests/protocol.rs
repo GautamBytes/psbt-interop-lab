@@ -6,6 +6,7 @@ use psbt_v2::v2::Psbt;
 use serde_json::{Value, json};
 
 const VALID_PSBT_V2: &str = "cHNidP8BAgQCAAAAAQQBAQEFAQIB+wQCAAAAAAEOIAsK2SFBnByHGXNdctxzn56p4GONH+TB7vD5lECEgV/IAQ8EAAAAAAABAwgACK8vAAAAAAEEFgAUxDD2TEdW2jENvRoIVXLvKZkmJywAAQMIi73rCwAAAAABBBYAFE3Rk6yWSlasG54cyoRU/i9HT4UTAA==";
+const VALID_BIP375_PSBT: &str = "cHNidP8B+wQCAAAAAQIEAgAAAAEEAQEBBQECAQYBAAABDiAYpxdmOwurFLEqGncTI/8eQHndUy5d0T4o6hCBxwCYSgEPBAAAAAABAR9ADQMAAAAAABYAFCKactNKZFvTSWu79Qu7gckGP0+UAQMEAQAAACIGAsgXu3Uhr8NeqW87+ycObrUN3/pVYGJ7lh/sAPKZZQi/CAAAAIAAAAAAARAE/v///yIdA1LXjEE5ADKtkYFqaX/HQNjrkJzwTXCIUmSwUfI4XiXsIQMJH9SAORd/RNe3npYWiEnGLrP4eADEZ2fFCo84+Y79FSIeA1LXjEE5ADKtkYFqaX/HQNjrkJzwTXCIUmSwUfI4XiXsQL4acjrvVeiYG5lZmpvBKzj4froBWMxwZokPImnK3kY7dzQal9KScZZNAcAkHMMi/VOQwpuZFg+CbzKTZYmMvwIAAQMIkF8BAAAAAAABCUIDZR0sBz/LAqTYLdpT8dUB13oDUGZnmFRkc7ISa2zRp94D8nDgpWMhg7arAQdOh35oANsA9cfF0vr7to+cKNSFRSQAAQMIkF8BAAAAAAABBCJRIENYHfbIefmqrcU2YN6xVrnxIr0a7KczIDvOh/zx84buAQlCA1LXjEE5ADKtkYFqaX/HQNjrkJzwTXCIUmSwUfI4XiXsAuDEwYe3IV+ZfISFp1tFkbbChHe5WhEjuZaSLTFUhgv4AA==";
 const DIGEST: &str = "sha256:0000000000000000000000000000000000000000000000000000000000000000";
 
 fn request(operation: &str, payload: Value) -> Value {
@@ -64,10 +65,47 @@ fn advertises_native_psbt_v2_workflow_capabilities() {
             .contains(&json!("bip371-taproot-roundtrip"))
     );
     assert!(
+        response["output"]["features"]
+            .as_array()
+            .expect("features array")
+            .contains(&json!("bip375-silent-payments"))
+    );
+    assert!(
         !response["output"]["operations"]
             .as_array()
             .expect("operations array")
             .contains(&json!("convert"))
+    );
+}
+
+#[test]
+fn exposes_typed_bip375_fields_from_the_native_parser() {
+    let parsed = handle_value(
+        request("native-parse", json!({ "psbt": VALID_BIP375_PSBT })),
+        DIGEST,
+    );
+
+    assert_eq!(parsed["status"], "ok", "{parsed:#}");
+    assert_eq!(
+        parsed["output"]["silentPaymentFields"],
+        json!({
+            "globalEcdhShares": 0,
+            "globalDleqProofs": 0,
+            "inputEcdhShares": 1,
+            "inputDleqProofs": 1,
+            "outputsWithInfo": 2,
+            "outputsWithLabel": 0
+        })
+    );
+
+    let roundtripped = handle_value(
+        request("roundtrip", json!({ "psbt": VALID_BIP375_PSBT })),
+        DIGEST,
+    );
+    assert_eq!(roundtripped["status"], "ok", "{roundtripped:#}");
+    assert_eq!(
+        roundtripped["output"]["silentPaymentFields"],
+        parsed["output"]["silentPaymentFields"]
     );
 }
 

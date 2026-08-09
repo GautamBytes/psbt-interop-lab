@@ -100,6 +100,7 @@ describe("adapter contracts", () => {
       operationScriptTypes: {
         roundtrip: ["p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
       },
+      features: expect.arrayContaining(["bip375-silent-payments"]),
     });
     expect(PSBTV2_ADAPTER_CONTRACT.operations).not.toContain("convert");
   });

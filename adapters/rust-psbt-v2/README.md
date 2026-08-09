@@ -2,9 +2,11 @@
 
 This is a bounded PSBTv2 workflow adapter for the `psbt-lab.adapter/0.2` JSONL
 protocol. It uses the Rust Bitcoin `psbt-v2` crate to parse, inspect, serialize,
-sign, combine, finalize, extract, and construct BIP370 PSBTs. Signing operations
-are restricted to committed deterministic regtest fixtures; constructor actions
-operate only on caller-supplied PSBTv2 documents.
+sign, combine, finalize, extract, and construct BIP370 PSBTs. Its
+`silent-payments` feature also exposes BIP375 ECDH shares, DLEQ proofs, recipient
+data, and labels as typed fields. Signing operations are restricted to committed
+deterministic regtest fixtures; constructor actions operate only on
+caller-supplied PSBTv2 documents.
 
 ## Pinned source
 
@@ -12,14 +14,16 @@ operate only on caller-supplied PSBTv2 documents.
 - Repository: [`rust-bitcoin/rust-psbt`](https://github.com/rust-bitcoin/rust-psbt)
 - Tag: `psbt-v2-0.3.0`
 - Peeled tag commit: `8ca657c333b6b391f2501e8b31627ccbb6a67f66`
-- Specification: [BIP370](https://bips.dev/370/)
+- Specifications: [BIP370](https://bips.dev/370/) and [BIP375](https://bips.dev/375/)
 
 `Cargo.toml` pins the crate exactly and `Cargo.lock` commits the complete
 dependency resolution. The tests copy the exact 14 valid and 21 invalid BIP370
 vector cases shipped by that pinned CC0 upstream source. The local harness sends
 every vector through the native parser and also exercises bidirectional P2WPKH
 signing/finalization and cross-library 2-of-3 P2WSH signing, combining,
-finalization, and extraction.
+finalization, and extraction. It additionally sends all 41 official BIP375
+vectors through the native parser. Every valid vector must expose the expected
+typed Silent Payment fields and survive a semantic native roundtrip.
 
 ## Capabilities
 
@@ -37,12 +41,19 @@ The `hello` response declares:
 The operation-specific capability map declares P2WPKH and P2WSH signing,
 combining, finalization, extraction, and construction. Taproot inspection and
 native roundtripping cover key-path and script-path PSBTv2 data, but the adapter
-does not claim Taproot signing or PSBT version conversion.
+does not claim Taproot signing or PSBT version conversion. The
+`bip375-silent-payments` feature means the parser recognizes BIP375 fields
+natively; it does not claim Silent Payment transaction construction, scanning,
+or spend support.
 
 `roundtrip` uses the native serializer. PSBT map order is not semantically
 significant, and the library may materialize an explicit default field, so the
 response includes `byteIdentical` as diagnostic data. Correctness is based on
 the roundtripped PSBT parsing to the same native PSBT value, not byte equality.
+Both `native-parse` and `roundtrip` report bounded counts for typed BIP375 fields.
+The native-parser scenario separates structural parse rejection from later
+cryptographic and transaction-semantic validation performed by the reference
+BIP375 scenario.
 
 `construct` creates modifiable PSBTv2 documents, adds or removes inputs and
 outputs, updates sequence values, selects BIP370 locktimes, and seals input or
