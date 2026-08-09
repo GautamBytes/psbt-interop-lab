@@ -50,10 +50,13 @@ protocol specification.
   ordered participant set across rust-bitcoin and bitcoinjs-lib, exchanges two public nonces and
   partial signatures, and aggregates a verified BIP340 key-path signature.
 - [BIP375](https://bips.dev/375/) defines Silent Payment PSBT send fields for ECDH shares, DLEQ
-  proofs, recipient scan keys, spend keys, labels, and eligible inputs. The lab currently names
-  registered send fields in diagnostics.
+  proofs, recipient scan keys, spend keys, labels, and eligible inputs. The lab parses the official
+  vectors and runs one bounded sender workflow through derivation, signing, and extraction.
 - [BIP376](https://bips.dev/376/) defines Silent Payment PSBT spend fields for spend-key derivation
-  and tweaks. The lab currently names these fields in diagnostics.
+  and tweaks. The lab runs one deterministic regtest receiver-spend workflow that derives the
+  output key, signs and finalizes the spend, cleans the spent fields, and requires Core policy
+  acceptance. BIP376 is currently Draft, so this is bounded interoperability evidence rather than
+  a broad wallet-support claim.
 - [BIP382](https://bips.dev/382/) defines `wpkh()` output descriptors, including their use inside
   `sh()`, and [BIP386](https://bips.dev/386/) defines `tr()` descriptors. The fixture factory uses
   these forms for nested SegWit and Taproot script-path regtest outputs.

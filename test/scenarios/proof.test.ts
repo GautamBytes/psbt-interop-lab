@@ -142,7 +142,10 @@ function fixture(id: PsbtFixture["id"]): PsbtFixture {
           ? (["p2sh-p2wpkh"] as const)
           : id === "p2sh-p2wsh-2-of-3"
             ? (["p2sh-p2wsh"] as const)
-            : id === "p2tr-keypath" || id === "p2tr-musig2" || id === "sighash-p2tr-keypath"
+            : id === "p2tr-keypath" ||
+                id === "p2tr-musig2" ||
+                id === "bip376-spend" ||
+                id === "sighash-p2tr-keypath"
               ? (["p2tr-keypath"] as const)
               : id === "p2tr-scriptpath"
                 ? (["p2tr-scriptpath"] as const)
@@ -192,6 +195,7 @@ function preparedFixtures(): PreparedFixtures {
       "p2wsh-2-of-3": fixture("p2wsh-2-of-3"),
       "p2tr-keypath": fixture("p2tr-keypath"),
       "p2tr-musig2": fixture("p2tr-musig2"),
+      "bip376-spend": fixture("bip376-spend"),
       "p2tr-scriptpath": fixture("p2tr-scriptpath"),
       "mixed-p2wpkh-p2tr": fixture("mixed-p2wpkh-p2tr"),
       "intent-rich-p2wpkh": fixture("intent-rich-p2wpkh"),
@@ -704,6 +708,7 @@ describe("proof runtime", () => {
       "bip375-official-reference-vectors",
       "bip375-official-vectors-rust-psbt-v2",
       "bip375-sender-workflow-rust-psbt-v2",
+      "bip376-spend-workflow-rust-psbt-v2",
     ]);
   });
 
@@ -831,6 +836,12 @@ describe("proof runtime", () => {
       p2wpkh: `sha256:${"d".repeat(64)}`,
       "intent-rich-p2wpkh": `sha256:${"d".repeat(64)}`,
       "p2wsh-2-of-3": `sha256:${"d".repeat(64)}`,
+      "bip376-spend": `sha256:${"d".repeat(64)}`,
+    });
+    const libwallyCommitments = JSON.stringify({
+      p2wpkh: `sha256:${"d".repeat(64)}`,
+      "intent-rich-p2wpkh": `sha256:${"d".repeat(64)}`,
+      "p2wsh-2-of-3": `sha256:${"d".repeat(64)}`,
     });
     const musig2Commitments = JSON.stringify({
       "p2tr-musig2": `sha256:${"d".repeat(64)}`,
@@ -865,7 +876,7 @@ describe("proof runtime", () => {
       },
       {
         image: "psbt-interop-lab/libwally:1.5.4",
-        options: { env: { PSBT_LAB_FIXTURE_COMMITMENTS: psbtv2Commitments } },
+        options: { env: { PSBT_LAB_FIXTURE_COMMITMENTS: libwallyCommitments } },
       },
       {
         image: "psbt-interop-lab/musig2-rust:0.1.0",

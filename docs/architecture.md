@@ -204,7 +204,7 @@ The detailed assumptions, abuse paths, and residual risks are recorded in the
 
 ## Proof Scenarios
 
-The executable catalog currently contains 48 scenarios. Twelve independent Core-to-library
+The executable catalog currently contains 51 scenarios. Twelve independent Core-to-library
 handoffs exercise rust-bitcoin, btcsuite, bitcoinjs, and current BDK signing for P2WSH, P2WPKH, and
 P2TR key-path inputs. Additional rust-bitcoin handoffs prove legacy P2PKH signing from an exact
 `non_witness_utxo` and nested P2SH-P2WSH 2-of-3 signing and finalization.
@@ -271,6 +271,14 @@ and output mutation, signs with `SIGHASH_ALL`, verifies the finalized P2PKH scri
 transaction. The orchestrator independently validates the cryptography and exact field transition,
 then confirms that mainnet and transaction-intent mutations are rejected before signing.
 
+A separate bounded BIP376 receiver-spend scenario starts from a Core-funded deterministic Taproot
+output and uses libwally for the PSBTv0-to-v2 handoff. The rust-psbt-v2 adapter reads the registered
+spend-key and output-tweak fields, derives and verifies the corresponding key-path output, signs and
+finalizes it natively, and removes spent signing material. The orchestrator requires signature-only
+mutation before finalization, rejects mainnet and a mismatched tweak, and asks Core to policy-check
+the extracted transaction. This proves one deterministic receiver spend; it is not a wallet scanner
+or a claim of arbitrary Silent Payment wallet support.
+
 Scenario findings carry a stable rule ID and the actual observation into the central conformance
 catalog. Classification adds normative level, authoritative source, expected behavior, severity,
 repairability, and confidence before redaction and rendering to JSON, Markdown, and HTML. The
@@ -320,7 +328,7 @@ the expected identity and baseline parser capabilities, probes valid and malform
 and requires semantic roundtrip preservation.
 
 `psbt-lab matrix --adapter-manifest <manifest>` then registers each external process by its manifest
-ID while retaining the separately validated implementation identity. The runner preserves all 48
+ID while retaining the separately validated implementation identity. The runner preserves all 51
 bundled scenarios and appends capability-gated P2WPKH, nested P2SH-P2WPKH, P2WSH, Taproot key-path,
 and Taproot script-path parse and roundtrip scenarios, plus signing where declared. Run-scoped
 unsigned-transaction commitments authorize only deterministic regtest fixtures. See

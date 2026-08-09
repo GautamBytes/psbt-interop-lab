@@ -95,13 +95,18 @@ describe("adapter contracts", () => {
         "extract",
         "construct",
         "silent-payment-send",
+        "silent-payment-spend",
       ],
       roles: ["parser", "updater", "signer", "combiner", "finalizer", "extractor", "constructor"],
       scriptTypes: ["p2pkh", "p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
       operationScriptTypes: {
         roundtrip: ["p2pkh", "p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
       },
-      features: expect.arrayContaining(["bip375-silent-payments", "bip375-sender-workflow"]),
+      features: expect.arrayContaining([
+        "bip375-silent-payments",
+        "bip375-sender-workflow",
+        "bip376-spend-workflow",
+      ]),
     });
     expect(PSBTV2_ADAPTER_CONTRACT.operations).not.toContain("convert");
   });

@@ -35,7 +35,8 @@ fn advertises_native_psbt_v2_workflow_capabilities() {
             "finalize",
             "extract",
             "construct",
-            "silent-payment-send"
+            "silent-payment-send",
+            "silent-payment-spend"
         ])
     );
     assert_eq!(
@@ -88,6 +89,12 @@ fn advertises_native_psbt_v2_workflow_capabilities() {
             .as_array()
             .expect("features array")
             .contains(&json!("bip375-sender-workflow"))
+    );
+    assert!(
+        response["output"]["features"]
+            .as_array()
+            .expect("features array")
+            .contains(&json!("bip376-spend-workflow"))
     );
     assert!(
         !response["output"]["operations"]
