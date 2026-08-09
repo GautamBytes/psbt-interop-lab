@@ -15,6 +15,7 @@ export const adapterOperations = [
   "musig2-nonce",
   "musig2-partial-sign",
   "musig2-aggregate",
+  "silent-payment-send",
 ] as const;
 
 export type AdapterOperation = (typeof adapterOperations)[number];

@@ -66,6 +66,7 @@
     "adapters/rust-psbt-v2/tests/bip370_parse_valid.rs",
     "adapters/rust-psbt-v2/tests/process.rs",
     "adapters/rust-psbt-v2/tests/protocol.rs",
+    "adapters/rust-psbt-v2/tests/silent_payment_send.rs",
     "adapters/rust-psbt-v2/tests/util.rs",
     "adapters/rust-psbt-v2/tests/workflow.rs",
     "adapters/libwally-1.5.4/.dockerignore",

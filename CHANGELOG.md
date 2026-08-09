@@ -2,6 +2,14 @@
 
 All notable changes to PSBT Interop Lab are recorded here.
 
+## [Unreleased]
+
+### Added
+
+- A bounded BIP375 Silent Payment sender workflow that derives and independently validates the
+  BIP374 DLEQ proof and BIP352 output script, signs and finalizes the pinned official fixture on
+  regtest, and rejects mainnet or transaction-intent mutations before signing.
+
 ## [0.9.0] - 2026-08-05
 
 ### Added

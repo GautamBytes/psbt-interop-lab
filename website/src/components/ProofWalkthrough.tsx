@@ -8,11 +8,11 @@ import { ZoomableImage } from "./ZoomableImage";
 const facts = [
   {
     label: "Complete run",
-    value: `${releaseFacts.scenarioCount} / ${releaseFacts.scenarioCount} bundled scenarios passed`,
+    value: `${releaseFacts.walkthroughScenarioCount} / ${releaseFacts.walkthroughScenarioCount} bundled scenarios passed`,
   },
   {
     label: "Coverage",
-    value: `${releaseFacts.scenarioCount} bundled scenarios across ${releaseFacts.integrationStackCount} integration stacks`,
+    value: `${releaseFacts.walkthroughScenarioCount} bundled scenarios across ${releaseFacts.integrationStackCount} integration stacks`,
   },
   {
     label: "Replay",
@@ -27,7 +27,7 @@ export function ProofWalkthrough() {
         <header className="proof-heading">
           <div>
             <span className="eyebrow">
-              Evidence from the complete {releaseFacts.scenarioCount}-scenario matrix | v
+              Evidence from the complete {releaseFacts.walkthroughScenarioCount}-scenario matrix | v
               {releaseFacts.version} capture
             </span>
             <h2 id="proof-title">The complete matrix, one replayable artifact.</h2>
@@ -35,9 +35,9 @@ export function ProofWalkthrough() {
           <div>
             <p>
               This complete run executes every bundled workflow against pinned implementations and
-              Bitcoin Core on regtest. All {releaseFacts.scenarioCount} scenarios passed, one known
-              parser compatibility finding remained visible, and the same artifact replay-verified{" "}
-              {releaseFacts.replayCheckpointCount} checkpoints.
+              Bitcoin Core on regtest. All {releaseFacts.walkthroughScenarioCount} scenarios passed,
+              one known parser compatibility finding remained visible, and the same artifact
+              replay-verified {releaseFacts.replayCheckpointCount} checkpoints.
             </p>
             <SiteLink className="inline-link" href="/docs#walkthrough-verify-the-complete-matrix">
               Open the complete walkthrough <ArrowSquareOut aria-hidden="true" />
@@ -58,8 +58,8 @@ export function ProofWalkthrough() {
               <span>01</span>
               <strong>Inspect the v{releaseFacts.version} report</strong>
               <small>
-                Direct capture of the {releaseFacts.scenarioCount}-scenario, self-contained HTML
-                artifact.
+                Direct capture of the {releaseFacts.walkthroughScenarioCount}-scenario,
+                self-contained HTML artifact.
               </small>
             </figcaption>
           </figure>
