@@ -6,6 +6,7 @@ import type {
 } from "../../src/protocol/types.js";
 import { BIP375_VALID_VECTORS } from "../../src/psbt/bip375-vectors.js";
 import { extractWireFacts } from "../../src/psbt/wire-facts.js";
+import { classifyScenario } from "../../src/runner/classification.js";
 import { bip375SenderFixture, createBip375SenderScenario } from "../../src/scenarios/bip375.js";
 import { ScenarioExecutionContext } from "../../src/scenarios/context.js";
 import { runScenarioCatalog } from "../../src/scenarios/engine.js";
@@ -140,6 +141,7 @@ describe("BIP375 sender workflow", () => {
     expect(result).toMatchObject({
       id: "bip375-sender-workflow-rust-psbt-v2",
       outcome: "passed",
+      policyAccepted: true,
       transactionId: "2".repeat(64),
     });
     expect(result?.assertions.map(({ name, passed }) => ({ name, passed }))).toEqual([
@@ -163,7 +165,11 @@ describe("BIP375 sender workflow", () => {
 
     expect(result).toMatchObject({
       outcome: "failed",
+      policyAccepted: false,
     });
+    expect(classifyScenario(result as NonNullable<typeof result>)).toContainEqual(
+      expect.objectContaining({ id: "core-policy-rejection" }),
+    );
     expect(result?.assertions).toContainEqual({
       name: "bip375-sender-core-validation",
       passed: false,
@@ -182,9 +188,12 @@ describe("BIP375 sender workflow", () => {
 
     expect(result).toMatchObject({
       outcome: "passed",
-      policyAccepted: false,
       transactionId: "2".repeat(64),
     });
+    expect(result).not.toHaveProperty("policyAccepted");
+    expect(classifyScenario(result as NonNullable<typeof result>)).not.toContainEqual(
+      expect.objectContaining({ id: "core-policy-rejection" }),
+    );
     expect(result?.assertions).toContainEqual({
       name: "bip375-sender-core-validation",
       passed: true,

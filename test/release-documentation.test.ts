@@ -195,6 +195,10 @@ describe("release documentation", () => {
     expect(readme).not.toContain("focused v0.5.1 run");
   });
 
+  it("includes BIP375 in the public diagnostic-field inventory", () => {
+    expect(read("README.md")).toContain("BIP174, BIP370, BIP371, and BIP375");
+  });
+
   it("uses public HTTPS URLs for npm README walkthrough images", () => {
     const readme = read("README.md");
     const imageSources = [...readme.matchAll(/!\[[^\]]*\]\(([^)]+)\)/g)].map((match) => match[1]);

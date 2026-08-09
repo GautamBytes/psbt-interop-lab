@@ -320,8 +320,9 @@ roundtripping, signing, combining, and finalization. Unsupported capabilities ar
 unsupported rather than counted as passes.
 
 Known native-library divergences remain explicit compatibility findings in CLI, JSON, Markdown,
-and HTML output. Failures identify familiar BIP174, BIP370, and BIP371 field names where known,
-attribute the failing handoff, and provide evidence-based next steps without rewriting the PSBT.
+and HTML output. Failures identify familiar BIP174, BIP370, BIP371, and BIP375 field names where
+known, attribute the failing handoff, and provide evidence-based next steps without rewriting the
+PSBT.
 The current baseline allows only btcsuite 1.2.0 to either accept or reject the duplicate global key
 probe; another parser accepting malformed input, or any parser crashing or timing out, still fails
 the scenario.

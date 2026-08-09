@@ -233,6 +233,28 @@ describe("PSBT Interop Lab website", () => {
     ).toBeInTheDocument();
   });
 
+  it("labels the report rail as samples and surfaces v0.10 Silent Payment evidence", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    expect(screen.getByText("Sample scenarios")).toBeInTheDocument();
+    expect(screen.getByText(/browse sample scenarios/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /BIP375 conformance/i }));
+    expect(
+      screen.getByRole("heading", { name: "Silent Payment field conformance" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/all 41 official BIP375 vectors/i)).toBeInTheDocument();
+    expect(screen.getByText(/this sample highlights one of two/i)).toBeInTheDocument();
+    expect(screen.getByText("bip375.invalid-vectors.rejected")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /BIP376 receiver spend/i }));
+    expect(
+      screen.getByRole("heading", { name: "Silent Payment receiver-spend handoff" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Core policy acceptance on regtest/i)).toBeInTheDocument();
+  });
+
   it("shows a catalog-backed preview of structured conformance diagnostics", () => {
     render(<App />);
 

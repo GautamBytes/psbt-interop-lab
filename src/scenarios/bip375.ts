@@ -688,7 +688,11 @@ export function createBip375SenderScenario(
             : `${adapter} completed the pinned BIP375 sender transaction with independently verified cryptography and a Core-confirmed transaction identity; policy evaluation remains bounded by the official fixture parent.`
           : `${adapter} failed one or more BIP375 sender workflow checks.`,
         assertions,
-        policyAccepted: policy.allowed,
+        ...(policy.allowed
+          ? { policyAccepted: true }
+          : parentOutsideRegtest
+            ? {}
+            : { policyAccepted: false }),
         ...(coreValidationPassed ? { transactionId: policy.txid } : {}),
       };
     },

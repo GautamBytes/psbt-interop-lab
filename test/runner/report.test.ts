@@ -206,6 +206,41 @@ describe("HTML report", () => {
     expect(html).toContain('href="https://github.com/bitcoin/bips/blob/master/bip-0174.mediawiki"');
   });
 
+  test("distinguishes policy-accepted and Core-confirmed transaction ids", () => {
+    const value = manifest();
+    const firstScenario = value.scenarios[0];
+    if (!firstScenario) throw new Error("Missing report fixture scenario");
+    const acceptedTxid = "1".repeat(64);
+    const confirmedTxid = "2".repeat(64);
+    const valueWithTransactionIds: RunManifest = {
+      ...value,
+      scenarios: [
+        {
+          ...firstScenario,
+          id: "policy-accepted",
+          title: "Policy-accepted transaction",
+          outcome: "passed",
+          policyAccepted: true,
+          transactionId: acceptedTxid,
+        },
+        {
+          ...firstScenario,
+          id: "policy-unavailable",
+          title: "Core-confirmed transaction",
+          outcome: "passed",
+          summary: "Core confirmed the transaction identity; policy evaluation is unavailable.",
+          transactionId: confirmedTxid,
+        },
+      ],
+    };
+
+    const markdown = generateMarkdownReport(valueWithTransactionIds);
+
+    expect(markdown).toContain(`Policy-accepted txid: \`${acceptedTxid}\``);
+    expect(markdown).toContain(`Core-confirmed txid: \`${confirmedTxid}\``);
+    expect(markdown).not.toContain(`Policy-accepted txid: \`${confirmedTxid}\``);
+  });
+
   test("redacts dynamic strings in Markdown reports even when the manifest is not pre-redacted", () => {
     const value = manifest();
     const firstScenario = value.scenarios[0];
