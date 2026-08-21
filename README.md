@@ -208,6 +208,11 @@ raw-byte mutation, normalizes every parser result as accepted, rejected, unsuppo
 timed out, and reports structural divergences among accepted parses. Campaigns are capped at 512
 cases.
 
+For every candidate accepted by the lab parser, the lab separately assesses the current
+transaction projection's signed output amounts against Bitcoin's consensus money range. JSON cases
+carry that bounded assessment, while the text summary reports `semantic-invalid=<count>`. This does
+not change native parser classifications or make semantic-only cases parser differentials.
+
 When a divergence is found, write a minimized, SHA256-committed custom-suite regression:
 
 ```bash
@@ -233,11 +238,12 @@ psbt-lab parse-matrix --runtime local \
   --suite-manifest parser-issue/regression-suite.json
 ```
 
-The new destination contains `manifest.json`, `regression-suite.json`, and `issue.md`. The manifest
-records exact negotiated implementation identities, normalized outcomes, and SHA256 commitments to
-the other two files. The issue draft uses neutral investigation language: the lab does not assign
-fault from a differential result. Commands, environment variables, raw diagnostics, and local paths
-are excluded. Fuzzing remains limited to the frozen public test fixtures; it does not accept wallet
+The new destination contains `manifest.json`, `regression-suite.json`, and `issue.md`. The
+`psbt-lab.issue-bundle/0.2` manifest records exact negotiated implementation identities, normalized
+outcomes, the minimized candidate's separate lab semantic assessment, and SHA256 commitments to the
+other two files. The issue draft uses neutral investigation language: the lab does not assign fault
+from a differential result. Commands, environment variables, raw diagnostics, and local paths are
+excluded. Fuzzing remains limited to the frozen public test fixtures; it does not accept wallet
 PSBTs or production transaction data. The destination must not already exist.
 
 ## Custom Suites

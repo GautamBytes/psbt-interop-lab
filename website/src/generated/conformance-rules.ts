@@ -105,6 +105,21 @@ export const publicConformanceRules = {
     "repairability": "code-or-dependency-change",
     "confidence": "high"
   },
+  "lab.transaction-output.money-range": {
+    "id": "lab.transaction-output.money-range",
+    "title": "Transaction output money range",
+    "category": "transaction-output-range",
+    "normativeLevel": "house-policy",
+    "source": {
+      "name": "PSBT Interop Lab",
+      "url": "https://github.com/GautamBytes/psbt-interop-lab/blob/main/docs/conformance-policy.md",
+      "section": "Output amount semantic assessment"
+    },
+    "expected": "Every current output amount and their aggregate are within Bitcoin's consensus money range.",
+    "severity": "stop",
+    "repairability": "not-a-code-defect",
+    "confidence": "high"
+  },
   "lab.psbtv2.modifiability.valid": {
     "id": "lab.psbtv2.modifiability.valid",
     "title": "PSBTv2 modifiability transition",

@@ -121,6 +121,22 @@ export const CONFORMANCE_RULES = Object.freeze({
     repairability: "code-or-dependency-change",
     confidence: "high",
   }),
+  "lab.transaction-output.money-range": freezeRule({
+    id: "lab.transaction-output.money-range",
+    title: "Transaction output money range",
+    category: "transaction-output-range",
+    normativeLevel: "house-policy",
+    source: {
+      name: "PSBT Interop Lab",
+      url: LAB_POLICY_URL,
+      section: "Output amount semantic assessment",
+    },
+    expected:
+      "Every current output amount and their aggregate are within Bitcoin's consensus money range.",
+    severity: "stop",
+    repairability: "not-a-code-defect",
+    confidence: "high",
+  }),
   "lab.psbtv2.modifiability.valid": freezeRule({
     id: "lab.psbtv2.modifiability.valid",
     title: "PSBTv2 modifiability transition",

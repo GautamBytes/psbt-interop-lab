@@ -100,6 +100,10 @@ describe("release documentation", () => {
       );
       expect(document).toContain("public test");
     }
+    expect(readme).toContain("semantic-invalid");
+    expect(readme.replace(/\s+/g, " ")).toContain("current transaction projection");
+    expect(adapters).toContain("psbt-lab.issue-bundle/0.2");
+    expect(adapters).toContain("Lab semantic assessment");
     expect(futureWork).not.toContain(
       "Attach promoted parser regressions to upstream-ready issue templates",
     );

@@ -143,9 +143,12 @@ psbt-lab parse-matrix --runtime local \
 
 `parser-issue/` is created only when a minimized differential case exists. It contains
 `manifest.json`, `regression-suite.json`, and `issue.md`. The manifest uses
-`psbt-lab.issue-bundle/0.1`, records the exact identities negotiated from successful adapter hello
+`psbt-lab.issue-bundle/0.2`, records the exact identities negotiated from successful adapter hello
 responses, normalizes classifications and accepted parser facts, and commits the issue and suite
-bytes with SHA256. Existing files, directories, and symbolic links are never overwritten.
+bytes with SHA256. The manifest and issue draft include a separate `Lab semantic assessment` for
+the minimized candidate's current output amounts. Adapters still report only their native parser
+behavior; the lab-owned assessment does not change those classifications or the parser-only replay
+suite. Existing files, directories, and symbolic links are never overwritten.
 
 The issue draft is evidence for investigation and does not assign fault to an implementation.
 Adapter commands, arguments, environment, raw diagnostic strings, and local paths are excluded.

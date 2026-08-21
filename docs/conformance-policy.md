@@ -45,6 +45,17 @@ they are not assigned a fabricated protocol claim.
 
 ## Current Clarifications
 
+### Output amount semantic assessment
+
+Native parser acceptance and transaction amount validity are separate evidence. The lab preserves
+an implementation's native parser classification, then independently assesses the current PSBTv0
+or PSBTv2 transaction projection. Each signed output amount and the aggregate must be within
+Bitcoin's consensus money range. A failure is a lab house-policy finding about the current
+projection, not proof that BIP370 requires the native parser to reject the PSBT. PSBTv2 output
+modifiability is reported separately because a permitted Constructor may still repair the
+projection. Bitcoin Core's `CheckTransaction` implementation is the behavior reference:
+https://github.com/bitcoin/bitcoin/blob/master/src/consensus/tx_check.cpp#L27-L37.
+
 ### Taproot output derivations after finalization
 
 BIP371 permits finalizers to remove `PSBT_OUT_TAP_BIP32_DERIVATION`. The lab therefore accepts that
