@@ -4,6 +4,14 @@ All notable changes to PSBT Interop Lab are recorded here.
 
 ## [Unreleased]
 
+### Added
+
+- Differential fuzz results now include a bounded lab-owned assessment of PSBTv0 and PSBTv2
+  output amount ranges, while preserving native parser classifications and parser-only regression
+  promotion.
+- Parser issue bundles now use schema `psbt-lab.issue-bundle/0.2` and distinguish native parser
+  outcomes from the minimized candidate's current transaction amount semantics.
+
 ## [0.10.1] - 2026-08-09
 
 ### Changed

@@ -23,4 +23,23 @@ describe("conformance rule catalog", () => {
       "Unknown conformance rule: bip999.unknown",
     );
   });
+
+  test("classifies output amount range checking as lab-owned semantics", () => {
+    expect(getConformanceRule("lab.transaction-output.money-range")).toEqual({
+      id: "lab.transaction-output.money-range",
+      title: "Transaction output money range",
+      category: "transaction-output-range",
+      normativeLevel: "house-policy",
+      source: {
+        name: "PSBT Interop Lab",
+        url: "https://github.com/GautamBytes/psbt-interop-lab/blob/main/docs/conformance-policy.md",
+        section: "Output amount semantic assessment",
+      },
+      expected:
+        "Every current output amount and their aggregate are within Bitcoin's consensus money range.",
+      severity: "stop",
+      repairability: "not-a-code-defect",
+      confidence: "high",
+    });
+  });
 });

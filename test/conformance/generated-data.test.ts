@@ -3,8 +3,8 @@ import { getConformanceRule } from "../../src/conformance/rules.js";
 import { publicConformanceRules } from "../../website/src/generated/conformance-rules.js";
 
 describe("generated website conformance data", () => {
-  test("matches the authored public fields for the empty final scriptSig rule", () => {
-    const ruleId = "bip174.final-scriptsig.empty-omitted";
+  test("matches the authored public fields for the output amount semantics rule", () => {
+    const ruleId = "lab.transaction-output.money-range";
     const rule = getConformanceRule(ruleId);
 
     expect(publicConformanceRules[ruleId]).toEqual({

@@ -311,10 +311,14 @@ matrix run.
 seed and compares the lossless lab parser with available native parsers. Structured mutations
 operate on parsed PSBT maps; raw mutations are bounded XOR, truncation, and append operations.
 Results normalize to accepted, rejected, unsupported, crashed, or timed out and include structural
-facts for accepted parses. Interesting cases are minimized by deleting redundant operations and
+facts for accepted parses. Every candidate accepted by the lab parser also receives an independent
+assessment of the current transaction projection's signed output amounts and aggregate against
+Bitcoin's consensus money range. Semantic invalidity does not alter native parser classifications
+or parser-interest detection. Interesting cases are minimized by deleting redundant operations and
 shrinking payloads while preserving the exact parser outcome vector, then can be promoted into
 SHA256-committed `psbt-lab.suite/0.2` parser regressions. Promoted expectations preserve both
-classification and accepted structural facts. `psbt-lab parse-matrix --suite-manifest <path>`
+classification and accepted structural facts but remain parser-only; the semantic assessment is
+report evidence rather than a replay expectation. `psbt-lab parse-matrix --suite-manifest <path>`
 replays those regressions through the same Dockerless provider and refuses any Core, signing,
 combining, or finalization operation. Manifest validation also prevents parser fixtures from
 entering those operations through the full matrix path.

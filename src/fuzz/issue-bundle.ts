@@ -1,16 +1,18 @@
 import { createHash } from "node:crypto";
 import type { AdapterImplementation } from "../protocol/types.js";
+import type { OutputAmountSemanticAssessment } from "../psbt/output-amount-semantics.js";
 import type { GeneratedFile } from "../scaffold/model.js";
 import { writeGeneratedProject } from "../scaffold/write.js";
 import { VERSION } from "../version.js";
 import type { ParserExpectedOutcome, ParserOutcome } from "./differential.js";
 import { type DifferentialPromotionInput, promoteDifferentialCase } from "./promotion.js";
 
-export const ISSUE_BUNDLE_SCHEMA = "psbt-lab.issue-bundle/0.1" as const;
+export const ISSUE_BUNDLE_SCHEMA = "psbt-lab.issue-bundle/0.2" as const;
 
 export interface ParserIssueBundleInput extends DifferentialPromotionInput {
   readonly runtime: string;
   readonly implementations: Readonly<Record<string, AdapterImplementation>>;
+  readonly outputAmountSemantics: OutputAmountSemanticAssessment;
 }
 
 function digest(contents: string): `sha256:${string}` {
@@ -56,6 +58,22 @@ function normalizedImplementations(
   );
 }
 
+function normalizeAssessment(
+  assessment: OutputAmountSemanticAssessment,
+): OutputAmountSemanticAssessment {
+  return {
+    status: assessment.status,
+    findings: assessment.findings.map((finding) => ({
+      ruleId: finding.ruleId,
+      code: finding.code,
+      ...(finding.outputIndex === undefined ? {} : { outputIndex: finding.outputIndex }),
+    })),
+    ...(assessment.outputsModifiable === undefined
+      ? {}
+      : { outputsModifiable: assessment.outputsModifiable }),
+  };
+}
+
 function markdownCode(value: string): string {
   const normalized = value.replace(/[\r\n]+/g, " ");
   const backtickRuns = normalized.match(/`+/g) ?? [];
@@ -69,10 +87,29 @@ function factSummary(outcome: ParserExpectedOutcome): string {
   return `; facts PSBTv${outcome.facts.psbtVersion}, inputs=${outcome.facts.inputs}, outputs=${outcome.facts.outputs}`;
 }
 
+function assessmentMarkdown(assessment: OutputAmountSemanticAssessment): readonly string[] {
+  const lines = ["## Lab semantic assessment", "", `- Status: **${assessment.status}**`];
+  if (assessment.outputsModifiable !== undefined) {
+    lines.push(`- Outputs modifiable: **${assessment.outputsModifiable ? "yes" : "no"}**`);
+  }
+  for (const finding of assessment.findings) {
+    lines.push(
+      `- ${markdownCode(finding.code)}${
+        finding.outputIndex === undefined ? "" : ` at output ${finding.outputIndex}`
+      } (${markdownCode(finding.ruleId)})`,
+    );
+  }
+  if (assessment.status === "not-evaluated") {
+    lines.push("- The lab parser rejected the candidate before semantic assessment.");
+  }
+  return [...lines, ""];
+}
+
 function issueMarkdown(
   input: ParserIssueBundleInput,
   outcomes: Readonly<Record<string, ParserExpectedOutcome>>,
   implementations: Readonly<Record<string, AdapterImplementation>>,
+  outputAmountSemantics: OutputAmountSemanticAssessment,
   suiteDigest: string,
 ): string {
   const lines = sortedEntries(outcomes).map(([id, outcome]) => {
@@ -105,6 +142,7 @@ function issueMarkdown(
     "",
     ...lines,
     "",
+    ...assessmentMarkdown(outputAmountSemantics),
     "Raw adapter diagnostics, process commands, environment variables, and local paths are intentionally excluded from this bundle.",
     "",
     "## Reproduce",
@@ -123,6 +161,7 @@ function issueMarkdown(
 export function createParserIssueBundle(input: ParserIssueBundleInput): readonly GeneratedFile[] {
   const outcomes = normalizedOutcomes(input.outcomes);
   const implementations = normalizedImplementations(input.implementations);
+  const outputAmountSemantics = normalizeAssessment(input.outputAmountSemantics);
   const suite = promoteDifferentialCase({
     fixture: input.fixture,
     seed: input.seed,
@@ -134,7 +173,13 @@ export function createParserIssueBundle(input: ParserIssueBundleInput): readonly
   });
   const suiteContents = `${JSON.stringify(suite, null, 2)}\n`;
   const suiteDigest = digest(suiteContents);
-  const issueContents = issueMarkdown(input, outcomes, implementations, suiteDigest);
+  const issueContents = issueMarkdown(
+    input,
+    outcomes,
+    implementations,
+    outputAmountSemantics,
+    suiteDigest,
+  );
   const manifest = {
     schema: ISSUE_BUNDLE_SCHEMA,
     generator: { name: "psbt-interop-lab", version: VERSION },
@@ -153,6 +198,7 @@ export function createParserIssueBundle(input: ParserIssueBundleInput): readonly
     scenarioId: suite.scenarios[0].id,
     implementations,
     outcomes,
+    outputAmountSemantics,
     files: {
       "issue.md": digest(issueContents),
       "regression-suite.json": suiteDigest,

@@ -1,5 +1,8 @@
+import { fileURLToPath } from "node:url";
 import { describe, expect, test, vi } from "vitest";
 import {
+  classifyLabParser,
+  compareRuntimeParsers,
   hasSameParserOutcomes,
   parserOutcomeMatches,
   runDifferentialFuzz,
@@ -7,9 +10,11 @@ import {
 import { promoteDifferentialCase } from "../../src/fuzz/promotion.js";
 import { runParserRegressionSuite } from "../../src/fuzz/regression.js";
 import { LOCAL_PARSE_FIXTURES } from "../../src/local/fixtures.js";
+import { createLocalRuntimeProvider } from "../../src/local/provider.js";
 import { AdapterTimeoutError } from "../../src/protocol/adapter-process.js";
 import type { AdapterRequest, AdapterResponse } from "../../src/protocol/types.js";
 import { parsePsbtDocument } from "../../src/psbt/document.js";
+import * as outputAmountSemantics from "../../src/psbt/output-amount-semantics.js";
 import type { RuntimeProvider } from "../../src/runtime/provider.js";
 
 const IMPLEMENTATION = {
@@ -91,6 +96,14 @@ function provider(): RuntimeProvider {
   };
 }
 
+function labOnlyProvider(): RuntimeProvider {
+  return {
+    runtime: "test",
+    adapters: vi.fn(async () => []),
+    close: vi.fn(async () => undefined),
+  };
+}
+
 describe("runDifferentialFuzz", () => {
   test("distinguishes exact classifications and accepted parser facts", () => {
     const baseline = {
@@ -160,6 +173,10 @@ describe("runDifferentialFuzz", () => {
     ).toBe(true);
     const interesting = result.interesting[0];
     if (!interesting) throw new Error("Expected a differential case");
+    expect(interesting.minimizedOutputAmountSemantics).toEqual({
+      status: "not-evaluated",
+      findings: [],
+    });
     const suite = promoteDifferentialCase({
       fixture: localFixture(0),
       seed: result.seed,
@@ -174,6 +191,76 @@ describe("runDifferentialFuzz", () => {
       }),
     ).resolves.toMatchObject({ outcome: "passed" });
     expect(runtime.close).toHaveBeenCalledOnce();
+  });
+
+  test("reports issue #38 as parser-accepted but semantically invalid", async () => {
+    const packageDirectory = fileURLToPath(new URL("../..", import.meta.url));
+    const result = await runDifferentialFuzz({
+      provider: await createLocalRuntimeProvider({
+        packageDirectory,
+        manifestPath: fileURLToPath(
+          new URL("../../src/local/local-adapters.json", import.meta.url),
+        ),
+      }),
+      fixture: localFixture(1),
+      seed: 42,
+      cases: 128,
+    });
+
+    expect(result.cases[48]).toMatchObject({
+      outcomes: {
+        lab: { classification: "accepted" },
+        "bundled-js": { classification: "accepted" },
+      },
+      outputAmountSemantics: {
+        status: "invalid",
+        outputsModifiable: false,
+        findings: [
+          {
+            ruleId: "lab.transaction-output.money-range",
+            code: "OUTPUT_AMOUNT_NEGATIVE",
+            outputIndex: 0,
+          },
+        ],
+      },
+    });
+    expect(result.interesting).toEqual([]);
+  });
+
+  test("does not evaluate semantics after structural parser rejection", async () => {
+    const result = await runDifferentialFuzz({
+      provider: labOnlyProvider(),
+      fixture: localFixture(0),
+      seed: 42,
+      cases: 24,
+    });
+    const rejected = result.cases.find(
+      ({ outcomes }) => outcomes["lab"]?.classification === "rejected",
+    );
+
+    expect(rejected?.outputAmountSemantics).toEqual({
+      status: "not-evaluated",
+      findings: [],
+    });
+  });
+
+  test("keeps parser-only helpers independent of semantic assessment", async () => {
+    const assessment = vi
+      .spyOn(outputAmountSemantics, "assessOutputAmountSemantics")
+      .mockImplementation(() => {
+        throw new Error("semantic invariant failed");
+      });
+
+    try {
+      expect(classifyLabParser(localFixture(0).psbt)).toMatchObject({
+        classification: "accepted",
+      });
+      await expect(
+        compareRuntimeParsers(labOnlyProvider(), localFixture(0).psbt),
+      ).resolves.toMatchObject({ lab: { classification: "accepted" } });
+    } finally {
+      assessment.mockRestore();
+    }
   });
 
   test("is byte-for-byte deterministic for the same fixture and seed", async () => {
