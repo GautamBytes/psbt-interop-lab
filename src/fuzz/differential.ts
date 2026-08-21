@@ -14,6 +14,10 @@ import {
   generateBoundedMutations,
   type PsbtMutationRecipe,
 } from "../psbt/mutation.js";
+import {
+  assessOutputAmountSemantics,
+  type OutputAmountSemanticAssessment,
+} from "../psbt/output-amount-semantics.js";
 import type { AvailableRuntimeAdapter, RuntimeProvider } from "../runtime/provider.js";
 
 export type ParserClassification = "accepted" | "rejected" | "unsupported" | "crashed" | "timeout";
@@ -42,12 +46,14 @@ export interface DifferentialFuzzCase {
   readonly recipes: readonly PsbtMutationRecipe[];
   readonly mutatedPsbt: string;
   readonly outcomes: Readonly<Record<string, ParserOutcome>>;
+  readonly outputAmountSemantics: OutputAmountSemanticAssessment;
 }
 
 export interface InterestingDifferentialCase extends DifferentialFuzzCase {
   readonly minimizedRecipes: readonly PsbtMutationRecipe[];
   readonly minimizedPsbt: string;
   readonly minimizedOutcomes: Readonly<Record<string, ParserOutcome>>;
+  readonly minimizedOutputAmountSemantics: OutputAmountSemanticAssessment;
 }
 
 export interface DifferentialFuzzResult {
@@ -75,7 +81,17 @@ interface ReadyParser {
 
 interface ParserEvaluator {
   readonly implementations: Readonly<Record<string, AdapterImplementation>>;
-  readonly evaluate: (psbt: string) => Promise<Record<string, ParserOutcome>>;
+  readonly evaluate: (psbt: string) => Promise<CandidateEvaluation>;
+}
+
+interface CandidateEvaluation {
+  readonly outcomes: Readonly<Record<string, ParserOutcome>>;
+  readonly outputAmountSemantics: OutputAmountSemanticAssessment;
+}
+
+interface LabEvaluation {
+  readonly outcome: ParserOutcome;
+  readonly outputAmountSemantics: OutputAmountSemanticAssessment;
 }
 
 function identityMatches(adapter: AvailableRuntimeAdapter, response: AdapterResponse): boolean {
@@ -88,24 +104,34 @@ function identityMatches(adapter: AvailableRuntimeAdapter, response: AdapterResp
   );
 }
 
-export function classifyLabParser(psbt: string): ParserOutcome {
+function evaluateLabCandidate(psbt: string): LabEvaluation {
   try {
     const document = parsePsbtDocument(psbt);
     return {
-      classification: "accepted",
-      detail: "lab parser accepted the PSBT",
-      facts: {
-        psbtVersion: document.psbtVersion,
-        inputs: document.inputCount,
-        outputs: document.outputCount,
+      outcome: {
+        classification: "accepted",
+        detail: "lab parser accepted the PSBT",
+        facts: {
+          psbtVersion: document.psbtVersion,
+          inputs: document.inputCount,
+          outputs: document.outputCount,
+        },
       },
+      outputAmountSemantics: assessOutputAmountSemantics(document),
     };
   } catch (error) {
     return {
-      classification: "rejected",
-      detail: error instanceof Error ? error.message : "lab parser rejected the PSBT",
+      outcome: {
+        classification: "rejected",
+        detail: error instanceof Error ? error.message : "lab parser rejected the PSBT",
+      },
+      outputAmountSemantics: { status: "not-evaluated", findings: [] },
     };
   }
+}
+
+export function classifyLabParser(psbt: string): ParserOutcome {
+  return evaluateLabCandidate(psbt).outcome;
 }
 
 export function classifyAdapterParserResponse(response: AdapterResponse): ParserOutcome {
@@ -288,14 +314,15 @@ async function createParserEvaluator(provider: RuntimeProvider): Promise<ParserE
   return {
     implementations,
     async evaluate(psbt) {
-      const outcomes: Record<string, ParserOutcome> = { lab: classifyLabParser(psbt) };
+      const lab = evaluateLabCandidate(psbt);
+      const outcomes: Record<string, ParserOutcome> = { lab: lab.outcome };
       for (const [id, parser] of negotiated) {
         requestCounter += 1;
         outcomes[id] = isReadyParser(parser)
           ? await adapterOutcome(parser, psbt, `parser-compare-${requestCounter}`)
           : parser;
       }
-      return outcomes;
+      return { outcomes, outputAmountSemantics: lab.outputAmountSemantics };
     },
   };
 }
@@ -306,7 +333,8 @@ export async function compareRuntimeParsers(
 ): Promise<Readonly<Record<string, ParserOutcome>>> {
   try {
     const evaluator = await createParserEvaluator(provider);
-    return await evaluator.evaluate(psbt);
+    const evaluation = await evaluator.evaluate(psbt);
+    return evaluation.outcomes;
   } finally {
     await provider.close();
   }
@@ -322,27 +350,33 @@ export async function runDifferentialFuzz(
     const cases: DifferentialFuzzCase[] = [];
     const interesting: InterestingDifferentialCase[] = [];
     for (const generatedCase of generated) {
-      const outcomes = await evaluator.evaluate(generatedCase.mutatedPsbt);
+      const evaluation = await evaluator.evaluate(generatedCase.mutatedPsbt);
       const fuzzCase: DifferentialFuzzCase = {
         index: generatedCase.index,
         recipes: generatedCase.recipes,
         mutatedPsbt: generatedCase.mutatedPsbt,
-        outcomes,
+        outcomes: evaluation.outcomes,
+        outputAmountSemantics: evaluation.outputAmountSemantics,
       };
       cases.push(fuzzCase);
-      if (!hasParserDifferential(outcomes)) continue;
+      if (!hasParserDifferential(evaluation.outcomes)) continue;
       const minimizedRecipes = await minimizeMutationRecipes(
         options.fixture.psbt,
         generatedCase.recipes,
-        async (candidate) => hasSameParserOutcomes(outcomes, await evaluator.evaluate(candidate)),
+        async (candidate) =>
+          hasSameParserOutcomes(
+            evaluation.outcomes,
+            (await evaluator.evaluate(candidate)).outcomes,
+          ),
       );
       const minimizedPsbt = applyPsbtMutations(options.fixture.psbt, minimizedRecipes);
-      const minimizedOutcomes = await evaluator.evaluate(minimizedPsbt);
+      const minimized = await evaluator.evaluate(minimizedPsbt);
       interesting.push({
         ...fuzzCase,
         minimizedRecipes,
         minimizedPsbt,
-        minimizedOutcomes,
+        minimizedOutcomes: minimized.outcomes,
+        minimizedOutputAmountSemantics: minimized.outputAmountSemantics,
       });
     }
     return {
