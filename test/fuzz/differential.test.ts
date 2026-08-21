@@ -1,5 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 import {
+  classifyLabParser,
   hasSameParserOutcomes,
   parserOutcomeMatches,
   runDifferentialFuzz,
@@ -10,7 +11,7 @@ import { LOCAL_PARSE_FIXTURES } from "../../src/local/fixtures.js";
 import { AdapterTimeoutError } from "../../src/protocol/adapter-process.js";
 import type { AdapterRequest, AdapterResponse } from "../../src/protocol/types.js";
 import { parsePsbtDocument } from "../../src/psbt/document.js";
-import { assessOutputAmountSemantics } from "../../src/psbt/output-amount-semantics.js";
+import * as outputAmountSemantics from "../../src/psbt/output-amount-semantics.js";
 import type { RuntimeProvider } from "../../src/runtime/provider.js";
 
 const IMPLEMENTATION = {
@@ -172,7 +173,9 @@ describe("runDifferentialFuzz", () => {
     expect(interesting.minimizedOutputAmountSemantics).toEqual(
       (() => {
         try {
-          return assessOutputAmountSemantics(parsePsbtDocument(interesting.minimizedPsbt));
+          return outputAmountSemantics.assessOutputAmountSemantics(
+            parsePsbtDocument(interesting.minimizedPsbt),
+          );
         } catch {
           return { status: "not-evaluated", findings: [] };
         }
@@ -234,6 +237,20 @@ describe("runDifferentialFuzz", () => {
       status: "not-evaluated",
       findings: [],
     });
+  });
+
+  test("does not disguise an internal semantic failure as parser rejection", () => {
+    const assessment = vi
+      .spyOn(outputAmountSemantics, "assessOutputAmountSemantics")
+      .mockImplementation(() => {
+        throw new Error("semantic invariant failed");
+      });
+
+    try {
+      expect(() => classifyLabParser(localFixture(0).psbt)).toThrow("semantic invariant failed");
+    } finally {
+      assessment.mockRestore();
+    }
   });
 
   test("is byte-for-byte deterministic for the same fixture and seed", async () => {

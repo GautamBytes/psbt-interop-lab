@@ -105,20 +105,9 @@ function identityMatches(adapter: AvailableRuntimeAdapter, response: AdapterResp
 }
 
 function evaluateLabCandidate(psbt: string): LabEvaluation {
+  let document: ReturnType<typeof parsePsbtDocument>;
   try {
-    const document = parsePsbtDocument(psbt);
-    return {
-      outcome: {
-        classification: "accepted",
-        detail: "lab parser accepted the PSBT",
-        facts: {
-          psbtVersion: document.psbtVersion,
-          inputs: document.inputCount,
-          outputs: document.outputCount,
-        },
-      },
-      outputAmountSemantics: assessOutputAmountSemantics(document),
-    };
+    document = parsePsbtDocument(psbt);
   } catch (error) {
     return {
       outcome: {
@@ -128,6 +117,18 @@ function evaluateLabCandidate(psbt: string): LabEvaluation {
       outputAmountSemantics: { status: "not-evaluated", findings: [] },
     };
   }
+  return {
+    outcome: {
+      classification: "accepted",
+      detail: "lab parser accepted the PSBT",
+      facts: {
+        psbtVersion: document.psbtVersion,
+        inputs: document.inputCount,
+        outputs: document.outputCount,
+      },
+    },
+    outputAmountSemantics: assessOutputAmountSemantics(document),
+  };
 }
 
 export function classifyLabParser(psbt: string): ParserOutcome {
