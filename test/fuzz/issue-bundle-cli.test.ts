@@ -66,6 +66,7 @@ describe("parser issue bundle CLI", () => {
 
       expect(exported.status, exported.stderr).toBe(0);
       expect(exported.stderr).toBe("");
+      expect(exported.stdout).toMatch(/semantic-invalid=\d+/);
       expect(readdirSync(bundlePath).sort()).toEqual([
         "issue.md",
         "manifest.json",
@@ -74,6 +75,8 @@ describe("parser issue bundle CLI", () => {
       const issue = readFileSync(resolve(bundlePath, "issue.md"), "utf8");
       const suite = readFileSync(resolve(bundlePath, "regression-suite.json"), "utf8");
       const manifest = JSON.parse(readFileSync(resolve(bundlePath, "manifest.json"), "utf8"));
+      expect(manifest.schema).toBe("psbt-lab.issue-bundle/0.2");
+      expect(manifest.outputAmountSemantics).toBeDefined();
       expect(manifest).toMatchObject({
         implementations: { "permissive-wallet": IMPLEMENTATION },
         files: {
@@ -81,6 +84,7 @@ describe("parser issue bundle CLI", () => {
           "regression-suite.json": digest(suite),
         },
       });
+      expect(issue).toContain("## Lab semantic assessment");
       expect(issue).not.toContain(adapter);
       expect(issue).not.toContain(process.execPath);
 

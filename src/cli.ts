@@ -636,13 +636,17 @@ export function createProgram(): Command {
               recipes: interesting.minimizedRecipes,
               outcomes: interesting.minimizedOutcomes,
               implementations: result.implementations,
+              outputAmountSemantics: interesting.minimizedOutputAmountSemantics,
             });
           }
         }
+        const semanticInvalid = result.cases.filter(
+          ({ outputAmountSemantics }) => outputAmountSemantics.status === "invalid",
+        ).length;
         process.stdout.write(
           options.json
             ? `${JSON.stringify(result, null, 2)}\n`
-            : `Differential fuzz: seed=${result.seed} cases=${result.cases.length} interesting=${result.interesting.length}\n`,
+            : `Differential fuzz: seed=${result.seed} cases=${result.cases.length} interesting=${result.interesting.length} semantic-invalid=${semanticInvalid}\n`,
         );
       },
     );

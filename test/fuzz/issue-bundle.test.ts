@@ -39,6 +39,17 @@ function input() {
       },
     },
     implementations: { wallet: IMPLEMENTATION },
+    outputAmountSemantics: {
+      status: "invalid" as const,
+      outputsModifiable: false,
+      findings: [
+        {
+          ruleId: "lab.transaction-output.money-range" as const,
+          code: "OUTPUT_AMOUNT_NEGATIVE" as const,
+          outputIndex: 0,
+        },
+      ],
+    },
   };
 }
 
@@ -65,7 +76,7 @@ describe("createParserIssueBundle", () => {
     const manifest = JSON.parse(manifestText);
 
     expect(manifest).toMatchObject({
-      schema: "psbt-lab.issue-bundle/0.1",
+      schema: "psbt-lab.issue-bundle/0.2",
       generator: { name: "psbt-interop-lab", version: "0.10.1" },
       runtime: "local+external",
       fixture: {
@@ -85,6 +96,17 @@ describe("createParserIssueBundle", () => {
           facts: { psbtVersion: 0, inputs: 0, outputs: 0 },
         },
       },
+      outputAmountSemantics: {
+        status: "invalid",
+        outputsModifiable: false,
+        findings: [
+          {
+            ruleId: "lab.transaction-output.money-range",
+            code: "OUTPUT_AMOUNT_NEGATIVE",
+            outputIndex: 0,
+          },
+        ],
+      },
     });
     expect(manifest.files).toEqual({
       "issue.md": sha256(issue),
@@ -95,6 +117,11 @@ describe("createParserIssueBundle", () => {
     expect(issue).toContain("psbt-interop-lab@0.10.1");
     expect(issue).toContain("--adapter-manifest adapter-manifest.json");
     expect(issue).toContain(IMPLEMENTATION.artifactDigest);
+    expect(issue).toContain("## Lab semantic assessment");
+    expect(issue).toContain("OUTPUT_AMOUNT_NEGATIVE");
+    expect(issue).toContain("output 0");
+    expect(issue).toContain("Outputs modifiable: **no**");
+    expect(issue).not.toContain("9223372036054775808");
     expect(suite).toContain('"schema": "psbt-lab.suite/0.2"');
 
     const allOutput = first.map(({ contents: value }) => value).join("\n");
