@@ -63,7 +63,11 @@ function normalizeAssessment(
 ): OutputAmountSemanticAssessment {
   return {
     status: assessment.status,
-    findings: assessment.findings.map((finding) => ({ ...finding })),
+    findings: assessment.findings.map((finding) => ({
+      ruleId: finding.ruleId,
+      code: finding.code,
+      ...(finding.outputIndex === undefined ? {} : { outputIndex: finding.outputIndex }),
+    })),
     ...(assessment.outputsModifiable === undefined
       ? {}
       : { outputsModifiable: assessment.outputsModifiable }),

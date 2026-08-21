@@ -81,17 +81,20 @@ interface ReadyParser {
 
 interface ParserEvaluator {
   readonly implementations: Readonly<Record<string, AdapterImplementation>>;
-  readonly evaluate: (psbt: string) => Promise<CandidateEvaluation>;
-}
-
-interface CandidateEvaluation {
-  readonly outcomes: Readonly<Record<string, ParserOutcome>>;
-  readonly outputAmountSemantics: OutputAmountSemanticAssessment;
+  readonly evaluate: (
+    psbt: string,
+    labOutcome?: ParserOutcome,
+  ) => Promise<Record<string, ParserOutcome>>;
 }
 
 interface LabEvaluation {
   readonly outcome: ParserOutcome;
   readonly outputAmountSemantics: OutputAmountSemanticAssessment;
+}
+
+interface LabParseEvaluation {
+  readonly outcome: ParserOutcome;
+  readonly document?: ReturnType<typeof parsePsbtDocument>;
 }
 
 function identityMatches(adapter: AvailableRuntimeAdapter, response: AdapterResponse): boolean {
@@ -104,35 +107,44 @@ function identityMatches(adapter: AvailableRuntimeAdapter, response: AdapterResp
   );
 }
 
-function evaluateLabCandidate(psbt: string): LabEvaluation {
-  let document: ReturnType<typeof parsePsbtDocument>;
+function evaluateLabParser(psbt: string): LabParseEvaluation {
   try {
-    document = parsePsbtDocument(psbt);
+    const document = parsePsbtDocument(psbt);
+    return {
+      outcome: {
+        classification: "accepted",
+        detail: "lab parser accepted the PSBT",
+        facts: {
+          psbtVersion: document.psbtVersion,
+          inputs: document.inputCount,
+          outputs: document.outputCount,
+        },
+      },
+      document,
+    };
   } catch (error) {
     return {
       outcome: {
         classification: "rejected",
         detail: error instanceof Error ? error.message : "lab parser rejected the PSBT",
       },
-      outputAmountSemantics: { status: "not-evaluated", findings: [] },
     };
   }
+}
+
+function evaluateLabCandidate(psbt: string): LabEvaluation {
+  const parsed = evaluateLabParser(psbt);
   return {
-    outcome: {
-      classification: "accepted",
-      detail: "lab parser accepted the PSBT",
-      facts: {
-        psbtVersion: document.psbtVersion,
-        inputs: document.inputCount,
-        outputs: document.outputCount,
-      },
-    },
-    outputAmountSemantics: assessOutputAmountSemantics(document),
+    outcome: parsed.outcome,
+    outputAmountSemantics:
+      parsed.document === undefined
+        ? { status: "not-evaluated", findings: [] }
+        : assessOutputAmountSemantics(parsed.document),
   };
 }
 
 export function classifyLabParser(psbt: string): ParserOutcome {
-  return evaluateLabCandidate(psbt).outcome;
+  return evaluateLabParser(psbt).outcome;
 }
 
 export function classifyAdapterParserResponse(response: AdapterResponse): ParserOutcome {
@@ -314,16 +326,15 @@ async function createParserEvaluator(provider: RuntimeProvider): Promise<ParserE
   let requestCounter = 0;
   return {
     implementations,
-    async evaluate(psbt) {
-      const lab = evaluateLabCandidate(psbt);
-      const outcomes: Record<string, ParserOutcome> = { lab: lab.outcome };
+    async evaluate(psbt, labOutcome = classifyLabParser(psbt)) {
+      const outcomes: Record<string, ParserOutcome> = { lab: labOutcome };
       for (const [id, parser] of negotiated) {
         requestCounter += 1;
         outcomes[id] = isReadyParser(parser)
           ? await adapterOutcome(parser, psbt, `parser-compare-${requestCounter}`)
           : parser;
       }
-      return { outcomes, outputAmountSemantics: lab.outputAmountSemantics };
+      return outcomes;
     },
   };
 }
@@ -334,8 +345,7 @@ export async function compareRuntimeParsers(
 ): Promise<Readonly<Record<string, ParserOutcome>>> {
   try {
     const evaluator = await createParserEvaluator(provider);
-    const evaluation = await evaluator.evaluate(psbt);
-    return evaluation.outcomes;
+    return await evaluator.evaluate(psbt);
   } finally {
     await provider.close();
   }
@@ -351,33 +361,31 @@ export async function runDifferentialFuzz(
     const cases: DifferentialFuzzCase[] = [];
     const interesting: InterestingDifferentialCase[] = [];
     for (const generatedCase of generated) {
-      const evaluation = await evaluator.evaluate(generatedCase.mutatedPsbt);
+      const lab = evaluateLabCandidate(generatedCase.mutatedPsbt);
+      const outcomes = await evaluator.evaluate(generatedCase.mutatedPsbt, lab.outcome);
       const fuzzCase: DifferentialFuzzCase = {
         index: generatedCase.index,
         recipes: generatedCase.recipes,
         mutatedPsbt: generatedCase.mutatedPsbt,
-        outcomes: evaluation.outcomes,
-        outputAmountSemantics: evaluation.outputAmountSemantics,
+        outcomes,
+        outputAmountSemantics: lab.outputAmountSemantics,
       };
       cases.push(fuzzCase);
-      if (!hasParserDifferential(evaluation.outcomes)) continue;
+      if (!hasParserDifferential(outcomes)) continue;
       const minimizedRecipes = await minimizeMutationRecipes(
         options.fixture.psbt,
         generatedCase.recipes,
-        async (candidate) =>
-          hasSameParserOutcomes(
-            evaluation.outcomes,
-            (await evaluator.evaluate(candidate)).outcomes,
-          ),
+        async (candidate) => hasSameParserOutcomes(outcomes, await evaluator.evaluate(candidate)),
       );
       const minimizedPsbt = applyPsbtMutations(options.fixture.psbt, minimizedRecipes);
-      const minimized = await evaluator.evaluate(minimizedPsbt);
+      const minimizedLab = evaluateLabCandidate(minimizedPsbt);
+      const minimizedOutcomes = await evaluator.evaluate(minimizedPsbt, minimizedLab.outcome);
       interesting.push({
         ...fuzzCase,
         minimizedRecipes,
         minimizedPsbt,
-        minimizedOutcomes: minimized.outcomes,
-        minimizedOutputAmountSemantics: minimized.outputAmountSemantics,
+        minimizedOutcomes,
+        minimizedOutputAmountSemantics: minimizedLab.outputAmountSemantics,
       });
     }
     return {

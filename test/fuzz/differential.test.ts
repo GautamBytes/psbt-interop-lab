@@ -1,6 +1,8 @@
+import { fileURLToPath } from "node:url";
 import { describe, expect, test, vi } from "vitest";
 import {
   classifyLabParser,
+  compareRuntimeParsers,
   hasSameParserOutcomes,
   parserOutcomeMatches,
   runDifferentialFuzz,
@@ -8,6 +10,7 @@ import {
 import { promoteDifferentialCase } from "../../src/fuzz/promotion.js";
 import { runParserRegressionSuite } from "../../src/fuzz/regression.js";
 import { LOCAL_PARSE_FIXTURES } from "../../src/local/fixtures.js";
+import { createLocalRuntimeProvider } from "../../src/local/provider.js";
 import { AdapterTimeoutError } from "../../src/protocol/adapter-process.js";
 import type { AdapterRequest, AdapterResponse } from "../../src/protocol/types.js";
 import { parsePsbtDocument } from "../../src/psbt/document.js";
@@ -170,17 +173,10 @@ describe("runDifferentialFuzz", () => {
     ).toBe(true);
     const interesting = result.interesting[0];
     if (!interesting) throw new Error("Expected a differential case");
-    expect(interesting.minimizedOutputAmountSemantics).toEqual(
-      (() => {
-        try {
-          return outputAmountSemantics.assessOutputAmountSemantics(
-            parsePsbtDocument(interesting.minimizedPsbt),
-          );
-        } catch {
-          return { status: "not-evaluated", findings: [] };
-        }
-      })(),
-    );
+    expect(interesting.minimizedOutputAmountSemantics).toEqual({
+      status: "not-evaluated",
+      findings: [],
+    });
     const suite = promoteDifferentialCase({
       fixture: localFixture(0),
       seed: result.seed,
@@ -198,15 +194,24 @@ describe("runDifferentialFuzz", () => {
   });
 
   test("reports issue #38 as parser-accepted but semantically invalid", async () => {
+    const packageDirectory = fileURLToPath(new URL("../..", import.meta.url));
     const result = await runDifferentialFuzz({
-      provider: labOnlyProvider(),
+      provider: await createLocalRuntimeProvider({
+        packageDirectory,
+        manifestPath: fileURLToPath(
+          new URL("../../src/local/local-adapters.json", import.meta.url),
+        ),
+      }),
       fixture: localFixture(1),
       seed: 42,
       cases: 128,
     });
 
     expect(result.cases[48]).toMatchObject({
-      outcomes: { lab: { classification: "accepted" } },
+      outcomes: {
+        lab: { classification: "accepted" },
+        "bundled-js": { classification: "accepted" },
+      },
       outputAmountSemantics: {
         status: "invalid",
         outputsModifiable: false,
@@ -239,7 +244,7 @@ describe("runDifferentialFuzz", () => {
     });
   });
 
-  test("does not disguise an internal semantic failure as parser rejection", () => {
+  test("keeps parser-only helpers independent of semantic assessment", async () => {
     const assessment = vi
       .spyOn(outputAmountSemantics, "assessOutputAmountSemantics")
       .mockImplementation(() => {
@@ -247,7 +252,12 @@ describe("runDifferentialFuzz", () => {
       });
 
     try {
-      expect(() => classifyLabParser(localFixture(0).psbt)).toThrow("semantic invariant failed");
+      expect(classifyLabParser(localFixture(0).psbt)).toMatchObject({
+        classification: "accepted",
+      });
+      await expect(
+        compareRuntimeParsers(labOnlyProvider(), localFixture(0).psbt),
+      ).resolves.toMatchObject({ lab: { classification: "accepted" } });
     } finally {
       assessment.mockRestore();
     }

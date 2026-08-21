@@ -47,6 +47,7 @@ function input() {
           ruleId: "lab.transaction-output.money-range" as const,
           code: "OUTPUT_AMOUNT_NEGATIVE" as const,
           outputIndex: 0,
+          rawAmount: "9223372036054775808",
         },
       ],
     },
@@ -121,10 +122,10 @@ describe("createParserIssueBundle", () => {
     expect(issue).toContain("OUTPUT_AMOUNT_NEGATIVE");
     expect(issue).toContain("output 0");
     expect(issue).toContain("Outputs modifiable: **no**");
-    expect(issue).not.toContain("9223372036054775808");
     expect(suite).toContain('"schema": "psbt-lab.suite/0.2"');
 
     const allOutput = first.map(({ contents: value }) => value).join("\n");
+    expect(allOutput).not.toContain("9223372036054775808");
     expect(allOutput).not.toMatch(/SECRET_RAW_DIAGNOSTIC|SECRET_VALUE|COMMAND=/);
     expect(allOutput).not.toContain("/private/wallet/path");
     expect(manifestText).not.toMatch(/createdAt|timestamp/i);

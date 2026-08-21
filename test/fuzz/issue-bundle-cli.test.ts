@@ -76,7 +76,10 @@ describe("parser issue bundle CLI", () => {
       const suite = readFileSync(resolve(bundlePath, "regression-suite.json"), "utf8");
       const manifest = JSON.parse(readFileSync(resolve(bundlePath, "manifest.json"), "utf8"));
       expect(manifest.schema).toBe("psbt-lab.issue-bundle/0.2");
-      expect(manifest.outputAmountSemantics).toBeDefined();
+      expect(manifest.outputAmountSemantics).toEqual({
+        status: "not-evaluated",
+        findings: [],
+      });
       expect(manifest).toMatchObject({
         implementations: { "permissive-wallet": IMPLEMENTATION },
         files: {
