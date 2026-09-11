@@ -1,6 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::str::FromStr;
 
+mod silent_payment_funded;
+
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use psbt_v2::bitcoin::bip32::{DerivationPath, Fingerprint};
 use psbt_v2::bitcoin::consensus;
@@ -2476,7 +2478,7 @@ pub fn handle_value_with_commitments(
                     "finalize": ["p2wpkh", "p2wsh"],
                     "extract": ["p2wpkh", "p2wsh"],
                     "construct": ["p2wpkh", "p2wsh"],
-                    "silent-payment-send": ["p2pkh"],
+                    "silent-payment-send": ["p2pkh", "p2wpkh"],
                     "silent-payment-send-advanced": ["p2wpkh"],
                     "silent-payment-spend": ["p2tr-keypath"]
                 },
@@ -2491,6 +2493,7 @@ pub fn handle_value_with_commitments(
                     "bip371-taproot-roundtrip",
                     "bip375-silent-payments",
                     "bip375-sender-workflow",
+                    "bip375-core-funded-sender",
                     "bip375-advanced-sender-workflows",
                     "bip376-spend-workflow"
                 ]
@@ -2511,6 +2514,11 @@ pub fn handle_value_with_commitments(
         "finalize" => finalize(&request, digest, commitments),
         "extract" => extract(&request, digest),
         "construct" => construct(&request, digest),
+        "silent-payment-send"
+            if payload_string(&request.payload, "fixtureId") == Some("p2wpkh") =>
+        {
+            silent_payment_funded::send(&request, digest, commitments)
+        }
         "silent-payment-send" => silent_payment_send(&request, digest),
         "silent-payment-send-advanced" => silent_payment_send_advanced(&request, digest),
         "silent-payment-spend" => silent_payment_spend(&request, digest, commitments),

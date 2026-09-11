@@ -709,6 +709,7 @@ describe("proof runtime", () => {
       "bip375-official-vectors-rust-psbt-v2",
       "bip375-sender-workflow-rust-psbt-v2",
       "bip375-advanced-sender-workflows-rust-psbt-v2",
+      "bip375-core-funded-sender-rust-psbt-v2",
       "bip376-spend-workflow-rust-psbt-v2",
     ]);
   });

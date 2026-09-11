@@ -204,7 +204,7 @@ The detailed assumptions, abuse paths, and residual risks are recorded in the
 
 ## Proof Scenarios
 
-The executable catalog currently contains 52 scenarios. Twelve independent Core-to-library
+The executable catalog currently contains 53 scenarios. Twelve independent Core-to-library
 handoffs exercise rust-bitcoin, btcsuite, bitcoinjs, and current BDK signing for P2WSH, P2WPKH, and
 P2TR key-path inputs. Additional rust-bitcoin handoffs prove legacy P2PKH signing from an exact
 `non_witness_utxo` and nested P2SH-P2WSH 2-of-3 signing and finalization.
@@ -284,6 +284,19 @@ Core's txid calculation. Its official fixture spends an external parent that is 
 isolated regtest chain, so the lab explicitly reports policy acceptance as unavailable. The
 Core-funded BIP376 receiver-spend scenario is finalized and Core-policy accepted.
 
+The separate `bip375-core-funded-sender-rust-psbt-v2` scenario reuses the mature Core-funded
+P2WPKH fixture with its fixed 11,000-satoshi fee. libwally converts the template to PSBTv2. The
+sender verifies the run-scoped commitment before replacing the original destination with the
+fixed public recipient (scan scalar 2, spend scalar 1). It rejects supplied Silent Payment fields,
+signatures, finalization data, inconsistent UTXOs, and altered transaction intent. It derives the
+share, DLEQ proof, and output script; adds the public input origin needed for proof verification;
+locks transaction mutation; and signs and finalizes the P2WPKH spend. The orchestrator checks the
+exact permitted field changes and independently verifies BIP374/BIP352 cryptography, then requires
+libwally to extract the same transaction and Core to accept it under regtest policy with the same
+txid. Missing parents fail this scenario. No transaction is broadcast. Three private PSBT
+checkpoints capture the template, signed PSBT, and finalized PSBT. The original official-vector
+scenarios keep their separate policy-availability limits.
+
 A separate bounded BIP376 receiver-spend scenario starts from a Core-funded deterministic Taproot
 output and uses libwally for the PSBTv0-to-v2 handoff. The rust-psbt-v2 adapter reads the registered
 spend-key and output-tweak fields, derives and verifies the corresponding key-path output, signs and
@@ -345,7 +358,7 @@ the expected identity and baseline parser capabilities, probes valid and malform
 and requires semantic roundtrip preservation.
 
 `psbt-lab matrix --adapter-manifest <manifest>` then registers each external process by its manifest
-ID while retaining the separately validated implementation identity. The runner preserves all 52
+ID while retaining the separately validated implementation identity. The runner preserves all 53
 bundled scenarios and appends capability-gated P2WPKH, nested P2SH-P2WPKH, P2WSH, Taproot key-path,
 and Taproot script-path parse and roundtrip scenarios, plus signing where declared. Run-scoped
 unsigned-transaction commitments authorize only deterministic regtest fixtures. See

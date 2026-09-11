@@ -78,7 +78,7 @@ internal missing-value sentinel, so zero-valued outputs are rejected with
 `psbt.zero_amount_unsupported`; this is a documented library boundary rather
 than a BIP370 validity claim.
 
-`silent-payment-send` accepts only the exact pre-sign form of official BIP375
+`silent-payment-send` with `fixtureId=bip375-valid-01` accepts only the exact pre-sign form of official BIP375
 valid vector 01 on regtest. It calculates the BIP374 ECDH share and DLEQ proof,
 derives the BIP352 output script, locks input/output mutation, signs with
 `SIGHASH_ALL`, verifies the finalized P2PKH script, and extracts the transaction.
@@ -153,3 +153,17 @@ The runtime image is digest-pinned, contains only the release binary and Debian
 runtime base, and runs as an unprivileged system user. Deployments should retain
 the read-only filesystem, no-network, no-new-privileges, and dropped-capability
 flags shown above.
+
+## Core-funded sender
+
+`silent-payment-send` also accepts the run-scoped `p2wpkh` fixture, advertised by
+`bip375-core-funded-sender`. The input is the unchanged Core-funded template converted to PSBTv2,
+with no supplied Silent Payment fields or signatures. After verifying its commitment and fixture
+scope, the adapter replaces the destination with the fixed public scan-2/spend-1 recipient,
+derives a BIP374 proof and BIP352 output, signs, finalizes, and extracts. The 11,000-satoshi fee and
+all other transaction fields remain fixed. The runner independently verifies the derivation and
+field changes, compares libwally extraction, and requires Core regtest policy acceptance.
+
+Use `node dist/cli.js run --scenario bip375-core-funded-sender-rust-psbt-v2` after building from
+source. The original `bip375-valid-01` official-vector workflow is unchanged and does not claim
+Core policy acceptance when its parent is absent. Neither workflow broadcasts transactions.

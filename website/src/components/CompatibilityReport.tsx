@@ -64,8 +64,8 @@ export function CompatibilityReport() {
               );
             })}
             <small>
-              {reportScenarios.length} samples shown · {releaseFacts.scenarioCount} bundled
-              scenarios
+              {reportScenarios.length} samples shown · {releaseFacts.scenarioCount} released
+              scenarios · {releaseFacts.sourceScenarioCount} in source
             </small>
           </aside>
 
@@ -201,7 +201,7 @@ export function CompatibilityReport() {
             </div>
 
             <div className="replay-command">
-              <span>Replay</span>
+              <span>{selected.commandLabel ?? "Replay"}</span>
               <code>{selected.replay}</code>
             </div>
           </div>
