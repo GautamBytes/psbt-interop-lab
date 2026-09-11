@@ -216,3 +216,9 @@ protocol specification.
 
 Version updates should change this ledger, the relevant lock/pin, and the expected self-reported
 adapter compatibility strings in the same pull request.
+
+The funded multi-input sender exercises BIP352's aggregate input key and lexicographically
+smallest serialized outpoint rule, plus BIP375 global/per-input share fields and BIP374 proofs.
+The same two-key regtest template is executed in both input orders and share modes. Independent
+reference validation and Core policy acceptance are required for each of the four transactions;
+this evidence does not claim a general multi-party signing implementation.

@@ -318,7 +318,7 @@ jobs:
       - run: node dist/cli.js run --category psbtv2-constructor --no-build
       - run: node dist/cli.js run --category psbtv2-taproot --no-build
       - run: node dist/cli.js run --scenario bip375-advanced-sender-workflows-rust-psbt-v2
-      - run: node dist/cli.js run --scenario bip375-core-funded-sender-rust-psbt-v2 --no-build
+      - run: node dist/cli.js run --scenario bip375-core-funded-sender-rust-psbt-v2 --scenario bip375-core-funded-multi-input-rust-psbt-v2 --no-build
       - run: node dist/cli.js run --category musig2
       - run: node dist/cli.js run --category hardware-signing
       - if: always()

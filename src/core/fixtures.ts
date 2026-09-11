@@ -37,6 +37,7 @@ const EXPECTED_WITNESS_SCRIPTS = {
   "p2wsh-2-of-3": MULTISIG_WITNESS_SCRIPT,
 } as const satisfies Partial<Record<FixtureDescriptorId, string>>;
 const EXPECTED_SCRIPT_PUBKEYS = {
+  "p2wpkh-scalar2": "001406afd46bcdfd22ef94ac122aa11f241244a37ecc",
   p2pkh: `76a914${createHash("ripemd160")
     .update(createHash("sha256").update(Buffer.from(FIXTURE_PUBLIC_KEYS.scalar1, "hex")).digest())
     .digest("hex")}88ac`,
@@ -290,7 +291,7 @@ function parseValidatedScriptPubKey(
       ? /^a914[0-9a-f]{40}87$/i
       : isTaproot
         ? /^5120[0-9a-f]{64}$/i
-        : id === "p2wpkh"
+        : id === "p2wpkh" || id === "p2wpkh-scalar2"
           ? /^0014[0-9a-f]{40}$/i
           : /^0020[0-9a-f]{64}$/i;
   if (

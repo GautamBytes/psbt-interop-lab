@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::str::FromStr;
 
 mod silent_payment_funded;
+mod silent_payment_multi;
 
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use psbt_v2::bitcoin::bip32::{DerivationPath, Fingerprint};
@@ -35,11 +36,12 @@ const MAX_MAP_COUNT: usize = 4096;
 const MAX_MAP_ENTRIES: usize = 16_384;
 const MAX_COMMITMENTS_BYTES: usize = 4 * 1024;
 const SOURCE_REVISION: &str = "rust-psbt/psbt-v2-0.3.0@8ca657c333b6b391f2501e8b31627ccbb6a67f66";
-const ALLOWED_FIXTURES: [&str; 4] = [
+const ALLOWED_FIXTURES: [&str; 5] = [
     "p2wpkh",
     "intent-rich-p2wpkh",
     "p2wsh-2-of-3",
     "bip376-spend",
+    "bip375-multi",
 ];
 const SCALAR_ONE_WIF: &str = "cMahea7zqjxrtgAbB7LSGbcQUr1uX1ojuat9jZodMN87JcbXMTcA";
 const SCALAR_TWO_PUBLIC_KEY: &str =
@@ -2493,7 +2495,7 @@ pub fn handle_value_with_commitments(
                     "bip371-taproot-roundtrip",
                     "bip375-silent-payments",
                     "bip375-sender-workflow",
-                    "bip375-core-funded-sender",
+                    "bip375-core-funded-sender", "bip375-core-funded-multi-input",
                     "bip375-advanced-sender-workflows",
                     "bip376-spend-workflow"
                 ]
@@ -2514,6 +2516,11 @@ pub fn handle_value_with_commitments(
         "finalize" => finalize(&request, digest, commitments),
         "extract" => extract(&request, digest),
         "construct" => construct(&request, digest),
+        "silent-payment-send"
+            if payload_string(&request.payload, "fixtureId") == Some("bip375-multi") =>
+        {
+            silent_payment_multi::send(&request, digest, commitments)
+        }
         "silent-payment-send"
             if payload_string(&request.payload, "fixtureId") == Some("p2wpkh") =>
         {

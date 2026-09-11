@@ -172,6 +172,7 @@ export const PSBTV2_ADAPTER_CONTRACT = {
     "bip375-silent-payments",
     "bip375-sender-workflow",
     "bip375-core-funded-sender",
+    "bip375-core-funded-multi-input",
     "bip375-advanced-sender-workflows",
     "bip376-spend-workflow",
   ],

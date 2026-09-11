@@ -190,3 +190,11 @@ independent check integrity.
 Before adding arbitrary input signing, replace the fixture-only adapter with a separately reviewed
 policy and key-isolation design. That change should be treated as a new security boundary, not a
 small feature.
+
+The `bip375-multi` sender additionally permits an explicit input reversal after authorizing the
+original run-scoped commitment. It uses only the two known public fixture keys and a fixed
+recipient; amounts and ordinary change remain committed. Global/per-input share selection is
+an exact enum and reversal is an exact boolean. Supplied shares, proofs, recipients, signatures,
+and non-SIGHASH_ALL requests fail before signing. Funding metadata is checked against the full
+previous transaction when supplied; actual UTXO existence, amounts and signatures are also
+checked by Core for every completed variant. The operation is not a production wallet signer.

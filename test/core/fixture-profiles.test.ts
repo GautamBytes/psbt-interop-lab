@@ -29,6 +29,7 @@ describe("fixture profile definitions", () => {
       "intent-rich-p2wpkh",
       "sighash-p2wpkh",
       "sighash-p2tr-keypath",
+      "bip375-multi",
     ]);
   });
 
@@ -111,6 +112,12 @@ describe("fixture profile definitions", () => {
         inputDescriptorIds: ["p2tr-keypath", "p2tr-keypath"],
         outputDescriptorIds: ["p2tr-keypath", "p2wpkh"],
       },
+      {
+        id: "bip375-multi",
+        scriptTypes: ["p2wpkh"],
+        inputDescriptorIds: ["p2wpkh", "p2wpkh-scalar2"],
+        outputDescriptorIds: ["p2wpkh", "p2wpkh-scalar2"],
+      },
     ]);
 
     const descriptors = FIXTURE_PROFILES.flatMap((profile) => profile.descriptors);
@@ -136,5 +143,14 @@ describe("fixture profile definitions", () => {
     expect(FIXTURE_DESCRIPTORS["p2tr-silent-payment"]).toBe(
       "rawtr(f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9)",
     );
+  });
+});
+
+test("funded multi-input fixture has two different keys and a separate change output", () => {
+  expect(FIXTURE_PROFILES.find(({ id }) => String(id) === "bip375-multi")).toMatchObject({
+    inputDescriptorIds: ["p2wpkh", "p2wpkh-scalar2"],
+    outputDescriptorIds: ["p2wpkh", "p2wpkh-scalar2"],
+    descriptors: [`wpkh(${FIXTURE_PUBLIC_KEYS.scalar1})`, `wpkh(${FIXTURE_PUBLIC_KEYS.scalar2})`],
+    feeSats: 12_000,
   });
 });

@@ -22,6 +22,7 @@ export const BIP376_OUTPUT_PUBLIC_KEY =
 export const FIXTURE_DESCRIPTORS = {
   p2pkh: `pkh(${FIXTURE_PUBLIC_KEYS.scalar1})`,
   p2wpkh: `wpkh(${FIXTURE_PUBLIC_KEYS.scalar1})`,
+  "p2wpkh-scalar2": `wpkh(${FIXTURE_PUBLIC_KEYS.scalar2})`,
   "p2sh-p2wpkh": `sh(wpkh(${FIXTURE_PUBLIC_KEYS.scalar1}))`,
   "p2sh-p2wsh-2-of-3": `sh(wsh(multi(2,${FIXTURE_PUBLIC_KEYS.scalar1},${FIXTURE_PUBLIC_KEYS.scalar2},${FIXTURE_PUBLIC_KEYS.scalar3})))`,
   "p2wsh-single-key": `wsh(pk(${FIXTURE_PUBLIC_KEYS.scalar1}))`,
@@ -37,6 +38,7 @@ export type FixtureDescriptorId = keyof typeof FIXTURE_DESCRIPTORS;
 export const FIXTURE_DESCRIPTOR_SCRIPT_TYPES = {
   p2pkh: "p2pkh",
   p2wpkh: "p2wpkh",
+  "p2wpkh-scalar2": "p2wpkh",
   "p2sh-p2wpkh": "p2sh-p2wpkh",
   "p2sh-p2wsh-2-of-3": "p2sh-p2wsh",
   "p2wsh-single-key": "p2wsh",
@@ -60,6 +62,7 @@ export interface FixtureProfileDefinition {
 }
 
 export type FixtureProfileId =
+  | "bip375-multi"
   | "p2pkh"
   | "p2wpkh"
   | "p2sh-p2wpkh"
@@ -229,5 +232,16 @@ export const FIXTURE_PROFILES = [
     transactionVersion: 2,
     descriptors: [FIXTURE_DESCRIPTORS["p2tr-keypath"], FIXTURE_DESCRIPTORS.p2wpkh],
     feeSats: 28_000,
+  },
+  {
+    id: "bip375-multi",
+    scriptTypes: ["p2wpkh"],
+    inputDescriptorIds: ["p2wpkh", "p2wpkh-scalar2"],
+    outputDescriptorIds: ["p2wpkh", "p2wpkh-scalar2"],
+    sequences: [0xffff_fffd, 0xffff_fffd],
+    locktime: 0,
+    transactionVersion: 2,
+    descriptors: [FIXTURE_DESCRIPTORS.p2wpkh, FIXTURE_DESCRIPTORS["p2wpkh-scalar2"]],
+    feeSats: 12_000,
   },
 ] as const satisfies readonly FixtureProfileDefinition[];
