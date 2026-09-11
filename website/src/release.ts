@@ -4,6 +4,7 @@ export const releaseFacts = {
   version: packageMetadata.version,
   walkthroughVersion: "0.10.0",
   scenarioCount: 52,
+  sourceScenarioCount: 53,
   walkthroughScenarioCount: 52,
   integrationStackCount: 9,
   replayCheckpointCount: 101,

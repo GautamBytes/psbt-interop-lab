@@ -98,6 +98,26 @@ To work from a source checkout instead, install pnpm 10.30.2, run
 `pnpm install --frozen-lockfile`, and replace `psbt-lab` above with `node dist/cli.js` after
 `pnpm build`.
 
+## Core-funded Silent Payment sender (unreleased)
+
+The source checkout additionally includes a Core-funded BIP375 sender proof. This unreleased
+scenario derives a fixed Silent Payment recipient, signs and finalizes a mature regtest input,
+compares independent extraction, and requires Bitcoin Core policy acceptance without broadcasting.
+Run it from source:
+
+```bash
+pnpm install --frozen-lockfile
+pnpm build
+node dist/cli.js run --scenario bip375-core-funded-sender-rust-psbt-v2
+node dist/cli.js replay artifacts/<run-id>
+node dist/cli.js stop
+```
+
+This requires Docker and the same Node.js versions as the published CLI. The fixed test recipient
+uses public scalars 2 (scan) and 1 (spend). This is one P2WPKH input and one Silent Payment output;
+it does not establish multi-input sender policy acceptance or receiver discovery.
+
+
 ## Walkthrough: Verify the Complete Matrix
 
 This real v0.10.0 run executes every bundled workflow against the pinned integration stacks and an
@@ -170,7 +190,7 @@ preservation. It executes the configured command directly with `shell: false`; t
 manifest must therefore be treated as trusted local code. See [the adapter guide](docs/adapters.md)
 and the bundled [manifest schema](src/conformance/adapter-manifest.schema.json).
 
-The matrix keeps all 52 bundled scenarios and appends native-parse and semantic-roundtrip cells for
+The source checkout matrix keeps all 53 bundled scenarios and appends native-parse and semantic-roundtrip cells for
 each external adapter across P2WPKH, nested P2SH-P2WPKH, P2WSH, Taproot key-path, and Taproot
 script-path fixtures. It also appends signing handoffs when the adapter declares the matching
 signer capabilities and the `fixture-commitment-sha256` safety feature.
@@ -267,7 +287,7 @@ fixtures. Custom signing is capability-gated and runs only when an adapter expli
 
 ## Current Coverage
 
-The suite currently runs 52 scenarios:
+The source checkout currently runs 53 scenarios (the published v0.10.1 package has 52):
 
 - Core-created P2PKH, P2WPKH, P2WSH, nested P2SH-P2WSH, and Taproot key-path signing handoffs
   through rust-bitcoin, btcsuite, bitcoinjs-lib, and current BDK Wallet
@@ -294,6 +314,9 @@ The suite currently runs 52 scenarios:
   and output script from an official fixture before signing, finalizing, extracting, and asking
   Core to parse the transaction and confirm its txid. The official fixture's external parent is not
   in the isolated regtest chain, so this workflow does not claim Core policy acceptance
+- A Core-funded BIP375 sender using the committed P2WPKH fixture, independent DLEQ/output
+  verification and libwally extraction, mandatory Core policy acceptance, and changed-input,
+  supplied-recipient, supplied-proof, and mainnet rejection canaries
 - An advanced BIP375 sender workflow over five additional official fixtures covering global
   multi-input aggregation, per-input shares, multiple scan keys, labels with ordinary change, and
   repeated-recipient output ordering. It independently checks returned output scripts and

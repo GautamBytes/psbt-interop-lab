@@ -34,6 +34,7 @@ export interface ReportScenario {
   evidence: EvidenceRow[];
   classification?: ReportClassification;
   replay: string;
+  commandLabel?: string;
 }
 
 export const implementations = [
@@ -318,6 +319,43 @@ export const reportScenarios: ReportScenario[] = [
       },
     ],
     replay: "psbt-lab replay artifacts/<run-id>",
+  },
+  {
+    id: "bip375-funded-sender",
+    shortLabel: "Core-funded sender",
+    title: "Core-funded Silent Payment sender",
+    status: "supported",
+    statusLabel: "Source checkout · unreleased",
+    handoff: "Core -> libwally PSBTv2 -> rust-psbt PSBTv2 -> libwally extraction -> Core",
+    summary:
+      "The source checkout adds a 53rd scenario: a funded P2WPKH input pays one fixed Silent Payment recipient. Independent derivation and extraction checks must pass, and Core must accept the transaction under regtest policy. Nothing is broadcast.",
+    implementations: ["Bitcoin Core", "rust-psbt PSBTv2", "libwally"],
+    evidence: [
+      {
+        field: "Recipient, DLEQ proof, and output script",
+        expected: "independently verified against the fixed recipient",
+        actual: "required by the funded sender scenario",
+        implementation: "PSBT Interop Lab / rust-psbt PSBTv2",
+        nextStep: "Reject altered inputs and supplied recipient or proof data before signing.",
+      },
+      {
+        field: "Extracted transaction",
+        expected: "both libraries return identical transaction bytes",
+        actual: "rust-psbt and libwally extraction compared",
+        implementation: "rust-psbt PSBTv2 / libwally",
+        nextStep: "Require Core policy acceptance and a matching transaction ID.",
+      },
+      {
+        field: "Funding and policy boundary",
+        expected: "mature Core-funded input; missing parents fail",
+        actual: "one P2WPKH input, one Silent Payment output, regtest only",
+        implementation: "Bitcoin Core 31.1",
+        nextStep:
+          "Build from source; v0.10.1 and the historical screenshots do not include this scenario.",
+      },
+    ],
+    replay: "node dist/cli.js run --scenario bip375-core-funded-sender-rust-psbt-v2",
+    commandLabel: "Run from source",
   },
   {
     id: "hwi",

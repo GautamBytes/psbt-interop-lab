@@ -87,6 +87,14 @@ The fixture identifier is not an authentication credential, and the image does n
 accepted PSBT came from this particular CLI run. Its safety comes from using a public valueless test
 key on regtest, not from protecting that key. Do not place real funds on the fixture script.
 
+The Core-funded BIP375 sender authorizes the original P2WPKH template commitment before making
+one permitted destination replacement with a fixed public Silent Payment recipient. The adapter
+rejects supplied recipient/proof/signature/finalization data, enforces the 11,000-satoshi fixture
+fee, and checks full/witness UTXO consistency when both are present. The runner independently
+verifies the recipient, DLEQ proof, output script, and allowed field changes, compares libwally
+extraction, and requires Core policy acceptance. This is a bounded template transformation;
+it does not authorize arbitrary destination changes or production signing.
+
 Bitcoin Core receives only public descriptors. It does not receive fixture private keys.
 
 The MuSig2 fixture uses two public deterministic scalars in separate Rust and TypeScript processes.

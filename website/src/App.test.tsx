@@ -256,6 +256,26 @@ describe("PSBT Interop Lab website", () => {
     expect(screen.getByText(/Core policy acceptance on regtest/i)).toBeInTheDocument();
   });
 
+  it("distinguishes the unreleased funded sender from published and historical evidence", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: /Core-funded sender/i }));
+    expect(
+      screen.getByRole("heading", { name: "Core-funded Silent Payment sender" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Source checkout · unreleased")).toBeInTheDocument();
+    expect(screen.getByText("Run from source")).toBeInTheDocument();
+    expect(screen.getByText(/52 released scenarios · 53 in source/)).toBeInTheDocument();
+    expect(screen.getByText(/source checkout adds a 53rd scenario/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/v0.10.1 and the historical screenshots do not include this scenario/i),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/missing parents fail/i)).toBeInTheDocument();
+    expect(
+      screen.getByText("node dist/cli.js run --scenario bip375-core-funded-sender-rust-psbt-v2"),
+    ).toBeInTheDocument();
+  });
+
   it("shows a catalog-backed preview of structured conformance diagnostics", () => {
     render(<App />);
 

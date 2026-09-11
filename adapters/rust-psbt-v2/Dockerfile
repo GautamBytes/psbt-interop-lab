@@ -11,6 +11,7 @@ COPY tests/process.rs tests/process.rs
 COPY tests/protocol.rs tests/protocol.rs
 COPY tests/util.rs tests/util.rs
 COPY tests/workflow.rs tests/workflow.rs
+COPY tests/silent_payment_funded.rs tests/silent_payment_funded.rs
 RUN cargo fmt --check \
     && cargo clippy --locked --all-targets -- -D warnings \
     && cargo test --locked \

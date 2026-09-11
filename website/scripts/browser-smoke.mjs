@@ -97,8 +97,23 @@ try {
     if (!loaded) throw new Error(`Walkthrough proof image ${index + 1} did not load`);
   }
 
+  await page.getByRole("button", { name: /Core-funded sender/i }).click();
+  await page.getByRole("heading", { name: "Core-funded Silent Payment sender" }).waitFor();
+  await page.getByText("Source checkout · unreleased", { exact: true }).waitFor();
+  await page
+    .getByText(/v0.10.1 and the historical screenshots do not include this scenario/)
+    .waitFor();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("heading", { name: "Core-funded Silent Payment sender" }).waitFor();
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth > window.innerWidth,
+  );
+  if (overflow) throw new Error("Funded sender sample overflows the mobile viewport");
+
   if (browserErrors.length > 0) throw new Error(browserErrors.join("\n"));
-  console.log("Browser smoke passed: CSP, theme bootstrap, Mermaid, and proof images.");
+  console.log(
+    "Browser smoke passed: CSP, theme bootstrap, Mermaid, proof images, and funded sender on desktop/mobile.",
+  );
 } finally {
   await browser.close();
   await new Promise((resolveClose, reject) =>
