@@ -103,8 +103,11 @@ try {
   await page
     .getByText(/v0.10.1 and the historical screenshots do not include this scenario/)
     .waitFor();
+  await page.getByRole("button", { name: /Multi-input sender/i }).click();
+  await page.getByRole("heading", { name: "Funded multi-input Silent Payment sender" }).waitFor();
+  await page.getByText(/Two different keys, one recipient, and ordinary change/).waitFor();
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByRole("heading", { name: "Core-funded Silent Payment sender" }).waitFor();
+  await page.getByRole("heading", { name: "Funded multi-input Silent Payment sender" }).waitFor();
   const overflow = await page.evaluate(
     () => document.documentElement.scrollWidth > window.innerWidth,
   );

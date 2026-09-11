@@ -167,3 +167,19 @@ field changes, compares libwally extraction, and requires Core regtest policy ac
 Use `node dist/cli.js run --scenario bip375-core-funded-sender-rust-psbt-v2` after building from
 source. The original `bip375-valid-01` official-vector workflow is unchanged and does not claim
 Core policy acceptance when its parent is absent. Neither workflow broadcasts transactions.
+
+## Core-funded multi-input sender
+
+`silent-payment-send` also accepts fixture ID `bip375-multi`, gated by
+`bip375-core-funded-multi-input`. Its exact payload contains `psbt`, `network: "regtest"`,
+`fixtureId`, `shareMode: "global" | "per-input"`, and `reverseInputs: boolean`.
+The run-scoped commitment binds the original two-input/two-output template before any reversal.
+Inputs use scalar-1 and scalar-2 P2WPKH scripts in that original order. Output zero starts as
+scalar-1 P2WPKH and becomes the fixed scan-2/spend-1 Silent Payment destination; output one
+remains scalar-2 P2WPKH change. The exact fixture fee is 12,000 sats.
+
+The adapter generates its own shares/proofs, refuses supplied ones and existing signatures,
+locks transaction modification, signs both inputs with SIGHASH_ALL, verifies finalized scripts,
+and extracts. It is not a share-import API or a multi-party signing protocol. The TypeScript
+runner independently validates proofs, derived output, allowed field changes and both witnesses,
+then compares libwally extraction and requires Core policy acceptance for all four variants.

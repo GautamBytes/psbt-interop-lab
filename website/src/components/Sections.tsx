@@ -45,7 +45,7 @@ const coverageGroups = [
       "BIP373 MuSig2 nonce exchange, partial verification, and aggregation",
       "HWI-compatible simulator confirmation and key-origin policy",
       "All official BIP370 and BIP371 valid and invalid vectors",
-      "BIP375 sender workflows and BIP376 receiver-spend workflow; source checkout adds a Core-funded sender with mandatory policy acceptance (unreleased)",
+      "BIP375 sender workflows and BIP376 receiver-spend workflow; source checkout adds single-input and two-key Core-funded senders with mandatory policy acceptance (unreleased)",
     ],
   },
   {

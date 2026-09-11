@@ -38,6 +38,7 @@ import {
   createBip375SenderScenario,
 } from "./bip375.js";
 import { createBip375FundedSenderScenario } from "./bip375-funded.js";
+import { createBip375MultiSenderScenario } from "./bip375-multi.js";
 import { createBip376SpendScenario } from "./bip376.js";
 import { createCombinerConflictScenario } from "./combiner-conflicts.js";
 import { type CorePolicyResult, ScenarioExecutionContext } from "./context.js";
@@ -404,6 +405,11 @@ export const PROOF_SCENARIOS: readonly ProofScenarioSummary[] = [
   {
     id: "bip375-core-funded-sender-rust-psbt-v2",
     title: "Core-funded BIP375 sender through rust-psbt-v2",
+    category: "silent-payment-interop",
+  },
+  {
+    id: "bip375-core-funded-multi-input-rust-psbt-v2",
+    title: "Core-funded multi-input BIP375 sender through rust-psbt-v2",
     category: "silent-payment-interop",
   },
   {
@@ -941,6 +947,11 @@ export const PROOF_SCENARIO_REGISTRATIONS: readonly ProofScenarioRegistration[] 
     (fixtures) => createBip375FundedSenderScenario(requiredFixture(fixtures, "p2wpkh")),
   ),
   registerScenario(
+    "bip375-core-funded-multi-input-rust-psbt-v2",
+    { core: true, fixtures: ["bip375-multi"], adapters: ["rust-psbt-v2", "libwally"] },
+    (fixtures) => createBip375MultiSenderScenario(requiredFixture(fixtures, "bip375-multi")),
+  ),
+  registerScenario(
     "bip376-spend-workflow-rust-psbt-v2",
     {
       core: true,
@@ -1189,6 +1200,7 @@ const BDK_CURRENT_COMMITMENT_FIXTURES: readonly BuiltInFixtureId[] = [
   "intent-rich-p2wpkh",
 ];
 const PSBTV2_COMMITMENT_FIXTURES: readonly BuiltInFixtureId[] = [
+  "bip375-multi",
   "p2wpkh",
   "intent-rich-p2wpkh",
   "p2wsh-2-of-3",

@@ -6,9 +6,14 @@ All notable changes to PSBT Interop Lab are recorded here.
 
 ### Added
 
+- Add a Core-funded two-key Silent Payment sender with global/per-input shares, input-order
+  invariance, preserved ordinary change, independent extraction, and mandatory Core policy
+  acceptance for all four variants. Include tamper tests and a source-only website example.
+  The source catalog now contains 54 scenarios.
+
 - Add a Core-funded BIP375 sender proof with a fixed Silent Payment recipient, independent
   derivation and extraction checks, mandatory regtest policy acceptance, and tamper canaries.
-  The source catalog has 53 scenarios; the v0.10.0 walkthrough remains historical evidence.
+  The v0.10.0 walkthrough remains historical evidence.
 - Differential fuzz results now include a bounded lab-owned assessment of PSBTv0 and PSBTv2
   output amount ranges, while preserving native parser classifications and parser-only regression
   promotion.

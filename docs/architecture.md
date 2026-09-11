@@ -204,7 +204,7 @@ The detailed assumptions, abuse paths, and residual risks are recorded in the
 
 ## Proof Scenarios
 
-The executable catalog currently contains 53 scenarios. Twelve independent Core-to-library
+The executable catalog currently contains 54 scenarios. Twelve independent Core-to-library
 handoffs exercise rust-bitcoin, btcsuite, bitcoinjs, and current BDK signing for P2WSH, P2WPKH, and
 P2TR key-path inputs. Additional rust-bitcoin handoffs prove legacy P2PKH signing from an exact
 `non_witness_utxo` and nested P2SH-P2WSH 2-of-3 signing and finalization.
@@ -296,6 +296,14 @@ libwally to extract the same transaction and Core to accept it under regtest pol
 txid. Missing parents fail this scenario. No transaction is broadcast. Three private PSBT
 checkpoints capture the template, signed PSBT, and finalized PSBT. The original official-vector
 scenarios keep their separate policy-availability limits.
+
+The `bip375-core-funded-multi-input-rust-psbt-v2` scenario adds the `bip375-multi` profile:
+scalar-1/scalar-2 P2WPKH inputs, one derived recipient and scalar-2 ordinary change. One committed
+template feeds four bounded executions (global/per-input shares, ordered/reversed inputs).
+Independent validation requires complete ECDH/DLEQ coverage, matching recipient derivation,
+unchanged amounts/change, exact signature-to-witness binding, identical extraction, and Core
+policy acceptance for every execution. Nine checkpoints preserve the template and each
+signed/finalized pair. Neither policy checks nor replay broadcast transactions.
 
 A separate bounded BIP376 receiver-spend scenario starts from a Core-funded deterministic Taproot
 output and uses libwally for the PSBTv0-to-v2 handoff. The rust-psbt-v2 adapter reads the registered

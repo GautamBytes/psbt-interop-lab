@@ -358,6 +358,42 @@ export const reportScenarios: ReportScenario[] = [
     commandLabel: "Run from source",
   },
   {
+    id: "bip375-multi-sender",
+    shortLabel: "Multi-input sender",
+    title: "Funded multi-input Silent Payment sender",
+    status: "supported",
+    statusLabel: "Source checkout · unreleased",
+    handoff: "Core funding -> rust-psbt signing -> libwally extraction -> Core policy",
+    summary:
+      "Two different keys, one recipient, and ordinary change. Four funded variants compare global and per-input shares in both input orders. Each must preserve amounts and change, derive the same recipient output, and pass Core policy without broadcasting.",
+    implementations: ["Bitcoin Core", "rust-psbt PSBTv2", "libwally"],
+    evidence: [
+      {
+        field: "Input aggregation and order",
+        expected: "identical recipient script in all four variants",
+        actual: "independent BIP374 proofs and BIP352 derivation checked",
+        implementation: "PSBT Interop Lab / rust-psbt PSBTv2",
+        nextStep: "Reject missing or tampered shares and unauthorized intent changes.",
+      },
+      {
+        field: "Both signatures and ordinary change",
+        expected: "two exact signature-to-witness matches; unchanged change script and amounts",
+        actual: "both inputs finalized, then independently extracted",
+        implementation: "rust-psbt PSBTv2 / libwally",
+        nextStep: "Require Core acceptance and matching transaction IDs for all four variants.",
+      },
+      {
+        field: "Evidence boundary",
+        expected: "mature regtest inputs; no missing-parent exception",
+        actual: "source scenario, not included in the published v0.10.1 package",
+        implementation: "Bitcoin Core 31.1",
+        nextStep: "Run from source and replay the nine retained checkpoints.",
+      },
+    ],
+    replay: "node dist/cli.js run --scenario bip375-core-funded-multi-input-rust-psbt-v2",
+    commandLabel: "Run from source",
+  },
+  {
     id: "hwi",
     shortLabel: "HWI simulator",
     title: "Simulator-backed hardware signing handoff",

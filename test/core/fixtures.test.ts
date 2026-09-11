@@ -52,6 +52,7 @@ const P2SH_P2WSH_SCRIPT_PUBKEY = `a914${createHash("ripemd160")
 const FIXTURE_ADDRESSES = {
   [FIXTURE_DESCRIPTORS.p2pkh]: "mfixturep2pkh",
   [FIXTURE_DESCRIPTORS.p2wpkh]: "bcrt1qfixturep2wpkh",
+  [FIXTURE_DESCRIPTORS["p2wpkh-scalar2"]]: "bcrt1qfixturesecondkey",
   [FIXTURE_DESCRIPTORS["p2sh-p2wpkh"]]: "2NAUYAHhujozruyzpsFRP63mbrdaU5wnEpN",
   [FIXTURE_DESCRIPTORS["p2sh-p2wsh-2-of-3"]]: "2Nfixturep2shp2wsh",
   [FIXTURE_DESCRIPTORS["p2wsh-single-key"]]: "bcrt1qfixturesingle",
@@ -63,6 +64,7 @@ const FIXTURE_ADDRESSES = {
     "bcrt1pg44et8f66qnjn5fd0hu6dnnx7tczqslmt3dkzpccjlzeg99psshqfkkdep",
 } as const;
 const FIXTURE_SCRIPT_PUBKEYS = {
+  [FIXTURE_DESCRIPTORS["p2wpkh-scalar2"]]: "001406afd46bcdfd22ef94ac122aa11f241244a37ecc",
   [FIXTURE_DESCRIPTORS.p2pkh]: P2PKH_SCRIPT_PUBKEY,
   [FIXTURE_DESCRIPTORS.p2wpkh]: "0014751e76e8199196d454941c45d1b3a323f1433bd6",
   [FIXTURE_DESCRIPTORS["p2sh-p2wpkh"]]: "a914bcfeb728b584253d5f3f70bcb780e9ef218a68f487",
@@ -369,10 +371,14 @@ function createFixtureRpc(options: FakeRpcOptions = {}): {
     return descriptorId === options.mutateCoreScriptFor ? mutateHex(scriptPubKey) : scriptPubKey;
   };
   const unspents = {
+    [FIXTURE_DESCRIPTORS["p2wpkh-scalar2"]]: [
+      { txid: "af".repeat(32), vout: 0, amount: "50.00000000", height: 17 },
+    ],
     [FIXTURE_DESCRIPTORS.p2pkh]: [
       { txid: TXIDS.legacy, vout: 0, amount: "50.00000000", height: 13 },
     ],
     [FIXTURE_DESCRIPTORS.p2wpkh]: [
+      { txid: "b0".repeat(32), vout: 0, amount: "50.00000000", height: 18 },
       { txid: TXIDS.wpkh5, vout: 0, amount: "50.00000000", height: 16 },
       { txid: TXIDS.wpkh4, vout: 0, amount: "50.00000000", height: 15 },
       { txid: TXIDS.wpkh3, vout: 0, amount: "50.00000000", height: 10 },
@@ -928,9 +934,9 @@ describe("prepareFixtures", () => {
         const request = paramObject(call.params);
         return { version: request["version"], psbtVersion: request["psbt_version"] };
       });
-    expect(versions).toHaveLength(16);
+    expect(versions).toHaveLength(17);
     expect(versions).toEqual(
-      Array.from({ length: 16 }, () => ({ version: 2, psbtVersion: undefined })),
+      Array.from({ length: 17 }, () => ({ version: 2, psbtVersion: undefined })),
     );
   });
 
@@ -1198,6 +1204,7 @@ describe("prepareFixtures", () => {
       [FIXTURE_DESCRIPTORS.p2wpkh],
       [FIXTURE_DESCRIPTORS.p2wpkh],
       [FIXTURE_DESCRIPTORS["p2tr-keypath"]],
+      [FIXTURE_DESCRIPTORS.p2wpkh, FIXTURE_DESCRIPTORS["p2wpkh-scalar2"]],
     ]);
     expect(calls.some((call) => call.method === "generatetoaddress")).toBe(false);
     expect(calls.some((call) => /broadcast|sendrawtransaction/i.test(call.method))).toBe(false);
@@ -1212,8 +1219,8 @@ describe("prepareFixtures", () => {
       calls
         .filter((call) => call.method === "generatetoaddress")
         .map((call) => paramObject(call.params)["nblocks"]),
-    ).toEqual([1, 5, 1, 1, 4, 1, 4, 1, 1, 1, 100]);
-    expect(fixtures.core.blocks).toBe(620);
+    ).toEqual([1, 6, 1, 1, 1, 4, 1, 4, 1, 1, 1, 100]);
+    expect(fixtures.core.blocks).toBe(622);
     for (const fixture of [
       fixtures.happy,
       fixtures.regression,

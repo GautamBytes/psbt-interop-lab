@@ -265,7 +265,7 @@ describe("PSBT Interop Lab website", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("Source checkout · unreleased")).toBeInTheDocument();
     expect(screen.getByText("Run from source")).toBeInTheDocument();
-    expect(screen.getByText(/52 released scenarios · 53 in source/)).toBeInTheDocument();
+    expect(screen.getByText(/52 released scenarios · 54 in source/)).toBeInTheDocument();
     expect(screen.getByText(/source checkout adds a 53rd scenario/i)).toBeInTheDocument();
     expect(
       screen.getByText(/v0.10.1 and the historical screenshots do not include this scenario/i),
@@ -273,6 +273,24 @@ describe("PSBT Interop Lab website", () => {
     expect(screen.getByText(/missing parents fail/i)).toBeInTheDocument();
     expect(
       screen.getByText("node dist/cli.js run --scenario bip375-core-funded-sender-rust-psbt-v2"),
+    ).toBeInTheDocument();
+  });
+
+  it("shows the funded multi-input source example and its four required variants", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: /Multi-input sender/i }));
+    expect(
+      screen.getByRole("heading", { name: "Funded multi-input Silent Payment sender" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Source checkout · unreleased")).toBeInTheDocument();
+    expect(
+      screen.getByText(/two different keys, one recipient, and ordinary change/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "node dist/cli.js run --scenario bip375-core-funded-multi-input-rust-psbt-v2",
+      ),
     ).toBeInTheDocument();
   });
 
