@@ -372,12 +372,14 @@ function createFixtureRpc(options: FakeRpcOptions = {}): {
   };
   const unspents = {
     [FIXTURE_DESCRIPTORS["p2wpkh-scalar2"]]: [
+      { txid: "b1".repeat(32), vout: 0, amount: "50.00000000", height: 19 },
       { txid: "af".repeat(32), vout: 0, amount: "50.00000000", height: 17 },
     ],
     [FIXTURE_DESCRIPTORS.p2pkh]: [
       { txid: TXIDS.legacy, vout: 0, amount: "50.00000000", height: 13 },
     ],
     [FIXTURE_DESCRIPTORS.p2wpkh]: [
+      { txid: "b2".repeat(32), vout: 0, amount: "50.00000000", height: 20 },
       { txid: "b0".repeat(32), vout: 0, amount: "50.00000000", height: 18 },
       { txid: TXIDS.wpkh5, vout: 0, amount: "50.00000000", height: 16 },
       { txid: TXIDS.wpkh4, vout: 0, amount: "50.00000000", height: 15 },
@@ -934,9 +936,9 @@ describe("prepareFixtures", () => {
         const request = paramObject(call.params);
         return { version: request["version"], psbtVersion: request["psbt_version"] };
       });
-    expect(versions).toHaveLength(17);
+    expect(versions).toHaveLength(18);
     expect(versions).toEqual(
-      Array.from({ length: 17 }, () => ({ version: 2, psbtVersion: undefined })),
+      Array.from({ length: 18 }, () => ({ version: 2, psbtVersion: undefined })),
     );
   });
 
@@ -1205,6 +1207,7 @@ describe("prepareFixtures", () => {
       [FIXTURE_DESCRIPTORS.p2wpkh],
       [FIXTURE_DESCRIPTORS["p2tr-keypath"]],
       [FIXTURE_DESCRIPTORS.p2wpkh, FIXTURE_DESCRIPTORS["p2wpkh-scalar2"]],
+      [FIXTURE_DESCRIPTORS.p2wpkh, FIXTURE_DESCRIPTORS["p2wpkh-scalar2"]],
     ]);
     expect(calls.some((call) => call.method === "generatetoaddress")).toBe(false);
     expect(calls.some((call) => /broadcast|sendrawtransaction/i.test(call.method))).toBe(false);
@@ -1219,8 +1222,8 @@ describe("prepareFixtures", () => {
       calls
         .filter((call) => call.method === "generatetoaddress")
         .map((call) => paramObject(call.params)["nblocks"]),
-    ).toEqual([1, 6, 1, 1, 1, 4, 1, 4, 1, 1, 1, 100]);
-    expect(fixtures.core.blocks).toBe(622);
+    ).toEqual([1, 7, 2, 1, 1, 4, 1, 4, 1, 1, 1, 100]);
+    expect(fixtures.core.blocks).toBe(624);
     for (const fixture of [
       fixtures.happy,
       fixtures.regression,

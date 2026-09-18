@@ -195,3 +195,23 @@ the child to spend that exact txid/output/value. No sender private key enters re
 The child has a fixed scalar-1 P2WPKH destination and 10,000-sat fee; other intent, existing
 signatures, non-default sighashes and non-regtest requests are rejected before signing.
 The runner checks the parent/child package with Core without broadcasting either transaction.
+
+## Two-output receiver lifecycle
+
+Feature `bip352-multi-output-lifecycle` adds fixture `bip352-multi-output`. Sender payloads
+use the multi-input sender fields plus mandatory `shuffleOutputs: boolean`. The commitment
+binds the original two-input/three-output template: scalar-1 P2WPKH, scalar-1 P2PKH and
+scalar-2 P2WPKH placeholders. The first two become outputs for the same scan-2/spend-1
+receiver; the third remains ordinary change. The sender reverses output maps only when
+requested, before derivation/signing, and assigns k=0/k=1 in the resulting recipient order.
+The response returns both recipient `outputScripts`.
+
+The receiver accepts the same five exact fields as the linked one-output operation, with
+`fixtureId: "bip352-multi-output"`. It verifies the committed original template, authorized
+ordered/reversed parent and both independently derived output tweaks. The child must consume
+both discovered outputs in counter order, exactly once, with their actual indexes, scripts and
+amounts. Its only output is the fixed scalar-1 P2WPKH destination; its fee is exactly 10,000
+sats. Both signatures use SIGHASH_DEFAULT over all prevouts; finalization removes both inputs'
+BIP376 fields. The response returns both `derivedOutputKeys`. The one-output response fields
+remain unchanged. The scenario requires independent libwally extraction and Core package-policy
+acceptance for both layouts, without broadcasting.

@@ -197,6 +197,7 @@ function preparedFixtures(): PreparedFixtures {
       "p2tr-musig2": fixture("p2tr-musig2"),
       "bip376-spend": fixture("bip376-spend"),
       "bip375-multi": { ...fixture("bip375-multi"), inputCount: 2, outputCount: 2 },
+      "bip352-multi-output": { ...fixture("bip352-multi-output"), inputCount: 2, outputCount: 3 },
       "p2tr-scriptpath": fixture("p2tr-scriptpath"),
       "mixed-p2wpkh-p2tr": fixture("mixed-p2wpkh-p2tr"),
       "intent-rich-p2wpkh": fixture("intent-rich-p2wpkh"),
@@ -713,6 +714,7 @@ describe("proof runtime", () => {
       "bip375-core-funded-sender-rust-psbt-v2",
       "bip375-core-funded-multi-input-rust-psbt-v2",
       "bip352-sender-receiver-lifecycle-rust-psbt-v2",
+      "bip352-multi-output-lifecycle-rust-psbt-v2",
       "bip376-spend-workflow-rust-psbt-v2",
     ]);
   });
@@ -838,6 +840,7 @@ describe("proof runtime", () => {
       "intent-rich-p2wpkh": `sha256:${"d".repeat(64)}`,
     });
     const psbtv2Commitments = JSON.stringify({
+      "bip352-multi-output": `sha256:${"d".repeat(64)}`,
       "bip375-multi": `sha256:${"d".repeat(64)}`,
       p2wpkh: `sha256:${"d".repeat(64)}`,
       "intent-rich-p2wpkh": `sha256:${"d".repeat(64)}`,

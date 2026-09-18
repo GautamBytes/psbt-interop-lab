@@ -419,6 +419,11 @@ export const PROOF_SCENARIOS: readonly ProofScenarioSummary[] = [
     category: "silent-payment-interop",
   },
   {
+    id: "bip352-multi-output-lifecycle-rust-psbt-v2",
+    title: "Two-output Silent Payment discovery and combined receiver spend",
+    category: "silent-payment-interop",
+  },
+  {
     id: "bip376-spend-workflow-rust-psbt-v2",
     title: "BIP376 Silent Payment receiver spend through rust-psbt-v2",
     category: "silent-payment-interop",
@@ -963,6 +968,12 @@ export const PROOF_SCENARIO_REGISTRATIONS: readonly ProofScenarioRegistration[] 
     (fixtures) => createSilentPaymentLifecycleScenario(requiredFixture(fixtures, "bip375-multi")),
   ),
   registerScenario(
+    "bip352-multi-output-lifecycle-rust-psbt-v2",
+    { core: true, fixtures: ["bip352-multi-output"], adapters: ["rust-psbt-v2", "libwally"] },
+    (fixtures) =>
+      createSilentPaymentLifecycleScenario(requiredFixture(fixtures, "bip352-multi-output")),
+  ),
+  registerScenario(
     "bip376-spend-workflow-rust-psbt-v2",
     {
       core: true,
@@ -1211,6 +1222,7 @@ const BDK_CURRENT_COMMITMENT_FIXTURES: readonly BuiltInFixtureId[] = [
   "intent-rich-p2wpkh",
 ];
 const PSBTV2_COMMITMENT_FIXTURES: readonly BuiltInFixtureId[] = [
+  "bip352-multi-output",
   "bip375-multi",
   "p2wpkh",
   "intent-rich-p2wpkh",

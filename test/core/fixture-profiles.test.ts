@@ -30,6 +30,7 @@ describe("fixture profile definitions", () => {
       "sighash-p2wpkh",
       "sighash-p2tr-keypath",
       "bip375-multi",
+      "bip352-multi-output",
     ]);
   });
 
@@ -118,6 +119,12 @@ describe("fixture profile definitions", () => {
         inputDescriptorIds: ["p2wpkh", "p2wpkh-scalar2"],
         outputDescriptorIds: ["p2wpkh", "p2wpkh-scalar2"],
       },
+      {
+        id: "bip352-multi-output",
+        scriptTypes: ["p2wpkh"],
+        inputDescriptorIds: ["p2wpkh", "p2wpkh-scalar2"],
+        outputDescriptorIds: ["p2wpkh", "p2pkh", "p2wpkh-scalar2"],
+      },
     ]);
 
     const descriptors = FIXTURE_PROFILES.flatMap((profile) => profile.descriptors);
@@ -151,6 +158,14 @@ test("funded multi-input fixture has two different keys and a separate change ou
     inputDescriptorIds: ["p2wpkh", "p2wpkh-scalar2"],
     outputDescriptorIds: ["p2wpkh", "p2wpkh-scalar2"],
     descriptors: [`wpkh(${FIXTURE_PUBLIC_KEYS.scalar1})`, `wpkh(${FIXTURE_PUBLIC_KEYS.scalar2})`],
+    feeSats: 12_000,
+  });
+});
+
+test("funds the bounded two-recipient lifecycle with distinct placeholders and ordinary change", () => {
+  expect(FIXTURE_PROFILES.find((p) => String(p.id) === "bip352-multi-output")).toMatchObject({
+    inputDescriptorIds: ["p2wpkh", "p2wpkh-scalar2"],
+    outputDescriptorIds: ["p2wpkh", "p2pkh", "p2wpkh-scalar2"],
     feeSats: 12_000,
   });
 });

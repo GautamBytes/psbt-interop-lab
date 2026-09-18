@@ -174,6 +174,7 @@ export const PSBTV2_ADAPTER_CONTRACT = {
     "bip375-core-funded-sender",
     "bip375-core-funded-multi-input",
     "bip352-receiver-discovery",
+    "bip352-multi-output-lifecycle",
     "bip375-advanced-sender-workflows",
     "bip376-spend-workflow",
   ],

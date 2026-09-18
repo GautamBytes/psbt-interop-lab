@@ -229,3 +229,9 @@ and [BIP376 receiver fields](https://bips.dev/376/) against the actual sender ou
 parent/child policy check uses Bitcoin Core's [testmempoolaccept package interface](https://bitcoincore.org/en/doc/30.0.0/rpc/rawtransactions/testmempoolaccept/)
 with the parent first. The pinned Core 31.1 runtime must accept both members and confirm their
 transaction IDs; missing or undecided package results cannot count as success.
+
+The two-output lifecycle follows [BIP352's successive receiver counters](https://bips.dev/352/)
+and [BIP375's output-order rule](https://bips.dev/375/): outputs with matching scan/spend keys
+receive k values in ascending transaction output order. The lab permutes the unsigned template
+before derivation and signing, then discovers both scripts independently of their positions.
+It does not reorder an already signed transaction or claim that its signatures would survive.

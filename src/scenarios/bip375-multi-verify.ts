@@ -12,27 +12,31 @@ const mapAt = (doc: PsbtDocument, kind: "input" | "output", index: number) =>
 const entry = (map: PsbtDocumentMap | undefined, type: number) =>
   map?.entries.find(({ keyType }) => keyType === type);
 
-function orderedTemplate(template: string, reverse: boolean): PsbtDocument {
+function orderedTemplate(template: string, reverse: boolean, shuffle: boolean): PsbtDocument {
   const doc = parsePsbtDocument(template);
-  if (!reverse) return doc;
-  const inputs = doc.maps.filter(({ location }) => location.kind === "input");
-  const mutations: PsbtMutationRecipe[] = inputs.flatMap((map) =>
-    map.entries.map((e) => ({
-      kind: "delete-entry" as const,
-      location: map.location,
-      keyType: e.keyType,
-      keyDataHex: e.keyData.toString("hex"),
-    })),
-  );
-  for (const [index, map] of [...inputs].reverse().entries())
-    for (const e of map.entries)
-      mutations.push({
-        kind: "set-entry",
-        location: { kind: "input", index },
-        keyType: e.keyType,
-        keyDataHex: e.keyData.toString("hex"),
-        valueHex: e.value.toString("hex"),
-      });
+  if (!reverse && !shuffle) return doc;
+  const mutations: PsbtMutationRecipe[] = [];
+  for (const kind of ["input", "output"] as const) {
+    if ((kind === "input" && !reverse) || (kind === "output" && !shuffle)) continue;
+    const maps = doc.maps.filter((m) => m.location.kind === kind);
+    for (const map of maps)
+      for (const e of map.entries)
+        mutations.push({
+          kind: "delete-entry",
+          location: map.location,
+          keyType: e.keyType,
+          keyDataHex: e.keyData.toString("hex"),
+        });
+    for (const [index, map] of [...maps].reverse().entries())
+      for (const e of map.entries)
+        mutations.push({
+          kind: "set-entry",
+          location: { kind, index },
+          keyType: e.keyType,
+          keyDataHex: e.keyData.toString("hex"),
+          valueHex: e.value.toString("hex"),
+        });
+  }
   return parsePsbtDocument(applyPsbtMutations(template, mutations));
 }
 
@@ -41,24 +45,32 @@ export function verifyMultiSender(
   signed: string,
   mode: string,
   reverse: boolean,
+  shuffle = false,
 ): boolean {
   try {
     if (mode !== "global" && mode !== "per-input") return false;
-    const before = orderedTemplate(template, reverse),
+    const before = orderedTemplate(template, reverse, shuffle),
       after = parsePsbtDocument(signed);
     if (
       [before, after].some(
-        (doc) => doc.psbtVersion !== 2 || doc.inputCount !== 2 || doc.outputCount !== 2,
+        (doc) => doc.psbtVersion !== 2 || doc.inputCount !== 2 || ![2, 3].includes(doc.outputCount),
       )
     )
       return false;
-    const global = after.maps.find(({ location }) => location.kind === "global");
+    if (before.outputCount !== after.outputCount || (shuffle && before.outputCount !== 3))
+      return false;
+    const recipients = before.outputCount === 3 ? (shuffle ? [1, 2] : [0, 1]) : [0];
+    const global = after.maps.find((m) => m.location.kind === "global");
     if (
       entry(global, 6)?.value.toString("hex") !== "00" ||
-      entry(mapAt(after, "output", 0), 9)?.value.toString("hex") !== MULTI_KEYS[1] + MULTI_KEYS[0]
+      recipients.some(
+        (i) =>
+          entry(mapAt(after, "output", i), 9)?.value.toString("hex") !==
+          MULTI_KEYS[1] + MULTI_KEYS[0],
+      )
     )
       return false;
-    const expected = new Set(["output:0:9", "input:0:2", "input:1:2"]);
+    const expected = new Set(["input:0:2", "input:1:2", ...recipients.map((i) => `output:${i}:9`)]);
     if (mode === "global") {
       expected.add("global:7");
       expected.add("global:8");
@@ -97,13 +109,15 @@ export function verifyMultiSender(
     return (
       expected.size === 0 &&
       diff.removed.length === 0 &&
-      diff.changed.some(
-        ({ location, keyType }) =>
-          location.kind === "output" && location.index === 0 && keyType === 4,
+      recipients.every((index) =>
+        diff.changed.some(
+          ({ location, keyType }) =>
+            location.kind === "output" && location.index === index && keyType === 4,
+        ),
       ) &&
       diff.changed.every(
         ({ location, keyType }) =>
-          (location.kind === "output" && location.index === 0 && keyType === 4) ||
+          (location.kind === "output" && recipients.includes(location.index) && keyType === 4) ||
           (location.kind === "global" && keyType === 6),
       ) &&
       validateBip375ReferencePsbt(signed).valid
