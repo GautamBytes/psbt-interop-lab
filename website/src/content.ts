@@ -473,6 +473,45 @@ export const reportScenarios: ReportScenario[] = [
     commandLabel: "Run from source",
   },
   {
+    id: "silent-payment-spdk",
+    shortLabel: "SPDK wallet",
+    title: "Independent Silent Payment wallet handoff",
+    status: "supported",
+    statusLabel: "Source checkout · unreleased",
+    handoff: "Funded sender -> SPDK discovery and signing -> libwally -> Core package policy",
+    summary:
+      "SPDK discovers both payments from public sender inputs and signs their combined spend through its wallet API. The lab preserves strict PSBT authorization and verifies both ordered and shuffled layouts without broadcasting.",
+    implementations: ["Bitcoin Core", "rust-psbt PSBTv2", "libwally"],
+    evidence: [
+      {
+        field: "External wallet implementation",
+        expected: "SPDK independently discovers outputs and signs the receiver transaction",
+        actual: "spdk-wallet 0.7.1 at a00f9807609b3be16892b7dd671a56db52db88a7",
+        implementation: "SPDK receiver / SpClient",
+        nextStep:
+          "The report asserts the pinned revision for both layouts. Network backends are disabled.",
+      },
+      {
+        field: "Exact parent/child linkage",
+        expected: "two discovered outpoints, exact values and tweaks, one authorized destination",
+        actual: "46 assertions and 12 replayable checkpoints",
+        implementation: "SPDK / rust-psbt PSBTv2 / libwally / Bitcoin Core 31.1",
+        nextStep:
+          "Child alone must fail; both parent/child packages must pass. Tampered signing requests are rejected.",
+      },
+      {
+        field: "Evidence boundary",
+        expected: "offline wallet-library interoperability for one fixed regtest receiver",
+        actual: "technical integration; external maintainer adoption remains future work",
+        implementation: "PSBT Interop Lab",
+        nextStep:
+          "Build from source. This scenario is not included in v0.10.1; chain synchronization, labels and multiple receiver identities are outside its scope.",
+      },
+    ],
+    replay: "node dist/cli.js run --scenario bip352-spdk-wallet-interop",
+    commandLabel: "Run from source",
+  },
+  {
     id: "hwi",
     shortLabel: "HWI simulator",
     title: "Simulator-backed hardware signing handoff",

@@ -98,6 +98,27 @@ To work from a source checkout instead, install pnpm 10.30.2, run
 `pnpm install --frozen-lockfile`, and replace `psbt-lab` above with `node dist/cli.js` after
 `pnpm build`.
 
+## Independent SPDK wallet interoperability (unreleased)
+
+Run the same two-output lifecycle through SPDK's receiver and wallet signer:
+
+```sh
+pnpm install --frozen-lockfile
+pnpm build
+node dist/cli.js run --scenario bip352-spdk-wallet-interop
+```
+
+The adapter pins [SPDK's wallet implementation](https://github.com/cygnet3/spdk/tree/a00f9807609b3be16892b7dd671a56db52db88a7)
+and disables its network backends. SPDK discovers both recipient outputs from public parent
+inputs and receiver keys, then `SpClient` signs their combined spend. The lab bridges those
+signatures into the BIP376 child PSBT and retains its funding, destination, fee and signature checks.
+The report requires the exact SPDK revision, independent libwally extraction, and Core acceptance
+of both ordered and shuffled parent/child packages: 46 assertions and 12 replayable checkpoints.
+
+This proves offline interoperability with SPDK's wallet library for this fixed regtest fixture.
+External maintainer adoption, wallet-app integration, chain synchronization, labels and multiple
+receiver identities remain future work. The scenario is source-only; published v0.10.1 is unchanged.
+
 ## Two-output Silent Payment lifecycle (unreleased)
 
 The source scenario `bip352-multi-output-lifecycle-rust-psbt-v2` pays the same scan-2/spend-1
@@ -261,7 +282,7 @@ preservation. It executes the configured command directly with `shell: false`; t
 manifest must therefore be treated as trusted local code. See [the adapter guide](docs/adapters.md)
 and the bundled [manifest schema](src/conformance/adapter-manifest.schema.json).
 
-The source checkout matrix keeps all 56 bundled scenarios and appends native-parse and semantic-roundtrip cells for
+The source checkout matrix keeps all 57 bundled scenarios and appends native-parse and semantic-roundtrip cells for
 each external adapter across P2WPKH, nested P2SH-P2WPKH, P2WSH, Taproot key-path, and Taproot
 script-path fixtures. It also appends signing handoffs when the adapter declares the matching
 signer capabilities and the `fixture-commitment-sha256` safety feature.
@@ -358,7 +379,7 @@ fixtures. Custom signing is capability-gated and runs only when an adapter expli
 
 ## Current Coverage
 
-The source checkout currently runs 56 scenarios (the published v0.10.1 package has 52):
+The source checkout currently runs 57 scenarios (the published v0.10.1 package has 52):
 
 - Core-created P2PKH, P2WPKH, P2WSH, nested P2SH-P2WSH, and Taproot key-path signing handoffs
   through rust-bitcoin, btcsuite, bitcoinjs-lib, and current BDK Wallet

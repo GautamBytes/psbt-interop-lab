@@ -204,7 +204,7 @@ The detailed assumptions, abuse paths, and residual risks are recorded in the
 
 ## Proof Scenarios
 
-The executable catalog currently contains 56 scenarios. Twelve independent Core-to-library
+The executable catalog currently contains 57 scenarios. Twelve independent Core-to-library
 handoffs exercise rust-bitcoin, btcsuite, bitcoinjs, and current BDK signing for P2WSH, P2WPKH, and
 P2TR key-path inputs. Additional rust-bitcoin handoffs prove legacy P2PKH signing from an exact
 `non_witness_utxo` and nested P2SH-P2WSH 2-of-3 signing and finalization.
@@ -329,6 +329,17 @@ succeed for both layouts. Signature-only mutations, witness binding, field clean
 value minus the fixed fee, and negative signing canaries remain mandatory. Twelve checkpoints
 retain both executions. This extends the bounded proof to two outputs for one receiver;
 multiple receiver identities, labels and chain scanning remain outside its scope.
+
+The `bip352-spdk-wallet-interop` scenario reuses that funded lifecycle with the pinned
+`spdk-wallet` implementation inside the existing isolated rust-psbt-v2 adapter. After the same
+strict parent/child authorization, SPDK classifies public input witnesses, aggregates inputs,
+and discovers both recipient outputs. Its `SpClient` signs an unsigned transaction using the
+SPDK-discovered outpoints, values and tweaks. The lab bridges the resulting signatures into
+the child PSBT, verifies them natively, and finalizes it. Each layout adds an assertion for the
+exact SPDK source revision; the scenario has 46 assertions and twelve checkpoints. Independent
+libwally extraction and Core policy checks remain mandatory. Default SPDK network backends are
+disabled. This is an offline wallet-library integration, not chain synchronization, a new
+standalone adapter, or evidence of external maintainer adoption.
 
 A separate bounded BIP376 receiver-spend scenario starts from a Core-funded deterministic Taproot
 output and uses libwally for the PSBTv0-to-v2 handoff. The rust-psbt-v2 adapter reads the registered

@@ -114,11 +114,16 @@ try {
   await page.getByRole("button", { name: /Two-output receiver/i }).click();
   await page.getByRole("heading", { name: "Two payments, one receiver spend" }).waitFor();
   await page.getByText(/12 replayable checkpoints/).waitFor();
+  await page.getByRole("button", { name: /SPDK wallet/i }).click();
+  await page.getByRole("heading", { name: "Independent Silent Payment wallet handoff" }).waitFor();
+  await page.getByText("46 assertions and 12 replayable checkpoints", { exact: true }).waitFor();
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole("button", { name: /Receiver discovery/i }).click();
   await page.getByRole("heading", { name: "Silent Payment sender to receiver spend" }).waitFor();
   await page.getByRole("button", { name: /Two-output receiver/i }).click();
   await page.getByRole("heading", { name: "Two payments, one receiver spend" }).waitFor();
+  await page.getByRole("button", { name: /SPDK wallet/i }).click();
+  await page.getByRole("heading", { name: "Independent Silent Payment wallet handoff" }).waitFor();
   const overflow = await page.evaluate(
     () => document.documentElement.scrollWidth > window.innerWidth,
   );
@@ -126,7 +131,7 @@ try {
 
   if (browserErrors.length > 0) throw new Error(browserErrors.join("\n"));
   console.log(
-    "Browser smoke passed: CSP, theme bootstrap, Mermaid, proof images, and funded sender and receiver lifecycle on desktop/mobile.",
+    "Browser smoke passed: CSP, theme bootstrap, Mermaid, proof images, and funded sender, receiver lifecycle and SPDK wallet on desktop/mobile.",
   );
 } finally {
   await browser.close();

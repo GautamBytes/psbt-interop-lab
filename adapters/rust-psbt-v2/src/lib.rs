@@ -4,6 +4,7 @@ use std::str::FromStr;
 mod silent_payment_funded;
 mod silent_payment_multi;
 mod silent_payment_receiver;
+mod silent_payment_spdk;
 
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use psbt_v2::bitcoin::bip32::{DerivationPath, Fingerprint};
@@ -2401,6 +2402,13 @@ fn complete_silent_payment_spend(
         psbt.inputs[index].tap_key_sig = Some(signature);
         derived_keys.push(derived_output_key.to_string());
     }
+    finalize_silent_payment_spend(psbt, derived_keys)
+}
+
+fn finalize_silent_payment_spend(
+    mut psbt: Psbt,
+    derived_keys: Vec<String>,
+) -> Result<(Psbt, Psbt, Transaction, Vec<String>), SilentPaymentSpendError> {
     let signed = psbt.clone();
     for input in &mut psbt.inputs {
         input.final_script_witness = Some(Witness::from_slice(&[input
@@ -2511,7 +2519,7 @@ pub fn handle_value_with_commitments(
                     "bip375-advanced-sender-workflows",
                     "bip376-spend-workflow",
                     "bip352-receiver-discovery",
-                    "bip352-multi-output-lifecycle"
+                    "bip352-multi-output-lifecycle", "bip352-spdk-wallet-interop"
                 ]
             }),
         ),

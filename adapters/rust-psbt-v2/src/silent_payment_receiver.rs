@@ -6,16 +6,26 @@ pub(super) fn spend(request: &Request, digest: &str, commitments: &FixtureCommit
     } else {
         1
     };
-    if !exact_fields(
-        &request.payload,
-        &["psbt", "parentPsbt", "templatePsbt", "network", "fixtureId"],
-    ) {
+    let spdk = payload_string(&request.payload, "receiver") == Some("spdk");
+    let fields: &[&str] = if spdk {
+        &[
+            "psbt",
+            "parentPsbt",
+            "templatePsbt",
+            "network",
+            "fixtureId",
+            "receiver",
+        ]
+    } else {
+        &["psbt", "parentPsbt", "templatePsbt", "network", "fixtureId"]
+    };
+    if !exact_fields(&request.payload, fields) || (spdk && count != 2) {
         return failure(
             &request.id,
             digest,
             "rejected",
             "protocol.invalid_payload",
-            "Expected a receiver PSBT, its finalized parent and the committed original funding template",
+            "Expected committed receiver payload; SPDK supports only the two-output fixture",
         );
     }
     if payload_string(&request.payload, "network") != Some("regtest") {
@@ -62,7 +72,12 @@ pub(super) fn spend(request: &Request, digest: &str, commitments: &FixtureCommit
             message,
         );
     }
-    match complete_silent_payment_spend(child.psbt, count) {
+    let result = if spdk {
+        silent_payment_spdk::spend(&parent.psbt, child.psbt)
+    } else {
+        complete_silent_payment_spend(child.psbt, count)
+    };
+    match result {
         Ok((signed, finalized, transaction, keys)) => {
             let mut output = json!({
                 "psbt":STANDARD.encode(signed.serialize()),"finalizedPsbt":STANDARD.encode(finalized.serialize()),
@@ -70,6 +85,9 @@ pub(super) fn spend(request: &Request, digest: &str, commitments: &FixtureCommit
                 "transaction":consensus::serialize(&transaction).to_lower_hex_string(),
                 "transactionId":transaction.compute_txid().to_string()
             });
+            if spdk {
+                output["receiverImplementation"] = json!(silent_payment_spdk::ID);
+            }
             if count == 2 {
                 output["derivedOutputKeys"] = json!(keys);
             } else {

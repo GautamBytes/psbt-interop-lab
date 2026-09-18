@@ -6,10 +6,15 @@ All notable changes to PSBT Interop Lab are recorded here.
 
 ### Added
 
+- Add independent SPDK wallet discovery and signing for both two-output Silent Payment layouts.
+  Pin the upstream revision, disable network backends, and retain strict fixture authorization,
+  tamper rejection, libwally extraction and Core package checks. Include 46 assertions, twelve
+  replayable checkpoints, provenance docs and a source-only website example. The source catalog
+  now contains 57 scenarios.
 - Add a two-output Silent Payment lifecycle with ordered and shuffled unsigned layouts,
   independent discovery, a combined BIP376 spend, exact value/outpoint binding, tamper
   rejection and mandatory Core package-policy acceptance. Include twelve replayable
-  checkpoints and an unreleased website example. The source catalog now contains 56 scenarios.
+  checkpoints and an unreleased website example.
 - Link the funded Silent Payment sender to independent receiver discovery and a BIP376 spend
   of the exact output. Require independent extraction, child-alone rejection and linked Core
   package acceptance without broadcasting. Include six replayable checkpoints, adversarial

@@ -7,6 +7,7 @@ license = "MIT"
 publish = false
 
 [dependencies]
+spdk-wallet = { git = "https://github.com/cygnet3/spdk", rev = "a00f9807609b3be16892b7dd671a56db52db88a7", default-features = false }
 base64 = "=0.22.1"
 psbt-v2 = { version = "=0.3.0", features = ["base64", "miniscript", "silent-payments"] }
 serde = { version = "=1.0.228", features = ["derive"] }
