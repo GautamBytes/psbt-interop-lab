@@ -244,6 +244,10 @@ fn independent_spdk_wallet_discovers_and_spends_both_layouts() {
         );
         assert_eq!(response["output"]["signedInputs"], 2);
         assert_eq!(
+            response["output"]["derivedOutputKeys"],
+            v["receiverOutput"]["derivedOutputKeys"]
+        );
+        assert_eq!(
             response["output"]["transactionId"],
             v["receiverOutput"]["transactionId"]
         );

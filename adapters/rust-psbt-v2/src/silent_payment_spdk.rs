@@ -72,6 +72,7 @@ fn discover(
     let matches = receiver
         .scan_transaction(&calculate_ecdh_shared_secret(&tweak_data, &scan), &outputs)
         .map_err(|_| "SPDK discovery failed")?;
+    let txid = tx.compute_txid();
     let mut discovered = Vec::new();
     for (label, matches) in matches {
         if label.is_some() {
@@ -90,7 +91,7 @@ fn discover(
             }
             let (vout, output) = positions[0];
             discovered.push((
-                OutPoint::new(tx.compute_txid(), vout as u32),
+                OutPoint::new(txid, vout as u32),
                 DiscoveredOutput {
                     tweak,
                     value: output.value,
@@ -114,6 +115,7 @@ pub(super) fn spend(
         return Err(fail("SPDK must discover both recipient outputs"));
     }
     let mut selected = Vec::new();
+    let mut output_keys = Vec::new();
     for input in &child.inputs {
         let outpoint = OutPoint::new(input.previous_txid, input.spent_output_index);
         let (_, output) = found
@@ -136,6 +138,7 @@ pub(super) fn spend(
         {
             return Err(fail("SPDK discovery disagrees with child tweak or value"));
         }
+        output_keys.push(output.script_pubkey.as_bytes()[2..].to_lower_hex_string());
         selected.push((outpoint, output.clone()));
     }
     let wallet = SpClient::new(
@@ -179,18 +182,6 @@ pub(super) fn spend(
             .map_err(|_| fail("Invalid SPDK signature"))?,
         );
     }
-    let output_keys = child
-        .inputs
-        .iter()
-        .map(|i| {
-            i.witness_utxo
-                .as_ref()
-                .expect("validated child")
-                .script_pubkey
-                .as_bytes()[2..]
-                .to_lower_hex_string()
-        })
-        .collect();
     finalize_silent_payment_spend(child, output_keys)
 }
 
