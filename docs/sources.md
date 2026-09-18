@@ -222,3 +222,10 @@ smallest serialized outpoint rule, plus BIP375 global/per-input share fields and
 The same two-key regtest template is executed in both input orders and share modes. Independent
 reference validation and Core policy acceptance are required for each of the four transactions;
 this evidence does not claim a general multi-party signing implementation.
+
+
+The linked receiver lifecycle additionally checks [BIP352 receiver derivation](https://bips.dev/352/)
+and [BIP376 receiver fields](https://bips.dev/376/) against the actual sender output. The bounded
+parent/child policy check uses Bitcoin Core's [testmempoolaccept package interface](https://bitcoincore.org/en/doc/30.0.0/rpc/rawtransactions/testmempoolaccept/)
+with the parent first. The pinned Core 31.1 runtime must accept both members and confirm their
+transaction IDs; missing or undecided package results cannot count as success.

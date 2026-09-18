@@ -456,6 +456,7 @@ def hello(request_id, digest, payload):
     operation_script_types["inspect"] = taproot_roundtrip_types
     operation_script_types["roundtrip"] = taproot_roundtrip_types
     operation_script_types["convert"] = taproot_roundtrip_types
+    operation_script_types["extract"] = ["p2wpkh", "p2wsh", "p2tr-keypath"]
     return success(
         request_id,
         digest,

@@ -98,6 +98,31 @@ To work from a source checkout instead, install pnpm 10.30.2, run
 `pnpm install --frozen-lockfile`, and replace `psbt-lab` above with `node dist/cli.js` after
 `pnpm build`.
 
+## Sender → receiver discovery → spend (unreleased)
+
+Run `bip352-sender-receiver-lifecycle-rust-psbt-v2` from source to follow the actual funded
+multi-input sender output into a receiver spend:
+
+```sh
+pnpm install --frozen-lockfile
+pnpm build
+node dist/cli.js run --scenario bip352-sender-receiver-lifecycle-rust-psbt-v2
+```
+
+The receiver independently derives the BIP352 output from public input witnesses/outpoints
+and its scan/spend keys, without using sender shares or recipient metadata. Rust independently
+checks that derivation, binds the BIP376 child to the exact parent txid/output/value, and signs.
+libwally extracts both transactions. Core must reject the child alone with `missing-inputs`
+and accept both together through `testmempoolaccept`, confirming both transaction IDs.
+Six checkpoints preserve funding, sender signing/finalization, discovery, and receiver
+signing/finalization. Neither transaction is broadcast.
+
+This is a bounded regtest lifecycle with two P2WPKH inputs, one scan-2/spend-1 recipient,
+ordinary change, and a fixed 10,000-sat receiver fee. Wrong receiver keys discover nothing;
+altered outpoints, tweaks and destinations must be rejected before signing. It is not a
+chain scanner, reorg/recovery engine, or general wallet implementation. The published
+v0.10.1 package and historical screenshots do not include this scenario.
+
 ## Funded multi-input Silent Payment sender (unreleased)
 
 The source checkout includes `bip375-core-funded-multi-input-rust-psbt-v2`: two mature
@@ -213,7 +238,7 @@ preservation. It executes the configured command directly with `shell: false`; t
 manifest must therefore be treated as trusted local code. See [the adapter guide](docs/adapters.md)
 and the bundled [manifest schema](src/conformance/adapter-manifest.schema.json).
 
-The source checkout matrix keeps all 54 bundled scenarios and appends native-parse and semantic-roundtrip cells for
+The source checkout matrix keeps all 55 bundled scenarios and appends native-parse and semantic-roundtrip cells for
 each external adapter across P2WPKH, nested P2SH-P2WPKH, P2WSH, Taproot key-path, and Taproot
 script-path fixtures. It also appends signing handoffs when the adapter declares the matching
 signer capabilities and the `fixture-commitment-sha256` safety feature.
@@ -310,7 +335,7 @@ fixtures. Custom signing is capability-gated and runs only when an adapter expli
 
 ## Current Coverage
 
-The source checkout currently runs 54 scenarios (the published v0.10.1 package has 52):
+The source checkout currently runs 55 scenarios (the published v0.10.1 package has 52):
 
 - Core-created P2PKH, P2WPKH, P2WSH, nested P2SH-P2WSH, and Taproot key-path signing handoffs
   through rust-bitcoin, btcsuite, bitcoinjs-lib, and current BDK Wallet

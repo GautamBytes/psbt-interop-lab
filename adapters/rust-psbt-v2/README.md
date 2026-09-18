@@ -183,3 +183,15 @@ locks transaction modification, signs both inputs with SIGHASH_ALL, verifies fin
 and extracts. It is not a share-import API or a multi-party signing protocol. The TypeScript
 runner independently validates proofs, derived output, allowed field changes and both witnesses,
 then compares libwally extraction and requires Core policy acceptance for all four variants.
+
+## Receiver discovery linked to the funded sender
+
+Feature `bip352-receiver-discovery` extends `silent-payment-spend` with exact payload fields
+`psbt` (receiver child), `parentPsbt` (finalized sender), `templatePsbt` (original committed
+funding), `network: "regtest"`, and `fixtureId: "bip375-multi"`. The parent uses the original
+input order. The adapter verifies the run-scoped funding commitment and parent scripts,
+independently derives the BIP352 k=0 output from public inputs and receiver keys, and requires
+the child to spend that exact txid/output/value. No sender private key enters receiver discovery.
+The child has a fixed scalar-1 P2WPKH destination and 10,000-sat fee; other intent, existing
+signatures, non-default sighashes and non-regtest requests are rejected before signing.
+The runner checks the parent/child package with Core without broadcasting either transaction.
