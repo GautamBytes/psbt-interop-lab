@@ -424,6 +424,11 @@ export const PROOF_SCENARIOS: readonly ProofScenarioSummary[] = [
     category: "silent-payment-interop",
   },
   {
+    id: "bip352-spdk-wallet-interop",
+    title: "Independent SPDK wallet discovery and combined spend",
+    category: "silent-payment-interop",
+  },
+  {
     id: "bip376-spend-workflow-rust-psbt-v2",
     title: "BIP376 Silent Payment receiver spend through rust-psbt-v2",
     category: "silent-payment-interop",
@@ -972,6 +977,15 @@ export const PROOF_SCENARIO_REGISTRATIONS: readonly ProofScenarioRegistration[] 
     { core: true, fixtures: ["bip352-multi-output"], adapters: ["rust-psbt-v2", "libwally"] },
     (fixtures) =>
       createSilentPaymentLifecycleScenario(requiredFixture(fixtures, "bip352-multi-output")),
+  ),
+  registerScenario(
+    "bip352-spdk-wallet-interop",
+    { core: true, fixtures: ["bip352-multi-output"], adapters: ["rust-psbt-v2", "libwally"] },
+    (fixtures) =>
+      createSilentPaymentLifecycleScenario(
+        requiredFixture(fixtures, "bip352-multi-output"),
+        "spdk",
+      ),
   ),
   registerScenario(
     "bip376-spend-workflow-rust-psbt-v2",

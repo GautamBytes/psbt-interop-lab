@@ -215,3 +215,20 @@ sats. Both signatures use SIGHASH_DEFAULT over all prevouts; finalization remove
 BIP376 fields. The response returns both `derivedOutputKeys`. The one-output response fields
 remain unchanged. The scenario requires independent libwally extraction and Core package-policy
 acceptance for both layouts, without broadcasting.
+
+## Independent SPDK receiver
+
+Feature `bip352-spdk-wallet-interop` selects the pinned SPDK wallet implementation through
+`silent-payment-spend`. Its payload has exactly the five receiver fields above plus
+`receiver: "spdk"`; only `fixtureId: "bip352-multi-output"` is accepted. Unknown selectors,
+other fixtures and non-regtest requests are rejected. The same template commitment, parent
+signature, child destination, amount, fee, outpoint and tweak checks run before SPDK signing.
+
+SPDK independently discovers both outputs from the finalized parent and public prevouts.
+The lab compares SPDK's discovered values/tweaks with the authorized child, asks `SpClient`
+to sign, and imports the returned signatures for native PSBT finalization and script verification.
+The response additionally contains `receiverImplementation` equal to
+`spdk-wallet/0.7.1@a00f9807609b3be16892b7dd671a56db52db88a7`; the runner asserts this identity
+for both layouts. SPDK's default features and network backends are disabled. Fixed keys and
+zero signing auxiliary randomness are solely for these public deterministic regtest fixtures.
+This path does not expose arbitrary wallet signing, chain scanning or a wallet application.

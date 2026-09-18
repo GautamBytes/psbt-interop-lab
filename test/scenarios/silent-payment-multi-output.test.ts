@@ -117,103 +117,129 @@ for (const v of fixture.variants)
     expect(verifyMultiSender(fixture.template, changed, "per-input", false, v.shuffle)).toBe(false);
   });
 
-test("runs both complete layouts with independent extraction and linked package policy", async () => {
-  const commitment = `sha256:${"a".repeat(64)}`;
-  const initial = fixture.variants[0];
-  if (!initial) throw new Error("Missing fixture");
-  let active = initial;
-  const calls: string[] = [];
-  const request = async (req: AdapterRequest): Promise<AdapterResponse> => {
-    const base = {
-      protocol: req.protocol,
-      id: req.id,
-      implementation: { name: "test", version: "test", artifactDigest: commitment },
-    };
-    if (req.operation === "convert")
-      return {
-        ...base,
-        status: "ok",
-        output: { psbt: fixture.template, unsignedTxSha256: commitment },
+test.each([
+  { receiver: "native", correctIdentity: true },
+  { receiver: "spdk", correctIdentity: true },
+  { receiver: "spdk", correctIdentity: false },
+] as const)(
+  "runs both layouts with $receiver signing; correct wallet identity: $correctIdentity",
+  async ({ receiver, correctIdentity }) => {
+    const commitment = `sha256:${"a".repeat(64)}`;
+    const initial = fixture.variants[0];
+    if (!initial) throw new Error("Missing fixture");
+    let active = initial;
+    const calls: string[] = [];
+    const request = async (req: AdapterRequest): Promise<AdapterResponse> => {
+      const base = {
+        protocol: req.protocol,
+        id: req.id,
+        implementation: { name: "test", version: "test", artifactDigest: commitment },
       };
-    if (req.operation === "silent-payment-send") {
-      const v = fixture.variants.find((v) => v.shuffle === req.payload["shuffleOutputs"]);
-      if (!v) throw new Error("Missing layout");
-      active = v;
-      return { ...base, status: "ok", output: v.output };
-    }
-    if (req.operation === "extract")
+      if (req.operation === "convert")
+        return {
+          ...base,
+          status: "ok",
+          output: { psbt: fixture.template, unsignedTxSha256: commitment },
+        };
+      if (req.operation === "silent-payment-send") {
+        const v = fixture.variants.find((v) => v.shuffle === req.payload["shuffleOutputs"]);
+        if (!v) throw new Error("Missing layout");
+        active = v;
+        return { ...base, status: "ok", output: v.output };
+      }
+      if (req.operation === "extract")
+        return {
+          ...base,
+          status: "ok",
+          output: {
+            transaction:
+              req.payload["psbt"] === active.output.finalizedPsbt
+                ? active.output.transaction
+                : active.receiverOutput.transaction,
+          },
+        };
+      if (req.payload["network"] !== "regtest")
+        return {
+          ...base,
+          status: "rejected",
+          error: { class: "policy.network_not_allowed", message: "canary" },
+        };
+      if (req.payload["psbt"] !== active.child)
+        return {
+          ...base,
+          status: "rejected",
+          error: { class: "silent_payment.receiver_link_invalid", message: "canary" },
+        };
+      expect(req.payload["receiver"]).toBe(receiver === "spdk" ? "spdk" : undefined);
       return {
         ...base,
         status: "ok",
         output: {
-          transaction:
-            req.payload["psbt"] === active.output.finalizedPsbt
-              ? active.output.transaction
-              : active.receiverOutput.transaction,
+          ...active.receiverOutput,
+          ...(receiver === "spdk"
+            ? {
+                receiverImplementation: correctIdentity
+                  ? "spdk-wallet/0.7.1@a00f9807609b3be16892b7dd671a56db52db88a7"
+                  : "spdk-wallet/unknown",
+              }
+            : {}),
         },
       };
-    if (req.payload["network"] !== "regtest")
-      return {
-        ...base,
-        status: "rejected",
-        error: { class: "policy.network_not_allowed", message: "canary" },
-      };
-    if (req.payload["psbt"] !== active.child)
-      return {
-        ...base,
-        status: "rejected",
-        error: { class: "silent_payment.receiver_link_invalid", message: "canary" },
-      };
-    return { ...base, status: "ok", output: active.receiverOutput };
-  };
-  const call = async (method: string, params: unknown) => {
-    calls.push(method);
-    const { rawtxs } = params as { rawtxs: string[] };
-    return rawtxs.length === 2
-      ? [
-          { allowed: true, txid: active.output.transactionId },
-          { allowed: true, txid: active.receiverOutput.transactionId },
-        ]
-      : rawtxs[0] === active.output.transaction
-        ? [{ allowed: true, txid: active.output.transactionId }]
-        : [
-            {
-              allowed: false,
-              txid: active.receiverOutput.transactionId,
-              "reject-reason": "missing-inputs",
-            },
-          ];
-  };
-  const context = new ScenarioExecutionContext({
-    rpc: { call } as RpcCaller,
-    adapters: new Map([
-      ["rust-psbt-v2", { request }],
-      ["libwally", { request }],
-    ]),
-    adapterTimeoutMs: 1000,
-    artifacts: {
-      checkpoint: async (scenario, stage, psbt) => ({
-        scenario,
-        stage,
-        psbtPath: `${stage}.psbt`,
-        factsPath: `${stage}.json`,
-        facts: extractWireFacts(psbt),
-      }),
-    },
-  });
-  const prepared = {
-    id: "bip352-multi-output",
-    psbtVersion: 0,
-    inputCount: 2,
-    outputCount: 3,
-    initialPsbt: fixture.template,
-    unsignedTxSha256: commitment,
-  } as PsbtFixture;
-  const result = await createSilentPaymentLifecycleScenario(prepared).run(context);
-  expect(result.assertions.filter((a) => !a.passed)).toEqual([]);
-  expect(result.policyAccepted).toBe(true);
-  expect(result.assertions).toHaveLength(44);
-  expect(context.checkpoints).toHaveLength(12);
-  expect(new Set(context.checkpoints.map((c) => c.stage)).size).toBe(12);
-  expect(calls).toEqual(Array(6).fill("testmempoolaccept"));
-});
+    };
+    const call = async (method: string, params: unknown) => {
+      calls.push(method);
+      const { rawtxs } = params as { rawtxs: string[] };
+      return rawtxs.length === 2
+        ? [
+            { allowed: true, txid: active.output.transactionId },
+            { allowed: true, txid: active.receiverOutput.transactionId },
+          ]
+        : rawtxs[0] === active.output.transaction
+          ? [{ allowed: true, txid: active.output.transactionId }]
+          : [
+              {
+                allowed: false,
+                txid: active.receiverOutput.transactionId,
+                "reject-reason": "missing-inputs",
+              },
+            ];
+    };
+    const context = new ScenarioExecutionContext({
+      rpc: { call } as RpcCaller,
+      adapters: new Map([
+        ["rust-psbt-v2", { request }],
+        ["libwally", { request }],
+      ]),
+      adapterTimeoutMs: 1000,
+      artifacts: {
+        checkpoint: async (scenario, stage, psbt) => ({
+          scenario,
+          stage,
+          psbtPath: `${stage}.psbt`,
+          factsPath: `${stage}.json`,
+          facts: extractWireFacts(psbt),
+        }),
+      },
+    });
+    const prepared = {
+      id: "bip352-multi-output",
+      psbtVersion: 0,
+      inputCount: 2,
+      outputCount: 3,
+      initialPsbt: fixture.template,
+      unsignedTxSha256: commitment,
+    } as PsbtFixture;
+    const result = await createSilentPaymentLifecycleScenario(prepared, receiver).run(context);
+    const failed = result.assertions.filter((a) => !a.passed);
+    if (correctIdentity) expect(failed).toEqual([]);
+    else {
+      expect(failed).toHaveLength(2);
+      expect(failed.every((a) => a.name.includes("spdk-implementation"))).toBe(true);
+    }
+    expect(result.policyAccepted).toBe(true);
+    expect(result.assertions).toHaveLength(receiver === "spdk" ? 46 : 44);
+    expect(context.checkpoints).toHaveLength(12);
+    expect(new Set(context.checkpoints.map((c) => c.stage)).size).toBe(12);
+    expect(calls).toEqual(Array(6).fill("testmempoolaccept"));
+  },
+);

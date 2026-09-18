@@ -265,7 +265,7 @@ describe("PSBT Interop Lab website", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("Source checkout · unreleased")).toBeInTheDocument();
     expect(screen.getByText("Run from source")).toBeInTheDocument();
-    expect(screen.getByText(/52 released scenarios · 56 in source/)).toBeInTheDocument();
+    expect(screen.getByText(/52 released scenarios · 57 in source/)).toBeInTheDocument();
     expect(screen.getByText(/source checkout adds a 53rd scenario/i)).toBeInTheDocument();
     expect(
       screen.getByText(/v0.10.1 and the historical screenshots do not include this scenario/i),
@@ -329,6 +329,26 @@ describe("PSBT Interop Lab website", () => {
       screen.getByText(
         "node dist/cli.js run --scenario bip352-multi-output-lifecycle-rust-psbt-v2",
       ),
+    ).toBeInTheDocument();
+  });
+
+  it("shows SPDK wallet integration with its pin and adoption boundary", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: /SPDK wallet/i }));
+    expect(
+      screen.getByRole("heading", { name: "Independent Silent Payment wallet handoff" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Source checkout · unreleased")).toBeInTheDocument();
+    expect(
+      screen.getByText("spdk-wallet 0.7.1 at a00f9807609b3be16892b7dd671a56db52db88a7"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("46 assertions and 12 replayable checkpoints")).toBeInTheDocument();
+    expect(
+      screen.getByText(/external maintainer adoption remains future work/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("node dist/cli.js run --scenario bip352-spdk-wallet-interop"),
     ).toBeInTheDocument();
   });
 

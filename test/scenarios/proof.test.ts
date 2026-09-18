@@ -715,6 +715,7 @@ describe("proof runtime", () => {
       "bip375-core-funded-multi-input-rust-psbt-v2",
       "bip352-sender-receiver-lifecycle-rust-psbt-v2",
       "bip352-multi-output-lifecycle-rust-psbt-v2",
+      "bip352-spdk-wallet-interop",
       "bip376-spend-workflow-rust-psbt-v2",
     ]);
   });

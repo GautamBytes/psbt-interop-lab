@@ -2,7 +2,7 @@
 
 `psbt-lab adapter check` lets a wallet or library maintainer validate a local adapter without
 changing PSBT Interop Lab source. The same manifest can enroll conforming adapters in the full
-matrix while preserving the 56 bundled scenarios.
+matrix while preserving the 57 bundled scenarios.
 
 ## Generate a TypeScript Adapter
 

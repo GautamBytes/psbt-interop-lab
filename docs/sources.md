@@ -235,3 +235,17 @@ and [BIP375's output-order rule](https://bips.dev/375/): outputs with matching s
 receive k values in ascending transaction output order. The lab permutes the unsigned template
 before derivation and signing, then discovers both scripts independently of their positions.
 It does not reorder an already signed transaction or claim that its signatures would survive.
+
+## Independent Silent Payment wallet
+
+- [SPDK revision `a00f9807609b3be16892b7dd671a56db52db88a7`](https://github.com/cygnet3/spdk/tree/a00f9807609b3be16892b7dd671a56db52db88a7)
+  pins `spdk-wallet` 0.7.1 and its `silentpayments` implementation. The rust-psbt-v2 adapter
+  uses SPDK's public-input classification, aggregation and receiver scanning, then
+  `SpClient::sign_transaction` for the combined spend. The lab supplies the authorized unsigned
+  transaction and bridges signatures into PSBT; it does not substitute its own signer for SPDK.
+- `default-features = false` disables SPDK's backend and parallel-scanning defaults. The
+  committed adapter `Cargo.lock` also pins upstream's `bip321`/`bark-bitcoin-ext` git dependency
+  to [Bark revision `83ab79264159869503b16fa475e0ed61ffa33174`](https://gitlab.com/Sosthene00/bark/-/tree/83ab79264159869503b16fa475e0ed61ffa33174).
+  Builds fetch source dependencies; scenario execution remains isolated and offline.
+- The source-only scenario checks the exact wallet revision in both output layouts. This is
+  reproducible integration evidence, not a claim that SPDK maintainers use or endorse the lab.

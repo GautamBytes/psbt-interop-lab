@@ -65,6 +65,7 @@
     "adapters/rust-psbt-v2/src/silent_payment_funded.rs",
     "adapters/rust-psbt-v2/src/silent_payment_multi.rs",
     "adapters/rust-psbt-v2/src/silent_payment_receiver.rs",
+    "adapters/rust-psbt-v2/src/silent_payment_spdk.rs",
     "adapters/rust-psbt-v2/tests/bip370_parse_invalid.rs",
     "adapters/rust-psbt-v2/tests/bip370_parse_valid.rs",
     "adapters/rust-psbt-v2/tests/process.rs",

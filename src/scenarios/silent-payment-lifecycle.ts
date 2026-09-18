@@ -12,11 +12,18 @@ const RUST = "rust-psbt-v2",
   WALLY = "libwally";
 export function createSilentPaymentLifecycleScenario(
   fixture: PsbtFixture,
+  receiver: "native" | "spdk" = "native",
 ): ScenarioDefinition<ScenarioExecutionContext> {
   const multiOutput = fixture.id === "bip352-multi-output";
   const count = multiOutput ? 2 : 1;
-  const ID = multiOutput ? "bip352-multi-output-lifecycle-rust-psbt-v2" : SINGLE_ID;
+  const spdk = receiver === "spdk";
+  const ID = spdk
+    ? "bip352-spdk-wallet-interop"
+    : multiOutput
+      ? "bip352-multi-output-lifecycle-rust-psbt-v2"
+      : SINGLE_ID;
   if (
+    (spdk && !multiOutput) ||
     (!multiOutput && fixture.id !== "bip375-multi") ||
     fixture.psbtVersion !== 0 ||
     fixture.inputCount !== 2 ||
@@ -25,9 +32,11 @@ export function createSilentPaymentLifecycleScenario(
     throw new TypeError("Lifecycle requires the two-key funded fixture");
   return {
     id: ID,
-    title: multiOutput
-      ? "Two-output Silent Payment discovery and combined receiver spend"
-      : "Funded Silent Payment discovery and receiver spend",
+    title: spdk
+      ? "Independent SPDK wallet discovery and combined spend"
+      : multiOutput
+        ? "Two-output Silent Payment discovery and combined receiver spend"
+        : "Funded Silent Payment discovery and receiver spend",
     category: "silent-payment-interop",
     summary:
       "Discover recipient outputs from public sender inputs, spend the exact outputs, and require Core acceptance of each parent/child package without broadcasting.",
@@ -56,7 +65,11 @@ export function createSilentPaymentLifecycleScenario(
         operations: ["silent-payment-spend"],
         psbtVersions: [2],
         scriptTypes: ["p2tr-keypath"],
-        features: ["bip352-receiver-discovery", "fixture-commitment-sha256"],
+        features: [
+          "bip352-receiver-discovery",
+          "fixture-commitment-sha256",
+          ...(spdk ? ["bip352-spdk-wallet-interop"] : []),
+        ],
       },
     ],
     async run(context) {
@@ -153,8 +166,17 @@ export function createSilentPaymentLifecycleScenario(
           templatePsbt: template,
           network: "regtest",
           fixtureId: fixture.id,
+          ...(spdk ? { receiver: "spdk" } : {}),
         };
         const receiver = await context.request(RUST, "silent-payment-spend", payload);
+        if (spdk)
+          record(
+            "spdk-implementation",
+            receiver.status === "ok" &&
+              receiver.output["receiverImplementation"] ===
+                "spdk-wallet/0.7.1@a00f9807609b3be16892b7dd671a56db52db88a7",
+            "Discovery and signing must use spdk-wallet/0.7.1@a00f9807609b3be16892b7dd671a56db52db88a7",
+          );
         const signed = context.outputString(receiver, "psbt", "silent-payment-spend");
         const finalized = context.outputString(receiver, "finalizedPsbt", "silent-payment-spend");
         const childTx = context.outputString(receiver, "transaction", "silent-payment-spend");
@@ -362,7 +384,9 @@ export function createSilentPaymentLifecycleScenario(
       const assertions = results.flatMap((result) => result.assertions);
       return {
         summary: assertions.every((a) => a.passed)
-          ? "Both output layouts independently discover and spend two recipient outputs, preserve change and pass Core package policy without broadcasting."
+          ? spdk
+            ? "SPDK independently discovers and signs both output layouts; libwally extraction and Core parent/child policy pass without broadcasting."
+            : "Both output layouts independently discover and spend two recipient outputs, preserve change and pass Core package policy without broadcasting."
           : "A two-output lifecycle requirement failed.",
         assertions,
         policyAccepted: results.every((result) => result.policyAccepted),

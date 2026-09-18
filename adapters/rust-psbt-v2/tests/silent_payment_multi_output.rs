@@ -72,10 +72,14 @@ fn derives_two_distinct_outputs_before_signing_both_layouts() {
     }
     assert_eq!(recipient_scripts[0], recipient_scripts[1]);
 }
-fn receive(f: &Value, v: &Value, child: &Psbt) -> Value {
+fn receive(f: &Value, v: &Value, child: &Psbt, spdk: bool) -> Value {
     let template = Psbt::from_str(f["template"].as_str().unwrap()).unwrap();
+    let mut payload = json!({"psbt":STANDARD.encode(child.serialize()),"parentPsbt":v["output"]["finalizedPsbt"],"templatePsbt":f["template"],"fixtureId":"bip352-multi-output","network":"regtest"});
+    if spdk {
+        payload["receiver"] = json!("spdk");
+    }
     handle_value_with_commitments(
-        json!({"protocol":ADAPTER_PROTOCOL,"id":"receive-two","operation":"silent-payment-spend","payload":{"psbt":STANDARD.encode(child.serialize()),"parentPsbt":v["output"]["finalizedPsbt"],"templatePsbt":f["template"],"fixtureId":"bip352-multi-output","network":"regtest"}}),
+        json!({"protocol":ADAPTER_PROTOCOL,"id":"receive-two","operation":"silent-payment-spend","payload":payload}),
         DIGEST,
         &commitments(&template),
     )
@@ -85,7 +89,7 @@ fn spends_both_discovered_outputs_in_both_layouts() {
     let f: Value = serde_json::from_str(include_str!("fixtures/multi-output.json")).unwrap();
     for v in f["variants"].as_array().unwrap() {
         let child = Psbt::from_str(v["child"].as_str().unwrap()).unwrap();
-        let result = receive(&f, v, &child);
+        let result = receive(&f, v, &child, false);
         assert_eq!(result["status"], "ok", "{result:#}");
         assert_eq!(result["output"]["signedInputs"], 2);
         assert_eq!(
@@ -138,9 +142,11 @@ fn rejects_swapped_tweaks_duplicate_inputs_wrong_outpoint_and_changed_value() {
         p.inputs[1].witness_utxo.as_mut().unwrap().value = Amount::from_sat(67_999);
         cases.push(p);
         for p in cases {
-            let result = receive(&f, v, &p);
-            assert_eq!(result["status"], "rejected", "{result:#}");
-            assert!(result.get("output").is_none());
+            for spdk in [false, true] {
+                let result = receive(&f, v, &p, spdk);
+                assert_eq!(result["status"], "rejected", "{result:#}");
+                assert!(result.get("output").is_none());
+            }
         }
     }
 }
@@ -208,13 +214,46 @@ fn rejects_tampered_parent_or_child_authorization_for_both_layouts() {
         changed["psbt"] = json!(STANDARD.encode(changed_child.serialize()));
         cases.push(changed);
         for payload in cases {
-            let result = handle_value_with_commitments(
-                json!({"protocol":ADAPTER_PROTOCOL,"id":"guard","operation":"silent-payment-spend","payload":payload}),
-                DIGEST,
-                &commitments(&template),
-            );
-            assert_eq!(result["status"], "rejected", "{result:#}");
-            assert!(result.get("output").is_none());
+            for spdk in [false, true] {
+                let mut payload = payload.clone();
+                if spdk {
+                    payload["receiver"] = json!("spdk");
+                }
+                let result = handle_value_with_commitments(
+                    json!({"protocol":ADAPTER_PROTOCOL,"id":"guard","operation":"silent-payment-spend","payload":payload}),
+                    DIGEST,
+                    &commitments(&template),
+                );
+                assert_eq!(result["status"], "rejected", "{result:#}");
+                assert!(result.get("output").is_none());
+            }
         }
+    }
+}
+
+#[test]
+fn independent_spdk_wallet_discovers_and_spends_both_layouts() {
+    let f: Value = serde_json::from_str(include_str!("fixtures/multi-output.json")).unwrap();
+    for v in f["variants"].as_array().unwrap() {
+        let child = Psbt::from_str(v["child"].as_str().unwrap()).unwrap();
+        let response = receive(&f, v, &child, true);
+        assert_eq!(response["status"], "ok", "{response:#}");
+        assert_eq!(
+            response["output"]["receiverImplementation"],
+            "spdk-wallet/0.7.1@a00f9807609b3be16892b7dd671a56db52db88a7"
+        );
+        assert_eq!(response["output"]["signedInputs"], 2);
+        assert_eq!(
+            response["output"]["transactionId"],
+            v["receiverOutput"]["transactionId"]
+        );
+        let finalized =
+            Psbt::from_str(response["output"]["finalizedPsbt"].as_str().unwrap()).unwrap();
+        assert!(
+            finalized
+                .inputs
+                .iter()
+                .all(|i| i.final_script_witness.is_some() && i.unknowns.is_empty())
+        );
     }
 }
