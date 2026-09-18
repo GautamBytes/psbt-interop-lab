@@ -1,6 +1,6 @@
 import type { PsbtFixture } from "../core/fixtures.js";
 import { diffPsbtDocuments } from "../psbt/diff.js";
-import { parsePsbtDocument } from "../psbt/document.js";
+import { type PsbtDocument, parsePsbtDocument } from "../psbt/document.js";
 import { applyPsbtMutations, type PsbtMutationRecipe } from "../psbt/mutation.js";
 import { MULTI_KEYS, verifyMultiSender, verifyMultiWitnesses } from "./bip375-multi-verify.js";
 import type { ScenarioExecutionContext } from "./context.js";
@@ -149,7 +149,9 @@ export function createSilentPaymentLifecycleScenario(
       const finalized = context.outputString(receiver, "finalizedPsbt", "silent-payment-spend");
       const childTx = context.outputString(receiver, "transaction", "silent-payment-spend");
       const childId = context.outputString(receiver, "transactionId", "silent-payment-spend");
-      const diff = diffPsbtDocuments(parsePsbtDocument(child), parsePsbtDocument(signed));
+      const signedDocument = parsePsbtDocument(signed);
+      const finalizedDocument = parsePsbtDocument(finalized);
+      const diff = diffPsbtDocuments(parsePsbtDocument(child), signedDocument);
       record(
         "receiver-signature-only",
         diff.removed.length === 0 &&
@@ -160,7 +162,7 @@ export function createSilentPaymentLifecycleScenario(
           diff.added[0].location.index === 0,
         "The receiver signer may only add a Taproot signature to the exact discovered-output spend",
       );
-      const finalDiff = diffPsbtDocuments(parsePsbtDocument(signed), parsePsbtDocument(finalized));
+      const finalDiff = diffPsbtDocuments(signedDocument, finalizedDocument);
       record(
         "child-finalization",
         finalDiff.changed.length === 0 &&
@@ -176,22 +178,23 @@ export function createSilentPaymentLifecycleScenario(
           ),
         "Finalization may only add the witness and remove the spent UTXO, signature and BIP376 fields",
       );
-      const field = (psbt: string, type: number) =>
-        parsePsbtDocument(psbt)
-          .maps.find((m) => m.location.kind === "input")
+      const field = (document: PsbtDocument, type: number) =>
+        document.maps
+          .find((m) => m.location.kind === "input")
           ?.entries.find((e) => e.keyType === type)?.value;
-      const signature = field(signed, 0x13);
+      const signature = field(signedDocument, 0x13);
       record(
         "receiver-witness",
         signature?.length === 64 &&
-          field(finalized, 8)?.equals(Buffer.concat([Buffer.from([1, 64]), signature])) === true,
+          field(finalizedDocument, 8)?.equals(Buffer.concat([Buffer.from([1, 64]), signature])) ===
+            true,
         "The final witness must contain the exact SIGHASH_DEFAULT receiver signature",
       );
       record(
         "receiver-field-cleanup",
-        field(finalized, 0x13) === undefined &&
-          field(finalized, 0x1f) === undefined &&
-          field(finalized, 0x20) === undefined,
+        field(finalizedDocument, 0x13) === undefined &&
+          field(finalizedDocument, 0x1f) === undefined &&
+          field(finalizedDocument, 0x20) === undefined,
         "Finalization must remove BIP376 spend-key and tweak fields",
       );
       await context.checkpoint(ID, "receiver-signed", signed);

@@ -3,10 +3,9 @@ import { secp256k1 } from "@noble/curves/secp256k1.js";
 import { readCompactSize } from "../psbt/compact-size.js";
 import { type PsbtDocumentMap, parsePsbtDocument } from "../psbt/document.js";
 
-export const RECEIVER_SPEND_KEY =
-  "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
-export const RECEIVER_DESTINATION = "0014751e76e8199196d454941c45d1b3a323f1433bd6";
-export const RECEIVER_FEE = 10_000n;
+const RECEIVER_SPEND_KEY = "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+const RECEIVER_DESTINATION = "0014751e76e8199196d454941c45d1b3a323f1433bd6";
+const RECEIVER_FEE = 10_000n;
 export interface DiscoveredOutput {
   index: number;
   amountSats: bigint;
