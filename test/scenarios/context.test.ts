@@ -417,3 +417,50 @@ describe("ScenarioExecutionContext", () => {
     );
   });
 });
+
+describe("parent/child package policy", () => {
+  test("submits both transactions in dependency order", async () => {
+    const call = vi.fn().mockResolvedValue([
+      { txid: "parent", allowed: true },
+      { txid: "child", allowed: true },
+    ]);
+    expect(await context(undefined, { call }).policyCheckPackage(["00", "01"])).toEqual([
+      { txid: "parent", allowed: true },
+      { txid: "child", allowed: true },
+    ]);
+    expect(call).toHaveBeenCalledWith("testmempoolaccept", { rawtxs: ["00", "01"] });
+  });
+  test("fails closed on package errors and undecided descendants", async () => {
+    const call = vi.fn().mockResolvedValue([
+      { txid: "parent", allowed: false, "reject-reason": "bad-txns" },
+      { txid: "child", "package-error": "package-not-sorted" },
+    ]);
+    expect(
+      (await context(undefined, { call }).policyCheckPackage(["00", "01"])).every(
+        (r) => !r.allowed,
+      ),
+    ).toBe(true);
+  });
+  test("rejects malformed responses and invalid transaction data", async () => {
+    for (const response of [[], [{}, {}], [{ allowed: "yes" }, { allowed: true }]]) {
+      const call = vi.fn().mockResolvedValue(response);
+      if (
+        Array.isArray(response) &&
+        response.length === 2 &&
+        response.every((x) => Object.keys(x).length === 0)
+      ) {
+        expect(
+          (await context(undefined, { call }).policyCheckPackage(["00", "01"])).every(
+            (r) => !r.allowed,
+          ),
+        ).toBe(true);
+      } else
+        await expect(
+          context(undefined, { call }).policyCheckPackage(["00", "01"]),
+        ).rejects.toThrow();
+    }
+    const call = vi.fn();
+    await expect(context(undefined, { call }).policyCheckPackage(["0", "01"])).rejects.toThrow();
+    expect(call).not.toHaveBeenCalled();
+  });
+});

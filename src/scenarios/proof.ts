@@ -79,6 +79,7 @@ import {
 import { createPsbtv2TaprootHandoffScenarios } from "./psbtv2-taproot.js";
 import { createScriptProfileRoundtripScenario } from "./script-profile-roundtrip.js";
 import { createSighashMatrixScenario } from "./sighash-matrix.js";
+import { createSilentPaymentLifecycleScenario } from "./silent-payment-lifecycle.js";
 import {
   createTaprootScriptPathCanaryScenario,
   createTaprootScriptPathHandoffScenarios,
@@ -410,6 +411,11 @@ export const PROOF_SCENARIOS: readonly ProofScenarioSummary[] = [
   {
     id: "bip375-core-funded-multi-input-rust-psbt-v2",
     title: "Core-funded multi-input BIP375 sender through rust-psbt-v2",
+    category: "silent-payment-interop",
+  },
+  {
+    id: "bip352-sender-receiver-lifecycle-rust-psbt-v2",
+    title: "Funded Silent Payment discovery and receiver spend",
     category: "silent-payment-interop",
   },
   {
@@ -950,6 +956,11 @@ export const PROOF_SCENARIO_REGISTRATIONS: readonly ProofScenarioRegistration[] 
     "bip375-core-funded-multi-input-rust-psbt-v2",
     { core: true, fixtures: ["bip375-multi"], adapters: ["rust-psbt-v2", "libwally"] },
     (fixtures) => createBip375MultiSenderScenario(requiredFixture(fixtures, "bip375-multi")),
+  ),
+  registerScenario(
+    "bip352-sender-receiver-lifecycle-rust-psbt-v2",
+    { core: true, fixtures: ["bip375-multi"], adapters: ["rust-psbt-v2", "libwally"] },
+    (fixtures) => createSilentPaymentLifecycleScenario(requiredFixture(fixtures, "bip375-multi")),
   ),
   registerScenario(
     "bip376-spend-workflow-rust-psbt-v2",

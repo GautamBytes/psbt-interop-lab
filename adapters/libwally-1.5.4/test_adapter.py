@@ -153,6 +153,26 @@ class AdapterTests(unittest.TestCase):
         self.assertIn("bip370-unique-id", response["output"]["features"])
         self.assertIn("unsigned-tx-sha256", response["output"]["features"])
 
+    def test_extracts_finalized_receiver_taproot_keypath(self):
+        # Native rust-psbt-v2 receiver fixture; extraction must preserve its exact witness.
+        encoded = (
+            'cHNidP8B+wQCAAAAAQIEAgAAAAEDBAAAAAABBAEBAQUBAQEGAQAAAQ4gMeJjd8xSzzSAJLe3yoez+E/g'
+            '0sGtNF03UnNtt7Km6jkBDwQAAAAAARAE/f///wEIQgFAf4c29jGo0fDbRJT76SEv1T8qet6/0HYcf/aZ'
+            'J+s6Yb0t0giAghDEeCvJb6bm4E1mgQsjf1MzDEb+hBsa0eRvcAABAwggSAEAAAAAAAEEFgAUdR526BmR'
+            'ltRUlBxF0bOjI/FDO9YA'
+        )
+        expected = (
+            '0200000000010131e26377cc52cf348024b7b7ca87b3f84fe0d2c1ad345d3752736db7b2a6ea3900'
+            '00000000fdffffff012048010000000000160014751e76e8199196d454941c45d1b3a323f1433bd6'
+            '01407f8736f631a8d1f0db4494fbe9212fd53f2a7adebfd0761c7ff69927eb3a61bd2dd208808210'
+            'c4782bc96fa6e6e04d66810b237f53330c46fe841b1ad1e46f7000000000'
+        )
+        response = handle_request(request("extract", {"psbt": encoded}), DIGEST, {})
+        self.assertEqual(response["status"], "ok", response)
+        self.assertEqual(response["output"]["transaction"], expected)
+        hello = handle_request(request("hello", {}), DIGEST, {})
+        self.assertIn("p2tr-keypath", hello["output"]["operationScriptTypes"]["extract"])
+
     def test_native_parse_inspect_and_roundtrip_use_libwally(self):
         encoded = fixture_psbt()
 

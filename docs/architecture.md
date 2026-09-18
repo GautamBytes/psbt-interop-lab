@@ -204,7 +204,7 @@ The detailed assumptions, abuse paths, and residual risks are recorded in the
 
 ## Proof Scenarios
 
-The executable catalog currently contains 54 scenarios. Twelve independent Core-to-library
+The executable catalog currently contains 55 scenarios. Twelve independent Core-to-library
 handoffs exercise rust-bitcoin, btcsuite, bitcoinjs, and current BDK signing for P2WSH, P2WPKH, and
 P2TR key-path inputs. Additional rust-bitcoin handoffs prove legacy P2PKH signing from an exact
 `non_witness_utxo` and nested P2SH-P2WSH 2-of-3 signing and finalization.
@@ -304,6 +304,18 @@ Independent validation requires complete ECDH/DLEQ coverage, matching recipient 
 unchanged amounts/change, exact signature-to-witness binding, identical extraction, and Core
 policy acceptance for every execution. Nine checkpoints preserve the template and each
 signed/finalized pair. Neither policy checks nor replay broadcast transactions.
+
+The `bip352-sender-receiver-lifecycle-rust-psbt-v2` scenario links the ordered, per-input-share
+sender to an independent receiver. Public witnesses and serialized outpoints feed BIP352
+aggregation and k=0 derivation using the receiver scan key. Sender shares, DLEQ proofs and
+recipient PSBT metadata are not inputs to discovery. TypeScript and Rust independently derive
+the same output/tweak. The original funding commitment, verified parent witnesses and exact
+parent transaction bind receiver authorization. The child must spend output zero with its
+exact value/script, a fixed scalar-1 P2WPKH destination, 10,000-sat fee and SIGHASH_DEFAULT.
+Core first accepts the parent alone; the unbroadcast child must fail alone with missing inputs.
+Both must then pass ordered parent/child `testmempoolaccept` package policy with matching txids.
+Six checkpoints preserve the complete handoff. This tests a bounded lifecycle, not arbitrary
+input types, multiple recipients, labels, chain scanning or reorg recovery.
 
 A separate bounded BIP376 receiver-spend scenario starts from a Core-funded deterministic Taproot
 output and uses libwally for the PSBTv0-to-v2 handoff. The rust-psbt-v2 adapter reads the registered

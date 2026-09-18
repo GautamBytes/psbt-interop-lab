@@ -394,6 +394,45 @@ export const reportScenarios: ReportScenario[] = [
     commandLabel: "Run from source",
   },
   {
+    id: "silent-payment-lifecycle",
+    shortLabel: "Receiver discovery",
+    title: "Silent Payment sender to receiver spend",
+    status: "supported",
+    statusLabel: "Source checkout · unreleased",
+    handoff: "Funded sender -> receiver discovery -> exact-output spend -> Core package policy",
+    summary:
+      "Follow one payment from two funded P2WPKH inputs to a discovered recipient and its receiver spend. Independent receiver derivation uses public input witnesses and outpoints, then Core checks the linked parent and child without broadcasting.",
+    implementations: ["Bitcoin Core", "rust-psbt PSBTv2", "libwally"],
+    evidence: [
+      {
+        field: "Independent receiver discovery",
+        expected: "find the actual output using scan/spend keys and public sender inputs",
+        actual: "TypeScript and Rust independently derive the receiver tweak",
+        implementation: "PSBT Interop Lab / rust-psbt PSBTv2",
+        nextStep:
+          "Wrong receiver keys find nothing; altered outpoints, tweaks and destinations are rejected.",
+      },
+      {
+        field: "Exact parent/child linkage",
+        expected: "receiver spends output zero of the independently extracted sender transaction",
+        actual: "child fails alone; both transactions must pass together",
+        implementation: "libwally / Bitcoin Core 31.1",
+        nextStep:
+          "Require matching transaction IDs, exact signature-to-witness binding and BIP376 cleanup.",
+      },
+      {
+        field: "Evidence boundary",
+        expected: "two P2WPKH inputs, one recipient, ordinary change; regtest only",
+        actual: "source scenario with six replayable checkpoints; no broadcast",
+        implementation: "PSBT Interop Lab",
+        nextStep:
+          "Build from source. This bounded lifecycle is not a general wallet scanner and is not included in v0.10.1.",
+      },
+    ],
+    replay: "node dist/cli.js run --scenario bip352-sender-receiver-lifecycle-rust-psbt-v2",
+    commandLabel: "Run from source",
+  },
+  {
     id: "hwi",
     shortLabel: "HWI simulator",
     title: "Simulator-backed hardware signing handoff",

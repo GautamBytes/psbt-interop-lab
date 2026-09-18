@@ -107,6 +107,17 @@ function parsePolicyResult(value: unknown): CorePolicyResult {
   };
 }
 
+function validateTransactionHex(transactionHex: string): void {
+  if (
+    transactionHex.length === 0 ||
+    transactionHex.length > 8 * 1024 * 1024 ||
+    transactionHex.length % 2 !== 0 ||
+    !/^[0-9a-fA-F]+$/.test(transactionHex)
+  ) {
+    throw new TypeError("Transaction must be bounded even-length hexadecimal data");
+  }
+}
+
 function elapsedMilliseconds(startedAt: number): number {
   return Math.max(0, Math.round((performance.now() - startedAt) * 1000) / 1000);
 }
@@ -457,15 +468,34 @@ export class ScenarioExecutionContext {
     return this.policyCheckTransaction(finalized.hex);
   }
 
+  async policyCheckPackage(
+    transactions: readonly [string, string],
+  ): Promise<readonly CorePolicyResult[]> {
+    if (transactions.length !== 2)
+      throw new TypeError("Expected one parent and one child transaction");
+    for (const transaction of transactions) validateTransactionHex(transaction);
+    const value = await this.#rpc.call("testmempoolaccept", { rawtxs: [...transactions] });
+    if (!Array.isArray(value) || value.length !== 2)
+      throw new Error("testmempoolaccept returned an unexpected package result count");
+    return value.map((item) => {
+      const object = asObject(item, "testmempoolaccept");
+      if (object["allowed"] !== undefined && typeof object["allowed"] !== "boolean")
+        throw new Error("testmempoolaccept returned an invalid package decision");
+      const reason = object["package-error"] ?? object["reject-reason"];
+      return {
+        allowed: object["allowed"] === true && object["package-error"] === undefined,
+        ...(typeof object["txid"] === "string" ? { txid: object["txid"] } : {}),
+        ...(typeof reason === "string"
+          ? { rejectReason: reason }
+          : object["allowed"] === undefined
+            ? { rejectReason: "Core did not evaluate this package member" }
+            : {}),
+      };
+    });
+  }
+
   async policyCheckTransaction(transactionHex: string): Promise<CorePolicyResult> {
-    if (
-      transactionHex.length === 0 ||
-      transactionHex.length > 8 * 1024 * 1024 ||
-      transactionHex.length % 2 !== 0 ||
-      !/^[0-9a-fA-F]+$/.test(transactionHex)
-    ) {
-      throw new TypeError("Transaction must be bounded even-length hexadecimal data");
-    }
+    validateTransactionHex(transactionHex);
     return parsePolicyResult(
       await this.#rpc.call("testmempoolaccept", { rawtxs: [transactionHex] }),
     );

@@ -173,6 +173,7 @@ export const PSBTV2_ADAPTER_CONTRACT = {
     "bip375-sender-workflow",
     "bip375-core-funded-sender",
     "bip375-core-funded-multi-input",
+    "bip352-receiver-discovery",
     "bip375-advanced-sender-workflows",
     "bip376-spend-workflow",
   ],
@@ -202,7 +203,7 @@ export const LIBWALLY_ADAPTER_CONTRACT = {
     sign: ["p2wpkh", "p2wsh"],
     combine: ["p2wpkh", "p2wsh"],
     finalize: ["p2wpkh", "p2wsh"],
-    extract: ["p2wpkh", "p2wsh"],
+    extract: ["p2wpkh", "p2wsh", "p2tr-keypath"],
     convert: ["p2wpkh", "p2wsh", "p2tr-keypath", "p2tr-scriptpath"],
   },
   features: [

@@ -6,10 +6,14 @@ All notable changes to PSBT Interop Lab are recorded here.
 
 ### Added
 
+- Link the funded Silent Payment sender to independent receiver discovery and a BIP376 spend
+  of the exact output. Require independent extraction, child-alone rejection and linked Core
+  package acceptance without broadcasting. Include six replayable checkpoints, adversarial
+  tests and a source-only website example. The source catalog now contains 55 scenarios.
+
 - Add a Core-funded two-key Silent Payment sender with global/per-input shares, input-order
   invariance, preserved ordinary change, independent extraction, and mandatory Core policy
   acceptance for all four variants. Include tamper tests and a source-only website example.
-  The source catalog now contains 54 scenarios.
 
 - Add a Core-funded BIP375 sender proof with a fixed Silent Payment recipient, independent
   derivation and extraction checks, mandatory regtest policy acceptance, and tamper canaries.

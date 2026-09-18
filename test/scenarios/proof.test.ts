@@ -712,6 +712,7 @@ describe("proof runtime", () => {
       "bip375-advanced-sender-workflows-rust-psbt-v2",
       "bip375-core-funded-sender-rust-psbt-v2",
       "bip375-core-funded-multi-input-rust-psbt-v2",
+      "bip352-sender-receiver-lifecycle-rust-psbt-v2",
       "bip376-spend-workflow-rust-psbt-v2",
     ]);
   });

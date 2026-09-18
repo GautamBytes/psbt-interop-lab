@@ -106,16 +106,23 @@ try {
   await page.getByRole("button", { name: /Multi-input sender/i }).click();
   await page.getByRole("heading", { name: "Funded multi-input Silent Payment sender" }).waitFor();
   await page.getByText(/Two different keys, one recipient, and ordinary change/).waitFor();
+  await page.getByRole("button", { name: /Receiver discovery/i }).click();
+  await page.getByRole("heading", { name: "Silent Payment sender to receiver spend" }).waitFor();
+  await page
+    .getByText("child fails alone; both transactions must pass together", { exact: true })
+    .waitFor();
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByRole("heading", { name: "Funded multi-input Silent Payment sender" }).waitFor();
+  await page.getByRole("heading", { name: "Silent Payment sender to receiver spend" }).waitFor();
+  await page.getByRole("button", { name: /Receiver discovery/i }).click();
+  await page.getByRole("heading", { name: "Silent Payment sender to receiver spend" }).waitFor();
   const overflow = await page.evaluate(
     () => document.documentElement.scrollWidth > window.innerWidth,
   );
-  if (overflow) throw new Error("Funded sender sample overflows the mobile viewport");
+  if (overflow) throw new Error("Receiver lifecycle sample overflows the mobile viewport");
 
   if (browserErrors.length > 0) throw new Error(browserErrors.join("\n"));
   console.log(
-    "Browser smoke passed: CSP, theme bootstrap, Mermaid, proof images, and funded sender on desktop/mobile.",
+    "Browser smoke passed: CSP, theme bootstrap, Mermaid, proof images, and funded sender and receiver lifecycle on desktop/mobile.",
   );
 } finally {
   await browser.close();
