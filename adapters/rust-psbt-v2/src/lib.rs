@@ -37,12 +37,13 @@ const MAX_MAP_COUNT: usize = 4096;
 const MAX_MAP_ENTRIES: usize = 16_384;
 const MAX_COMMITMENTS_BYTES: usize = 4 * 1024;
 const SOURCE_REVISION: &str = "rust-psbt/psbt-v2-0.3.0@8ca657c333b6b391f2501e8b31627ccbb6a67f66";
-const ALLOWED_FIXTURES: [&str; 5] = [
+const ALLOWED_FIXTURES: [&str; 6] = [
     "p2wpkh",
     "intent-rich-p2wpkh",
     "p2wsh-2-of-3",
     "bip376-spend",
     "bip375-multi",
+    "bip352-multi-output",
 ];
 const SCALAR_ONE_WIF: &str = "cMahea7zqjxrtgAbB7LSGbcQUr1uX1ojuat9jZodMN87JcbXMTcA";
 const SCALAR_TWO_PUBLIC_KEY: &str =
@@ -2241,7 +2242,7 @@ fn silent_payment_spend(
         return response;
     }
 
-    let result = complete_silent_payment_spend(parsed.psbt);
+    let result = complete_silent_payment_spend(parsed.psbt, 1);
 
     match result {
         Ok((signed, finalized, transaction, derived_output_key)) => success(
@@ -2252,7 +2253,7 @@ fn silent_payment_spend(
                 "finalizedPsbt": STANDARD.encode(finalized.serialize()),
                 "finalized": true,
                 "signedInputs": 1,
-                "derivedOutputKey": derived_output_key,
+                "derivedOutputKey": derived_output_key[0],
                 "transaction": consensus::serialize(&transaction).to_lower_hex_string(),
                 "transactionId": transaction.compute_txid().to_string(),
                 "witnessTransactionId": transaction.compute_wtxid().to_string()
@@ -2264,140 +2265,155 @@ fn silent_payment_spend(
 
 fn complete_silent_payment_spend(
     mut psbt: Psbt,
-) -> Result<(Psbt, Psbt, Transaction, String), SilentPaymentSpendError> {
-    if psbt.inputs.len() != 1 || psbt.outputs.len() != 1 {
+    input_count: usize,
+) -> Result<(Psbt, Psbt, Transaction, Vec<String>), SilentPaymentSpendError> {
+    if ![1, 2].contains(&input_count) || psbt.inputs.len() != input_count || psbt.outputs.len() != 1
+    {
         return Err(SilentPaymentSpendError::new(
             "silent_payment.fixture_shape_invalid",
-            "The bounded BIP376 proof requires one input and one output",
+            "The bounded BIP376 proof requires its authorized input count and one output",
         ));
     }
-    let input = &psbt.inputs[0];
-    let spend_fields = input
-        .unknowns
+    let mut derived_keys = Vec::new();
+    let prevouts = psbt
+        .inputs
         .iter()
-        .filter(|(key, _)| key.type_value == BIP376_SPEND_KEY_TYPE)
-        .map(|(key, value)| (key.clone(), value.clone()))
-        .collect::<Vec<_>>();
-    let tweak_fields = input
-        .unknowns
-        .iter()
-        .filter(|(key, _)| key.type_value == BIP376_TWEAK_TYPE)
-        .map(|(key, value)| (key.clone(), value.clone()))
-        .collect::<Vec<_>>();
-    if spend_fields.len() != 1 || tweak_fields.len() != 1 {
-        return Err(SilentPaymentSpendError::new(
-            "silent_payment.fields_invalid",
-            "The input must contain exactly one BIP376 spend key and one tweak",
-        ));
-    }
-    let (spend_key, origin) = &spend_fields[0];
-    if spend_key.key.len() != 33 || origin.len() < 4 || (origin.len() - 4) % 4 != 0 {
-        return Err(SilentPaymentSpendError::new(
-            "silent_payment.spend_key_invalid",
-            "The BIP376 spend key or key origin is malformed",
-        ));
-    }
-    let base_public_key = SecpPublicKey::from_slice(&spend_key.key).map_err(|_| {
-        SilentPaymentSpendError::new(
-            "silent_payment.spend_key_invalid",
-            "The BIP376 spend key is not a compressed secp256k1 public key",
-        )
-    })?;
-    let (tweak_key, tweak_value) = &tweak_fields[0];
-    if !tweak_key.key.is_empty() || tweak_value.len() != 32 {
-        return Err(SilentPaymentSpendError::new(
-            "silent_payment.tweak_invalid",
-            "The BIP376 tweak must have empty key data and a 32-byte value",
-        ));
-    }
-    let mut tweak_bytes = [0_u8; 32];
-    tweak_bytes.copy_from_slice(tweak_value);
-    let tweak = Scalar::from_be_bytes(tweak_bytes).map_err(|_| {
-        SilentPaymentSpendError::new(
-            "silent_payment.tweak_invalid",
-            "The BIP376 tweak is outside the secp256k1 scalar range",
-        )
-    })?;
-
-    let secp = Secp256k1::new();
-    let base_private_key = PrivateKey::from_wif(SCALAR_ONE_WIF).map_err(|_| {
-        SilentPaymentSpendError::new(
-            "adapter.invalid_configuration",
-            "The deterministic BIP376 fixture key is invalid",
-        )
-    })?;
-    if SecpPublicKey::from_secret_key(&secp, &base_private_key.inner) != base_public_key {
-        return Err(SilentPaymentSpendError::new(
-            "silent_payment.spend_key_unavailable",
-            "The fixture signer does not control the declared BIP376 spend key",
-        ));
-    }
-    let mut derived_secret = base_private_key.inner.add_tweak(&tweak).map_err(|_| {
-        SilentPaymentSpendError::new(
-            "silent_payment.tweak_invalid",
-            "The BIP376 spend key and tweak produce an invalid secret key",
-        )
-    })?;
-    let initial_keypair = Keypair::from_secret_key(&secp, &derived_secret);
-    let (derived_output_key, parity) = initial_keypair.x_only_public_key();
-    if parity == Parity::Odd {
-        derived_secret = derived_secret.negate();
-    }
-    let keypair = Keypair::from_secret_key(&secp, &derived_secret);
-    let expected_script =
-        ScriptBuf::new_p2tr_tweaked(derived_output_key.dangerous_assume_tweaked());
-    let witness_utxo = input.witness_utxo.clone().ok_or_else(|| {
-        SilentPaymentSpendError::new(
-            "silent_payment.witness_utxo_missing",
-            "The BIP376 input has no witness UTXO",
-        )
-    })?;
-    if witness_utxo.script_pubkey != expected_script {
-        return Err(SilentPaymentSpendError::new(
-            "silent_payment.output_key_mismatch",
-            "The spend key plus tweak does not match the P2TR witness output key",
-        ));
-    }
-
-    let transaction = Signer::new(psbt.clone())
-        .map_err(|_| {
+        .map(|input| {
+            input.witness_utxo.clone().ok_or_else(|| {
+                SilentPaymentSpendError::new(
+                    "silent_payment.witness_utxo_missing",
+                    "The BIP376 input has no witness UTXO",
+                )
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    for index in 0..input_count {
+        let input = &psbt.inputs[index];
+        let spend_fields = input
+            .unknowns
+            .iter()
+            .filter(|(key, _)| key.type_value == BIP376_SPEND_KEY_TYPE)
+            .map(|(key, value)| (key.clone(), value.clone()))
+            .collect::<Vec<_>>();
+        let tweak_fields = input
+            .unknowns
+            .iter()
+            .filter(|(key, _)| key.type_value == BIP376_TWEAK_TYPE)
+            .map(|(key, value)| (key.clone(), value.clone()))
+            .collect::<Vec<_>>();
+        if spend_fields.len() != 1 || tweak_fields.len() != 1 {
+            return Err(SilentPaymentSpendError::new(
+                "silent_payment.fields_invalid",
+                "The input must contain exactly one BIP376 spend key and one tweak",
+            ));
+        }
+        let (spend_key, origin) = &spend_fields[0];
+        if spend_key.key.len() != 33 || origin.len() < 4 || (origin.len() - 4) % 4 != 0 {
+            return Err(SilentPaymentSpendError::new(
+                "silent_payment.spend_key_invalid",
+                "The BIP376 spend key or key origin is malformed",
+            ));
+        }
+        let base_public_key = SecpPublicKey::from_slice(&spend_key.key).map_err(|_| {
             SilentPaymentSpendError::new(
-                "silent_payment.spend_failed",
-                "The BIP376 PSBT locktime is invalid",
-            )
-        })?
-        .unsigned_tx();
-    let sighash_type = input.taproot_hash_ty().map_err(|_| {
-        SilentPaymentSpendError::new(
-            "silent_payment.sighash_invalid",
-            "The BIP376 input has an invalid Taproot sighash type",
-        )
-    })?;
-    let sighash = SighashCache::new(&transaction)
-        .taproot_key_spend_signature_hash(
-            0,
-            &Prevouts::All(std::slice::from_ref(&witness_utxo)),
-            sighash_type,
-        )
-        .map_err(|error| {
-            SilentPaymentSpendError::new(
-                "silent_payment.spend_failed",
-                format!("BIP376 Taproot sighash failed: {error}"),
+                "silent_payment.spend_key_invalid",
+                "The BIP376 spend key is not a compressed secp256k1 public key",
             )
         })?;
-    let signature = taproot::Signature {
-        signature: secp.sign_schnorr_no_aux_rand(&Message::from(sighash), &keypair),
-        sighash_type,
-    };
-    psbt.inputs[0].tap_key_sig = Some(signature);
-    let signed = psbt.clone();
+        let (tweak_key, tweak_value) = &tweak_fields[0];
+        if !tweak_key.key.is_empty() || tweak_value.len() != 32 {
+            return Err(SilentPaymentSpendError::new(
+                "silent_payment.tweak_invalid",
+                "The BIP376 tweak must have empty key data and a 32-byte value",
+            ));
+        }
+        let mut tweak_bytes = [0_u8; 32];
+        tweak_bytes.copy_from_slice(tweak_value);
+        let tweak = Scalar::from_be_bytes(tweak_bytes).map_err(|_| {
+            SilentPaymentSpendError::new(
+                "silent_payment.tweak_invalid",
+                "The BIP376 tweak is outside the secp256k1 scalar range",
+            )
+        })?;
 
-    psbt.inputs[0].final_script_witness = Some(Witness::from_slice(&[psbt.inputs[0]
-        .tap_key_sig
-        .as_ref()
-        .expect("signature was assigned")
-        .to_vec()]));
-    psbt.inputs[0].final_script_sig = Some(ScriptBuf::new());
+        let secp = Secp256k1::new();
+        let base_private_key = PrivateKey::from_wif(SCALAR_ONE_WIF).map_err(|_| {
+            SilentPaymentSpendError::new(
+                "adapter.invalid_configuration",
+                "The deterministic BIP376 fixture key is invalid",
+            )
+        })?;
+        if SecpPublicKey::from_secret_key(&secp, &base_private_key.inner) != base_public_key {
+            return Err(SilentPaymentSpendError::new(
+                "silent_payment.spend_key_unavailable",
+                "The fixture signer does not control the declared BIP376 spend key",
+            ));
+        }
+        let mut derived_secret = base_private_key.inner.add_tweak(&tweak).map_err(|_| {
+            SilentPaymentSpendError::new(
+                "silent_payment.tweak_invalid",
+                "The BIP376 spend key and tweak produce an invalid secret key",
+            )
+        })?;
+        let initial_keypair = Keypair::from_secret_key(&secp, &derived_secret);
+        let (derived_output_key, parity) = initial_keypair.x_only_public_key();
+        if parity == Parity::Odd {
+            derived_secret = derived_secret.negate();
+        }
+        let keypair = Keypair::from_secret_key(&secp, &derived_secret);
+        let expected_script =
+            ScriptBuf::new_p2tr_tweaked(derived_output_key.dangerous_assume_tweaked());
+        let witness_utxo = input.witness_utxo.clone().ok_or_else(|| {
+            SilentPaymentSpendError::new(
+                "silent_payment.witness_utxo_missing",
+                "The BIP376 input has no witness UTXO",
+            )
+        })?;
+        if witness_utxo.script_pubkey != expected_script {
+            return Err(SilentPaymentSpendError::new(
+                "silent_payment.output_key_mismatch",
+                "The spend key plus tweak does not match the P2TR witness output key",
+            ));
+        }
+
+        let transaction = Signer::new(psbt.clone())
+            .map_err(|_| {
+                SilentPaymentSpendError::new(
+                    "silent_payment.spend_failed",
+                    "The BIP376 PSBT locktime is invalid",
+                )
+            })?
+            .unsigned_tx();
+        let sighash_type = input.taproot_hash_ty().map_err(|_| {
+            SilentPaymentSpendError::new(
+                "silent_payment.sighash_invalid",
+                "The BIP376 input has an invalid Taproot sighash type",
+            )
+        })?;
+        let sighash = SighashCache::new(&transaction)
+            .taproot_key_spend_signature_hash(index, &Prevouts::All(&prevouts), sighash_type)
+            .map_err(|error| {
+                SilentPaymentSpendError::new(
+                    "silent_payment.spend_failed",
+                    format!("BIP376 Taproot sighash failed: {error}"),
+                )
+            })?;
+        let signature = taproot::Signature {
+            signature: secp.sign_schnorr_no_aux_rand(&Message::from(sighash), &keypair),
+            sighash_type,
+        };
+        psbt.inputs[index].tap_key_sig = Some(signature);
+        derived_keys.push(derived_output_key.to_string());
+    }
+    let signed = psbt.clone();
+    for input in &mut psbt.inputs {
+        input.final_script_witness = Some(Witness::from_slice(&[input
+            .tap_key_sig
+            .as_ref()
+            .expect("signature was assigned")
+            .to_vec()]));
+        input.final_script_sig = Some(ScriptBuf::new());
+    }
     psbt.interpreter_check(&Secp256k1::verification_only())
         .map_err(|_| {
             SilentPaymentSpendError::new(
@@ -2419,20 +2435,16 @@ fn complete_silent_payment_spend(
                 "Native BIP376 transaction extraction failed",
             )
         })?;
-    let input = &mut psbt.inputs[0];
-    input.unknowns.remove(&raw::Key {
-        type_value: BIP376_SPEND_KEY_TYPE,
-        key: spend_key.key.clone(),
-    });
-    input.unknowns.remove(&raw::Key {
-        type_value: BIP376_TWEAK_TYPE,
-        key: Vec::new(),
-    });
-    clear_non_final_fields(input);
-    input.witness_utxo = None;
-    input.non_witness_utxo = None;
+    for input in &mut psbt.inputs {
+        input.unknowns.retain(|key, _| {
+            key.type_value != BIP376_SPEND_KEY_TYPE && key.type_value != BIP376_TWEAK_TYPE
+        });
+        clear_non_final_fields(input);
+        input.witness_utxo = None;
+        input.non_witness_utxo = None;
+    }
     omit_empty_final_script_sigs(&mut psbt);
-    Ok((signed, psbt, extracted, derived_output_key.to_string()))
+    Ok((signed, psbt, extracted, derived_keys))
 }
 
 pub fn handle_value(value: Value, digest: &str) -> Value {
@@ -2502,7 +2514,8 @@ pub fn handle_value_with_commitments(
                     "bip375-core-funded-sender", "bip375-core-funded-multi-input",
                     "bip375-advanced-sender-workflows",
                     "bip376-spend-workflow",
-                    "bip352-receiver-discovery"
+                    "bip352-receiver-discovery",
+                    "bip352-multi-output-lifecycle"
                 ]
             }),
         ),
@@ -2522,7 +2535,10 @@ pub fn handle_value_with_commitments(
         "extract" => extract(&request, digest),
         "construct" => construct(&request, digest),
         "silent-payment-send"
-            if payload_string(&request.payload, "fixtureId") == Some("bip375-multi") =>
+            if matches!(
+                payload_string(&request.payload, "fixtureId"),
+                Some("bip375-multi" | "bip352-multi-output")
+            ) =>
         {
             silent_payment_multi::send(&request, digest, commitments)
         }
@@ -2534,7 +2550,10 @@ pub fn handle_value_with_commitments(
         "silent-payment-send" => silent_payment_send(&request, digest),
         "silent-payment-send-advanced" => silent_payment_send_advanced(&request, digest),
         "silent-payment-spend"
-            if payload_string(&request.payload, "fixtureId") == Some("bip375-multi") =>
+            if matches!(
+                payload_string(&request.payload, "fixtureId"),
+                Some("bip375-multi" | "bip352-multi-output")
+            ) =>
         {
             silent_payment_receiver::spend(&request, digest, commitments)
         }

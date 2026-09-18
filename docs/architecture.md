@@ -204,7 +204,7 @@ The detailed assumptions, abuse paths, and residual risks are recorded in the
 
 ## Proof Scenarios
 
-The executable catalog currently contains 55 scenarios. Twelve independent Core-to-library
+The executable catalog currently contains 56 scenarios. Twelve independent Core-to-library
 handoffs exercise rust-bitcoin, btcsuite, bitcoinjs, and current BDK signing for P2WSH, P2WPKH, and
 P2TR key-path inputs. Additional rust-bitcoin handoffs prove legacy P2PKH signing from an exact
 `non_witness_utxo` and nested P2SH-P2WSH 2-of-3 signing and finalization.
@@ -316,6 +316,19 @@ Core first accepts the parent alone; the unbroadcast child must fail alone with 
 Both must then pass ordered parent/child `testmempoolaccept` package policy with matching txids.
 Six checkpoints preserve the complete handoff. This tests a bounded lifecycle, not arbitrary
 input types, multiple recipients, labels, chain scanning or reorg recovery.
+
+The `bip352-multi-output-lifecycle-rust-psbt-v2` scenario uses a separate committed
+`bip352-multi-output` fixture: two P2WPKH inputs, two distinct placeholder destinations and
+ordinary scalar-2 change. Each layout is chosen before BIP375 derivation/signing; the ordered
+layout assigns k=0/k=1 to indexes 0/1, while the reversed template assigns them to indexes 1/2.
+The independent receiver searches all output scripts for successive BIP352 counters, and
+requires both matches. It builds one two-input BIP376 child with the exact parent txid, output
+indexes, values and independently derived tweaks. Both SIGHASH_DEFAULT signatures commit to
+all previous outputs. Native script verification and Core parent/child package policy must
+succeed for both layouts. Signature-only mutations, witness binding, field cleanup, total
+value minus the fixed fee, and negative signing canaries remain mandatory. Twelve checkpoints
+retain both executions. This extends the bounded proof to two outputs for one receiver;
+multiple receiver identities, labels and chain scanning remain outside its scope.
 
 A separate bounded BIP376 receiver-spend scenario starts from a Core-funded deterministic Taproot
 output and uses libwally for the PSBTv0-to-v2 handoff. The rust-psbt-v2 adapter reads the registered

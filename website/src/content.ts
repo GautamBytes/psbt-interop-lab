@@ -433,6 +433,46 @@ export const reportScenarios: ReportScenario[] = [
     commandLabel: "Run from source",
   },
   {
+    id: "silent-payment-multi-output",
+    shortLabel: "Two-output receiver",
+    title: "Two payments, one receiver spend",
+    status: "supported",
+    statusLabel: "Source checkout · unreleased",
+    handoff:
+      "Two recipient outputs -> independent discovery -> combined spend -> Core package policy",
+    summary:
+      "Pay one receiver twice, discover k=0 and k=1 across ordered and shuffled output layouts, then spend both outputs together. The sender shuffles before derivation and signing; Core checks each linked parent/child package without broadcasting.",
+    implementations: ["Bitcoin Core", "rust-psbt PSBTv2", "libwally"],
+    evidence: [
+      {
+        field: "Output-position independence",
+        expected: "discover both recipient scripts among three transaction outputs",
+        actual: "ordered and shuffled layouts; independent TypeScript and Rust derivation",
+        implementation: "PSBT Interop Lab / rust-psbt PSBTv2",
+        nextStep:
+          "BIP375 counters follow recipient output order. Permutation happens before signing.",
+      },
+      {
+        field: "Combined receiver spend",
+        expected: "consume both exact outpoints once; preserve total value minus the fixed fee",
+        actual: "two BIP376 inputs, one destination, 10,000-sat fee",
+        implementation: "rust-psbt PSBTv2 / libwally / Bitcoin Core 31.1",
+        nextStep:
+          "Reject swapped tweaks, duplicate inputs, wrong outpoints and altered values before signing.",
+      },
+      {
+        field: "Evidence boundary",
+        expected: "two P2WPKH sender inputs, two outputs for one receiver, ordinary change",
+        actual: "12 replayable checkpoints; both parent/child packages must pass",
+        implementation: "PSBT Interop Lab",
+        nextStep:
+          "Regtest only. Build from source; v0.10.1 and the historical screenshots do not include this scenario. No chain scanning or multiple receiver identities.",
+      },
+    ],
+    replay: "node dist/cli.js run --scenario bip352-multi-output-lifecycle-rust-psbt-v2",
+    commandLabel: "Run from source",
+  },
+  {
     id: "hwi",
     shortLabel: "HWI simulator",
     title: "Simulator-backed hardware signing handoff",

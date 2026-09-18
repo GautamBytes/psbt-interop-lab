@@ -265,7 +265,7 @@ describe("PSBT Interop Lab website", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("Source checkout · unreleased")).toBeInTheDocument();
     expect(screen.getByText("Run from source")).toBeInTheDocument();
-    expect(screen.getByText(/52 released scenarios · 55 in source/)).toBeInTheDocument();
+    expect(screen.getByText(/52 released scenarios · 56 in source/)).toBeInTheDocument();
     expect(screen.getByText(/source checkout adds a 53rd scenario/i)).toBeInTheDocument();
     expect(
       screen.getByText(/v0.10.1 and the historical screenshots do not include this scenario/i),
@@ -309,6 +309,25 @@ describe("PSBT Interop Lab website", () => {
     expect(
       screen.getByText(
         "node dist/cli.js run --scenario bip352-sender-receiver-lifecycle-rust-psbt-v2",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("shows the bounded two-output lifecycle as unreleased source coverage", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: /Two-output receiver/i }));
+    expect(
+      screen.getByRole("heading", { name: "Two payments, one receiver spend" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Source checkout · unreleased")).toBeInTheDocument();
+    expect(
+      screen.getByText("two BIP376 inputs, one destination, 10,000-sat fee"),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/12 replayable checkpoints/)).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "node dist/cli.js run --scenario bip352-multi-output-lifecycle-rust-psbt-v2",
       ),
     ).toBeInTheDocument();
   });

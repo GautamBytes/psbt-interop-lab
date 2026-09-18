@@ -111,10 +111,14 @@ try {
   await page
     .getByText("child fails alone; both transactions must pass together", { exact: true })
     .waitFor();
+  await page.getByRole("button", { name: /Two-output receiver/i }).click();
+  await page.getByRole("heading", { name: "Two payments, one receiver spend" }).waitFor();
+  await page.getByText(/12 replayable checkpoints/).waitFor();
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByRole("heading", { name: "Silent Payment sender to receiver spend" }).waitFor();
   await page.getByRole("button", { name: /Receiver discovery/i }).click();
   await page.getByRole("heading", { name: "Silent Payment sender to receiver spend" }).waitFor();
+  await page.getByRole("button", { name: /Two-output receiver/i }).click();
+  await page.getByRole("heading", { name: "Two payments, one receiver spend" }).waitFor();
   const overflow = await page.evaluate(
     () => document.documentElement.scrollWidth > window.innerWidth,
   );

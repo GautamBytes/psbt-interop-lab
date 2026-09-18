@@ -3,17 +3,35 @@ use super::*;
 // A bounded test operation: authorize the original transaction before deriving
 // its fixed recipient or applying the explicitly requested input permutation.
 pub(super) fn send(request: &Request, digest: &str, commitments: &FixtureCommitments) -> Value {
-    if !exact_fields(
-        &request.payload,
-        &["psbt", "network", "fixtureId", "shareMode", "reverseInputs"],
-    ) || !matches!(
-        payload_string(&request.payload, "shareMode"),
-        Some("global" | "per-input")
-    ) || request
-        .payload
-        .get("reverseInputs")
-        .and_then(Value::as_bool)
-        .is_none()
+    let two_outputs = payload_string(&request.payload, "fixtureId") == Some("bip352-multi-output");
+    let fields: &[&str] = if two_outputs {
+        &[
+            "psbt",
+            "network",
+            "fixtureId",
+            "shareMode",
+            "reverseInputs",
+            "shuffleOutputs",
+        ]
+    } else {
+        &["psbt", "network", "fixtureId", "shareMode", "reverseInputs"]
+    };
+    if (two_outputs
+        && request
+            .payload
+            .get("shuffleOutputs")
+            .and_then(Value::as_bool)
+            .is_none())
+        || !exact_fields(&request.payload, fields)
+        || !matches!(
+            payload_string(&request.payload, "shareMode"),
+            Some("global" | "per-input")
+        )
+        || request
+            .payload
+            .get("reverseInputs")
+            .and_then(Value::as_bool)
+            .is_none()
     {
         return failure(
             &request.id,
@@ -41,25 +59,48 @@ pub(super) fn send(request: &Request, digest: &str, commitments: &FixtureCommitm
             "Invalid funded PSBTv2 template",
         );
     };
-    if let Some(response) =
-        commitment_failure(request, digest, commitments, "bip375-multi", &parsed.psbt)
-    {
+    if let Some(response) = commitment_failure(
+        request,
+        digest,
+        commitments,
+        if two_outputs {
+            "bip352-multi-output"
+        } else {
+            "bip375-multi"
+        },
+        &parsed.psbt,
+    ) {
         return response;
     }
     let global = payload_string(&request.payload, "shareMode") == Some("global");
     let reverse = request.payload["reverseInputs"] == json!(true);
-    match complete(parsed.psbt, global, reverse) {
-        Ok((signed, finalized, transaction)) => success(
-            &request.id,
-            digest,
-            json!({
+    match complete(
+        parsed.psbt,
+        global,
+        reverse,
+        two_outputs,
+        request.payload.get("shuffleOutputs") == Some(&json!(true)),
+    ) {
+        Ok((signed, finalized, transaction)) => {
+            let scripts = signed
+                .outputs
+                .iter()
+                .filter(|output| output.sp_v0_info.is_some())
+                .map(|output| output.script_pubkey.to_hex_string())
+                .collect::<Vec<_>>();
+            let mut output = json!({
                 "psbt": STANDARD.encode(signed.serialize()), "finalizedPsbt": STANDARD.encode(finalized.serialize()),
-                "finalized": true, "signedInputs": 2, "silentPaymentOutputs": 1,
-                "outputScript": signed.outputs[0].script_pubkey.to_hex_string(),
+                "finalized": true, "signedInputs": 2, "silentPaymentOutputs": scripts.len(),
                 "transaction": consensus::serialize(&transaction).to_lower_hex_string(),
                 "transactionId": transaction.compute_txid().to_string()
-            }),
-        ),
+            });
+            if two_outputs {
+                output["outputScripts"] = json!(scripts);
+            } else {
+                output["outputScript"] = json!(scripts[0]);
+            }
+            success(&request.id, digest, output)
+        }
         Err(message) => failure(
             &request.id,
             digest,
@@ -83,9 +124,13 @@ fn keys() -> Result<Vec<(PrivateKey, PublicKey)>, &'static str> {
         .collect()
 }
 
-fn validate(psbt: &Psbt, keys: &[(PrivateKey, PublicKey)]) -> Result<(), &'static str> {
+fn validate(
+    psbt: &Psbt,
+    keys: &[(PrivateKey, PublicKey)],
+    two_outputs: bool,
+) -> Result<(), &'static str> {
     if psbt.inputs.len() != 2
-        || psbt.outputs.len() != 2
+        || psbt.outputs.len() != if two_outputs { 3 } else { 2 }
         || psbt.global.tx_modifiable_flags & !3 != 0
     {
         return Err("Expected two inputs, recipient and change, and no reserved modifiable flags");
@@ -122,14 +167,19 @@ fn validate(psbt: &Psbt, keys: &[(PrivateKey, PublicKey)]) -> Result<(), &'stati
             .ok_or("Input amount overflow")?;
     }
     let mut outputs = 0_u64;
-    for (output, (_, key)) in psbt.outputs.iter().zip(keys) {
+    for (index, output) in psbt.outputs.iter().enumerate() {
+        let key = &keys[usize::from(index == psbt.outputs.len() - 1)].1;
+        let expected_script = if two_outputs && index == 1 {
+            ScriptBuf::new_p2pkh(&key.pubkey_hash())
+        } else {
+            ScriptBuf::new_p2wpkh(
+                &key.wpubkey_hash()
+                    .map_err(|_| "Invalid output fixture key")?,
+            )
+        };
         if output.sp_v0_info.is_some()
             || output.sp_v0_label.is_some()
-            || output.script_pubkey
-                != ScriptBuf::new_p2wpkh(
-                    &key.wpubkey_hash()
-                        .map_err(|_| "Invalid output fixture key")?,
-                )
+            || output.script_pubkey != expected_script
             || output.amount.to_sat() < 330
         {
             return Err("Expected fixed recipient template and ordinary change");
@@ -151,9 +201,11 @@ fn complete(
     mut psbt: Psbt,
     global: bool,
     reverse: bool,
+    two_outputs: bool,
+    shuffle: bool,
 ) -> Result<(Psbt, Psbt, Transaction), &'static str> {
     let mut keys = keys()?;
-    validate(&psbt, &keys)?;
+    validate(&psbt, &keys, two_outputs)?;
     if reverse {
         psbt.inputs.reverse();
         keys.reverse();
@@ -162,8 +214,18 @@ fn complete(
         SecpPublicKey::from_str(SCALAR_TWO_PUBLIC_KEY).map_err(|_| "Invalid scan key")?,
     );
     let (_, spend) = fixture_key()?;
-    psbt.outputs[0].sp_v0_info =
-        Some([scan.to_bytes().as_slice(), spend.to_bytes().as_slice()].concat());
+    for output in psbt
+        .outputs
+        .iter_mut()
+        .take(if two_outputs { 2 } else { 1 })
+    {
+        output.sp_v0_info =
+            Some([scan.to_bytes().as_slice(), spend.to_bytes().as_slice()].concat());
+    }
+    // BIP375 assigns k by output order: permute before deriving scripts or signing.
+    if shuffle {
+        psbt.outputs.reverse();
+    }
     let secrets = keys
         .iter()
         .map(|(private, _)| private.inner)
