@@ -2287,7 +2287,17 @@ fn complete_silent_payment_spend(
             })
         })
         .collect::<Result<Vec<_>, _>>()?;
-    for index in 0..input_count {
+
+    let transaction = Signer::new(psbt.clone())
+        .map_err(|_| {
+            SilentPaymentSpendError::new(
+                "silent_payment.spend_failed",
+                "The BIP376 PSBT locktime is invalid",
+            )
+        })?
+        .unsigned_tx();
+    let mut sighash_cache = SighashCache::new(&transaction);
+    for (index, witness_utxo) in prevouts.iter().enumerate() {
         let input = &psbt.inputs[index];
         let spend_fields = input
             .unknowns
@@ -2363,12 +2373,6 @@ fn complete_silent_payment_spend(
         let keypair = Keypair::from_secret_key(&secp, &derived_secret);
         let expected_script =
             ScriptBuf::new_p2tr_tweaked(derived_output_key.dangerous_assume_tweaked());
-        let witness_utxo = input.witness_utxo.clone().ok_or_else(|| {
-            SilentPaymentSpendError::new(
-                "silent_payment.witness_utxo_missing",
-                "The BIP376 input has no witness UTXO",
-            )
-        })?;
         if witness_utxo.script_pubkey != expected_script {
             return Err(SilentPaymentSpendError::new(
                 "silent_payment.output_key_mismatch",
@@ -2376,21 +2380,13 @@ fn complete_silent_payment_spend(
             ));
         }
 
-        let transaction = Signer::new(psbt.clone())
-            .map_err(|_| {
-                SilentPaymentSpendError::new(
-                    "silent_payment.spend_failed",
-                    "The BIP376 PSBT locktime is invalid",
-                )
-            })?
-            .unsigned_tx();
         let sighash_type = input.taproot_hash_ty().map_err(|_| {
             SilentPaymentSpendError::new(
                 "silent_payment.sighash_invalid",
                 "The BIP376 input has an invalid Taproot sighash type",
             )
         })?;
-        let sighash = SighashCache::new(&transaction)
+        let sighash = sighash_cache
             .taproot_key_spend_signature_hash(index, &Prevouts::All(&prevouts), sighash_type)
             .map_err(|error| {
                 SilentPaymentSpendError::new(

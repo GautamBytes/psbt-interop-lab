@@ -243,39 +243,41 @@ export function createSilentPaymentLifecycleScenario(
           accepted,
           "Core must accept both transactions together and confirm both transaction IDs without broadcasting",
         );
-        const mutations: [string, PsbtMutationRecipe][] = [
+        const canaries: [string, PsbtMutationRecipe[]][] = [
           [
             "wrong-outpoint",
-            {
-              kind: "replace-value",
-              location: { kind: "input", index: 0 },
-              keyType: 15,
-              valueHex: multiOutput ? (shuffleOutputs ? "00000000" : "02000000") : "01000000",
-            },
+            [
+              {
+                kind: "replace-value",
+                location: { kind: "input", index: 0 },
+                keyType: 15,
+                valueHex: multiOutput ? (shuffleOutputs ? "00000000" : "02000000") : "01000000",
+              },
+            ],
           ],
           [
             "wrong-tweak",
-            {
-              kind: "replace-value",
-              location: { kind: "input", index: 0 },
-              keyType: 0x20,
-              valueHex: "03".repeat(32),
-            },
+            [
+              {
+                kind: "replace-value",
+                location: { kind: "input", index: 0 },
+                keyType: 0x20,
+                valueHex: "03".repeat(32),
+              },
+            ],
           ],
           [
             "changed-destination",
-            {
-              kind: "replace-value",
-              location: { kind: "output", index: 0 },
-              keyType: 4,
-              valueHex: `0014${"11".repeat(20)}`,
-            },
+            [
+              {
+                kind: "replace-value",
+                location: { kind: "output", index: 0 },
+                keyType: 4,
+                valueHex: `0014${"11".repeat(20)}`,
+              },
+            ],
           ],
         ];
-        const canaries: [string, PsbtMutationRecipe[]][] = mutations.map(([name, mutation]) => [
-          name,
-          [mutation],
-        ]);
         if (multiOutput) {
           const first = discovered[0],
             second = discovered[1];
