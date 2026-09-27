@@ -65,6 +65,7 @@ export type FixtureProfileId =
   | "bip375-multi"
   | "bip352-multi-output"
   | "bip352-multi-receiver"
+  | "bip352-labels"
   | "p2pkh"
   | "p2wpkh"
   | "p2sh-p2wpkh"
@@ -248,6 +249,21 @@ export const FIXTURE_PROFILES = [
   },
   {
     id: "bip352-multi-output",
+    scriptTypes: ["p2wpkh"],
+    inputDescriptorIds: ["p2wpkh", "p2wpkh-scalar2"],
+    outputDescriptorIds: ["p2wpkh", "p2pkh", "p2wpkh-scalar2"],
+    sequences: [0xffff_fffd, 0xffff_fffd],
+    locktime: 0,
+    transactionVersion: 2,
+    descriptors: [
+      FIXTURE_DESCRIPTORS.p2wpkh,
+      FIXTURE_DESCRIPTORS.p2pkh,
+      FIXTURE_DESCRIPTORS["p2wpkh-scalar2"],
+    ],
+    feeSats: 12_000,
+  },
+  {
+    id: "bip352-labels",
     scriptTypes: ["p2wpkh"],
     inputDescriptorIds: ["p2wpkh", "p2wpkh-scalar2"],
     outputDescriptorIds: ["p2wpkh", "p2pkh", "p2wpkh-scalar2"],

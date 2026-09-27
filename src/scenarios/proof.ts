@@ -424,6 +424,11 @@ export const PROOF_SCENARIOS: readonly ProofScenarioSummary[] = [
     category: "silent-payment-interop",
   },
   {
+    id: "bip352-labels-spdk",
+    title: "Labeled Silent Payment discovery and SPDK spend",
+    category: "silent-payment-interop",
+  },
+  {
     id: "bip352-multi-receiver-spdk",
     title: "Independent Silent Payment receiver ownership and spending",
     category: "silent-payment-interop",
@@ -984,6 +989,12 @@ export const PROOF_SCENARIO_REGISTRATIONS: readonly ProofScenarioRegistration[] 
       createSilentPaymentLifecycleScenario(requiredFixture(fixtures, "bip352-multi-output")),
   ),
   registerScenario(
+    "bip352-labels-spdk",
+    { core: true, fixtures: ["bip352-labels"], adapters: ["rust-psbt-v2", "libwally"] },
+    (fixtures) =>
+      createSilentPaymentLifecycleScenario(requiredFixture(fixtures, "bip352-labels"), "spdk"),
+  ),
+  registerScenario(
     "bip352-multi-receiver-spdk",
     { core: true, fixtures: ["bip352-multi-receiver"], adapters: ["rust-psbt-v2", "libwally"] },
     (fixtures) =>
@@ -1250,6 +1261,7 @@ const BDK_CURRENT_COMMITMENT_FIXTURES: readonly BuiltInFixtureId[] = [
   "intent-rich-p2wpkh",
 ];
 const PSBTV2_COMMITMENT_FIXTURES: readonly BuiltInFixtureId[] = [
+  "bip352-labels",
   "bip352-multi-receiver",
   "bip352-multi-output",
   "bip375-multi",

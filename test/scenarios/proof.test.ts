@@ -197,6 +197,7 @@ function preparedFixtures(): PreparedFixtures {
       "p2tr-musig2": fixture("p2tr-musig2"),
       "bip376-spend": fixture("bip376-spend"),
       "bip375-multi": { ...fixture("bip375-multi"), inputCount: 2, outputCount: 2 },
+      "bip352-labels": { ...fixture("bip352-labels"), inputCount: 2, outputCount: 3 },
       "bip352-multi-receiver": {
         ...fixture("bip352-multi-receiver"),
         inputCount: 2,
@@ -720,6 +721,7 @@ describe("proof runtime", () => {
       "bip375-core-funded-multi-input-rust-psbt-v2",
       "bip352-sender-receiver-lifecycle-rust-psbt-v2",
       "bip352-multi-output-lifecycle-rust-psbt-v2",
+      "bip352-labels-spdk",
       "bip352-multi-receiver-spdk",
       "bip352-spdk-wallet-interop",
       "bip376-spend-workflow-rust-psbt-v2",
@@ -847,6 +849,7 @@ describe("proof runtime", () => {
       "intent-rich-p2wpkh": `sha256:${"d".repeat(64)}`,
     });
     const psbtv2Commitments = JSON.stringify({
+      "bip352-labels": `sha256:${"d".repeat(64)}`,
       "bip352-multi-receiver": `sha256:${"d".repeat(64)}`,
       "bip352-multi-output": `sha256:${"d".repeat(64)}`,
       "bip375-multi": `sha256:${"d".repeat(64)}`,

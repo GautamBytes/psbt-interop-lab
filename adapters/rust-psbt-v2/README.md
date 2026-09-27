@@ -253,3 +253,18 @@ The source scenario `bip352-multi-receiver-spdk` checks both identities in both 
 including foreign-input substitutions with unchanged count and value. It requires disjoint
 receiver outpoints on the same parent, independent libwally extraction and all four Core
 parent/child policy checks. It retains 24 checkpoints and broadcasts nothing.
+
+## Labeled receiver
+
+Feature `bip352-labels` adds the committed three-output fixture of that name: two payments to
+label 1 of the fixed scan-2/spend-1 receiver and ordinary sender change. Use the multi-output
+sender payload with `fixtureId: "bip352-labels"`, and the SPDK receiver payload with the same
+fixture ID. There is no caller-supplied label or receiver identity. The sender's BIP375 data
+contains the labeled spend public key; `PSBT_OUT_SP_V0_LABEL` is not used for these non-change
+payments. The receiver's BIP376 tweak includes the label hash exactly once and uses the base
+spend public key. SPDK discovers the registered label from public parent data before signing.
+
+`bip352-labels-spdk` verifies both layouts, missing/wrong-label discovery, missing/wrong/double
+label tweaks, value/outpoint/destination tampering, independent extraction, and Core package
+acceptance. The fixture is regtest-only with public test keys. It does not cover multiple labels
+in one transaction, label recovery, chain scanning, or identity privacy between labeled addresses.

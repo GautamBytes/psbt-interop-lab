@@ -204,7 +204,7 @@ The detailed assumptions, abuse paths, and residual risks are recorded in the
 
 ## Proof Scenarios
 
-The executable catalog currently contains 58 scenarios. Twelve independent Core-to-library
+The executable catalog currently contains 59 scenarios. Twelve independent Core-to-library
 handoffs exercise rust-bitcoin, btcsuite, bitcoinjs, and current BDK signing for P2WSH, P2WPKH, and
 P2TR key-path inputs. Additional rust-bitcoin handoffs prove legacy P2PKH signing from an exact
 `non_witness_utxo` and nested P2SH-P2WSH 2-of-3 signing and finalization.
@@ -425,3 +425,14 @@ dataflow prevents parser fixtures from entering signing operations and prevents 
 transaction result from being reused as a PSBT. Signing or input finalization of a custom
 transaction fixture requires both the normal commitment feature and the separate
 `user-fixture-template-v1` capability.
+
+The `bip352-labels-spdk` scenario uses the same two-input/two-payment lifecycle with a separate
+`bip352-labels` commitment and fixed label 1. The sender uses the labeled spend public key in
+BIP375 recipient data; it does not treat the recipient as sender change or add a change-label
+field. TypeScript and native Rust derive the label hash independently of SPDK. SPDK registers
+label 1 and returns the combined shared-secret/label tweak, which is carried in BIP376 with the
+base spend public key. No label is accepted from the signing request. Wrong labels find no
+outputs; missing, incorrect or double-applied label tweaks are rejected before signing. Both
+ordered and shuffled packages have six checkpoints each and must pass Core policy without
+broadcasting. Labels share a scan key and do not provide identity separation. Mixed-label
+transactions and chain scanning remain outside this bounded fixture.

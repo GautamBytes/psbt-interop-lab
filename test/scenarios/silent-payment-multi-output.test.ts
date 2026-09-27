@@ -1,4 +1,5 @@
 import { expect, test } from "vitest";
+import labels from "../../adapters/rust-psbt-v2/tests/fixtures/labels.json" with { type: "json" };
 import fixture from "../../adapters/rust-psbt-v2/tests/fixtures/multi-output.json" with {
   type: "json",
 };
@@ -118,14 +119,17 @@ for (const v of fixture.variants)
   });
 
 test.each([
-  { receiver: "native", correctIdentity: true },
-  { receiver: "spdk", correctIdentity: true },
-  { receiver: "spdk", correctIdentity: false },
+  { receiver: "native", correctIdentity: true, labeled: false },
+  { receiver: "spdk", correctIdentity: true, labeled: false },
+  { receiver: "spdk", correctIdentity: false, labeled: false },
+  { receiver: "spdk", correctIdentity: true, labeled: true },
+  { receiver: "spdk", correctIdentity: false, labeled: true },
 ] as const)(
-  "runs both layouts with $receiver signing; correct wallet identity: $correctIdentity",
-  async ({ receiver, correctIdentity }) => {
+  "runs both layouts with $receiver signing; correct wallet identity: $correctIdentity; labels: $labeled",
+  async ({ receiver, correctIdentity, labeled }) => {
+    const data = labeled ? labels : fixture;
     const commitment = `sha256:${"a".repeat(64)}`;
-    const initial = fixture.variants[0];
+    const initial = data.variants[0];
     if (!initial) throw new Error("Missing fixture");
     let active = initial;
     const calls: string[] = [];
@@ -139,10 +143,10 @@ test.each([
         return {
           ...base,
           status: "ok",
-          output: { psbt: fixture.template, unsignedTxSha256: commitment },
+          output: { psbt: data.template, unsignedTxSha256: commitment },
         };
       if (req.operation === "silent-payment-send") {
-        const v = fixture.variants.find((v) => v.shuffle === req.payload["shuffleOutputs"]);
+        const v = data.variants.find((v) => v.shuffle === req.payload["shuffleOutputs"]);
         if (!v) throw new Error("Missing layout");
         active = v;
         return { ...base, status: "ok", output: v.output };
@@ -222,11 +226,11 @@ test.each([
       },
     });
     const prepared = {
-      id: "bip352-multi-output",
+      id: labeled ? "bip352-labels" : "bip352-multi-output",
       psbtVersion: 0,
       inputCount: 2,
       outputCount: 3,
-      initialPsbt: fixture.template,
+      initialPsbt: data.template,
       unsignedTxSha256: commitment,
     } as PsbtFixture;
     const result = await createSilentPaymentLifecycleScenario(prepared, receiver).run(context);
@@ -237,7 +241,7 @@ test.each([
       expect(failed.every((a) => a.name.includes("spdk-implementation"))).toBe(true);
     }
     expect(result.policyAccepted).toBe(true);
-    expect(result.assertions).toHaveLength(receiver === "spdk" ? 46 : 44);
+    expect(result.assertions).toHaveLength(labeled ? 54 : receiver === "spdk" ? 46 : 44);
     expect(context.checkpoints).toHaveLength(12);
     expect(new Set(context.checkpoints.map((c) => c.stage)).size).toBe(12);
     expect(calls).toEqual(Array(6).fill("testmempoolaccept"));
