@@ -20,6 +20,7 @@ fn key(scalar: u8) -> Result<SecretKey, &'static str> {
 fn discover(
     parent: &Psbt,
     scan_scalar: u8,
+    spend_scalar: u8,
 ) -> Result<Vec<(OutPoint, DiscoveredOutput)>, &'static str> {
     let tx = Extractor::new(native_extractable_psbt(parent.clone()))
         .map_err(|_| "Parent is not finalized")?
@@ -53,7 +54,7 @@ fn discover(
     let tweak_data = calculate_tweak_data(&keys.iter().collect::<Vec<_>>(), &outpoints)
         .map_err(|_| "SPDK input aggregation failed")?;
     let scan = key(scan_scalar)?;
-    let spend = key(1)?.public_key(&Secp256k1::new());
+    let spend = key(spend_scalar)?.public_key(&Secp256k1::new());
     let receiver = Receiver::new(
         SpVersion::ZERO,
         scan.public_key(&Secp256k1::new()),
@@ -108,11 +109,15 @@ fn discover(
 pub(super) fn spend(
     parent: &Psbt,
     mut child: Psbt,
+    scan_scalar: u8,
+    spend_scalar: u8,
 ) -> Result<(Psbt, Psbt, Transaction, Vec<String>), SilentPaymentSpendError> {
     let fail = |message| SilentPaymentSpendError::new("silent_payment.spdk_invalid", message);
-    let found = discover(parent, 2).map_err(fail)?;
-    if found.len() != 2 || child.inputs.len() != 2 {
-        return Err(fail("SPDK must discover both recipient outputs"));
+    let found = discover(parent, scan_scalar, spend_scalar).map_err(fail)?;
+    if found.len() != child.inputs.len() || found.is_empty() {
+        return Err(fail(
+            "SPDK must discover exactly the selected receiver outputs",
+        ));
     }
     let mut selected = Vec::new();
     let mut output_keys = Vec::new();
@@ -142,8 +147,8 @@ pub(super) fn spend(
         selected.push((outpoint, output.clone()));
     }
     let wallet = SpClient::new(
-        key(2).map_err(fail)?,
-        SpendKey::Secret(key(1).map_err(fail)?),
+        key(scan_scalar).map_err(fail)?,
+        SpendKey::Secret(key(spend_scalar).map_err(fail)?),
         Network::Regtest,
     )
     .map_err(|_| fail("Cannot create SPDK wallet"))?;
@@ -196,9 +201,9 @@ mod tests {
             let parent = parse_psbt(variant["output"]["finalizedPsbt"].as_str().unwrap())
                 .unwrap()
                 .psbt;
-            let found = discover(&parent, 2).unwrap();
+            let found = discover(&parent, 2, 1).unwrap();
             assert_eq!(found.len(), 2);
-            assert!(discover(&parent, 3).unwrap().is_empty());
+            assert!(discover(&parent, 3, 1).unwrap().is_empty());
             assert_eq!(
                 found.iter().map(|(_, o)| o.value.to_sat()).sum::<u64>(),
                 128_000

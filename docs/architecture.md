@@ -204,7 +204,7 @@ The detailed assumptions, abuse paths, and residual risks are recorded in the
 
 ## Proof Scenarios
 
-The executable catalog currently contains 57 scenarios. Twelve independent Core-to-library
+The executable catalog currently contains 58 scenarios. Twelve independent Core-to-library
 handoffs exercise rust-bitcoin, btcsuite, bitcoinjs, and current BDK signing for P2WSH, P2WPKH, and
 P2TR key-path inputs. Additional rust-bitcoin handoffs prove legacy P2PKH signing from an exact
 `non_witness_utxo` and nested P2SH-P2WSH 2-of-3 signing and finalization.
@@ -329,6 +329,14 @@ succeed for both layouts. Signature-only mutations, witness binding, field clean
 value minus the fixed fee, and negative signing canaries remain mandatory. Twelve checkpoints
 retain both executions. This extends the bounded proof to two outputs for one receiver;
 multiple receiver identities, labels and chain scanning remain outside its scope.
+
+The `bip352-multi-receiver-spdk` scenario extends the same lifecycle with a separate committed
+four-output fixture: Alice, Bob, Alice, ordinary change. Alice uses scan-2/spend-1; Bob uses
+scan-3/spend-2. Each identity discovers and signs its own outputs through native validation and
+SPDK, with independent TypeScript discovery. Both unsigned output layouts run, yielding four
+parent/child packages and 24 checkpoints. Same-parent/disjoint-outpoint assertions and foreign
+input canaries test receiver isolation. Each child has a fixed 10,000-sat fee. No transaction is
+broadcast and no chain backend is enabled.
 
 The `bip352-spdk-wallet-interop` scenario reuses that funded lifecycle with the pinned
 `spdk-wallet` implementation inside the existing isolated rust-psbt-v2 adapter. After the same

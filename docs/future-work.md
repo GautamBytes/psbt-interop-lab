@@ -39,9 +39,8 @@ new field families after fixtures and at least one native implementation are ava
 Candidate work:
 
 - Taproot script-path threshold leaves and selected legacy profiles.
-- Distinct Silent Payment receiver identities and labels. The source proof now integrates
-  pinned SPDK wallet discovery and signing for two outputs, two layouts and a combined BIP376
-  spend. Chain synchronization and external maintainer adoption remain separate work.
+- Silent Payment labels and mixed eligible input types. Source proofs now cover two distinct
+  receiver identities, repeated payments, both output layouts and separate SPDK wallet spends. Chain synchronization and external maintainer adoption remain separate work.
 - Proof-of-reserves, generic signed-message, and DNSSEC proof PSBT fields.
 - Capability-gated custom signing for reviewed public fixture templates.
 

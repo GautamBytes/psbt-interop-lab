@@ -6,11 +6,16 @@ All notable changes to PSBT Interop Lab are recorded here.
 
 ### Added
 
+- Add `bip352-multi-receiver-spdk`: two receiver identities, three payments and ordinary change
+  in ordered/reversed layouts. Independently discover and sign each receiver's outputs, reject
+  foreign inputs, and require libwally extraction plus Core parent/child policy acceptance.
+  Include 24 replayable checkpoints, CI coverage and an unreleased website example. The source
+  catalog now contains 58 scenarios.
+
 - Add independent SPDK wallet discovery and signing for both two-output Silent Payment layouts.
   Pin the upstream revision, disable network backends, and retain strict fixture authorization,
   tamper rejection, libwally extraction and Core package checks. Include 46 assertions, twelve
-  replayable checkpoints, provenance docs and a source-only website example. The source catalog
-  now contains 57 scenarios.
+  replayable checkpoints, provenance docs and a source-only website example.
 - Add a two-output Silent Payment lifecycle with ordered and shuffled unsigned layouts,
   independent discovery, a combined BIP376 spend, exact value/outpoint binding, tamper
   rejection and mandatory Core package-policy acceptance. Include twelve replayable

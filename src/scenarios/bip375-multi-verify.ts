@@ -1,3 +1,4 @@
+import { FIXTURE_PUBLIC_KEYS } from "../core/fixture-profiles.js";
 import { validateBip375ReferencePsbt } from "../psbt/bip375-validator.js";
 import { diffPsbtDocuments } from "../psbt/diff.js";
 import { type PsbtDocument, type PsbtDocumentMap, parsePsbtDocument } from "../psbt/document.js";
@@ -53,31 +54,43 @@ export function verifyMultiSender(
       after = parsePsbtDocument(signed);
     if (
       [before, after].some(
-        (doc) => doc.psbtVersion !== 2 || doc.inputCount !== 2 || ![2, 3].includes(doc.outputCount),
+        (doc) =>
+          doc.psbtVersion !== 2 || doc.inputCount !== 2 || ![2, 3, 4].includes(doc.outputCount),
       )
     )
       return false;
-    if (before.outputCount !== after.outputCount || (shuffle && before.outputCount !== 3))
+    if (before.outputCount !== after.outputCount || (shuffle && before.outputCount === 2))
       return false;
-    const recipients = before.outputCount === 3 ? (shuffle ? [1, 2] : [0, 1]) : [0];
+    const multiReceiver = before.outputCount === 4;
+    const recipients = Array.from(
+      { length: before.outputCount - 1 },
+      (_, i) => i + (shuffle ? 1 : 0),
+    );
+    const scans = multiReceiver ? [MULTI_KEYS[1], FIXTURE_PUBLIC_KEYS.scalar3] : [MULTI_KEYS[1]];
     const global = after.maps.find((m) => m.location.kind === "global");
     if (
       entry(global, 6)?.value.toString("hex") !== "00" ||
       recipients.some(
         (i) =>
           entry(mapAt(after, "output", i), 9)?.value.toString("hex") !==
-          MULTI_KEYS[1] + MULTI_KEYS[0],
+          (multiReceiver && i === (shuffle ? 2 : 1)
+            ? FIXTURE_PUBLIC_KEYS.scalar3 + MULTI_KEYS[1]
+            : MULTI_KEYS[1] + MULTI_KEYS[0]),
       )
     )
       return false;
     const expected = new Set(["input:0:2", "input:1:2", ...recipients.map((i) => `output:${i}:9`)]);
     if (mode === "global") {
-      expected.add("global:7");
-      expected.add("global:8");
+      for (const scan of scans) {
+        expected.add(`global:7:${scan}`);
+        expected.add(`global:8:${scan}`);
+      }
     } else
       for (const i of [0, 1]) {
-        expected.add(`input:${i}:29`);
-        expected.add(`input:${i}:30`);
+        for (const scan of scans) {
+          expected.add(`input:${i}:29:${scan}`);
+          expected.add(`input:${i}:30:${scan}`);
+        }
       }
     for (const index of [0, 1]) {
       const key = MULTI_KEYS[reverse ? 1 - index : index];
@@ -100,10 +113,18 @@ export function verifyMultiSender(
         )
           continue;
       }
-      const id =
+      let id =
         location.kind === "global"
           ? `global:${keyType}`
           : `${location.kind}:${location.index}:${keyType}`;
+      if (
+        (location.kind === "global" && [7, 8].includes(keyType)) ||
+        (location.kind === "input" && [29, 30].includes(keyType))
+      ) {
+        const map = location.kind === "global" ? global : mapAt(after, "input", location.index);
+        const raw = map?.entries.find((e) => e.completeKeySha256 === added.completeKeySha256);
+        id += `:${raw?.keyData.toString("hex")}`;
+      }
       if (!expected.delete(id)) return false;
     }
     return (
