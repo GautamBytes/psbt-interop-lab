@@ -265,7 +265,7 @@ describe("PSBT Interop Lab website", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("Source checkout · unreleased")).toBeInTheDocument();
     expect(screen.getByText("Run from source")).toBeInTheDocument();
-    expect(screen.getByText(/52 released scenarios · 58 in source/)).toBeInTheDocument();
+    expect(screen.getByText(/52 released scenarios · 59 in source/)).toBeInTheDocument();
     expect(screen.getByText(/source checkout adds a 53rd scenario/i)).toBeInTheDocument();
     expect(
       screen.getByText(/v0.10.1 and the historical screenshots do not include this scenario/i),
@@ -349,6 +349,21 @@ describe("PSBT Interop Lab website", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByText("node dist/cli.js run --scenario bip352-spdk-wallet-interop"),
+    ).toBeInTheDocument();
+  });
+
+  it("shows labeled payments as bounded unreleased coverage", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: /Labels/i }));
+    expect(
+      screen.getByRole("heading", { name: "Labeled payments, verified spends" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Source checkout · unreleased")).toBeInTheDocument();
+    expect(screen.getByText("54 assertions and 12 replayable checkpoints")).toBeInTheDocument();
+    expect(screen.getByText(/not separate private identities/)).toBeInTheDocument();
+    expect(
+      screen.getByText("node dist/cli.js run --scenario bip352-labels-spdk"),
     ).toBeInTheDocument();
   });
 

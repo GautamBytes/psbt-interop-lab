@@ -3,6 +3,7 @@ import { validateBip375ReferencePsbt } from "../psbt/bip375-validator.js";
 import { diffPsbtDocuments } from "../psbt/diff.js";
 import { type PsbtDocument, type PsbtDocumentMap, parsePsbtDocument } from "../psbt/document.js";
 import { applyPsbtMutations, type PsbtMutationRecipe } from "../psbt/mutation.js";
+import { labeledSpendKey } from "./silent-payment-receiver.js";
 
 export const MULTI_KEYS = [
   "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
@@ -47,6 +48,7 @@ export function verifyMultiSender(
   mode: string,
   reverse: boolean,
   shuffle = false,
+  labeled = false,
 ): boolean {
   try {
     if (mode !== "global" && mode !== "per-input") return false;
@@ -61,7 +63,9 @@ export function verifyMultiSender(
       return false;
     if (before.outputCount !== after.outputCount || (shuffle && before.outputCount === 2))
       return false;
+    if (labeled && before.outputCount !== 3) return false;
     const multiReceiver = before.outputCount === 4;
+    const spend = labeled ? labeledSpendKey(2n, MULTI_KEYS[0], 1) : MULTI_KEYS[0];
     const recipients = Array.from(
       { length: before.outputCount - 1 },
       (_, i) => i + (shuffle ? 1 : 0),
@@ -75,7 +79,7 @@ export function verifyMultiSender(
           entry(mapAt(after, "output", i), 9)?.value.toString("hex") !==
           (multiReceiver && i === (shuffle ? 2 : 1)
             ? FIXTURE_PUBLIC_KEYS.scalar3 + MULTI_KEYS[1]
-            : MULTI_KEYS[1] + MULTI_KEYS[0]),
+            : MULTI_KEYS[1] + spend),
       )
     )
       return false;

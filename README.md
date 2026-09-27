@@ -100,6 +100,18 @@ To work from a source checkout instead, install pnpm 10.30.2, run
 
 ## Multiple Silent Payment receivers (unreleased)
 
+`bip352-labels-spdk` pays a fixed receiver's label 1 twice, then independently discovers and
+spends both outputs through SPDK. Both output layouts require libwally extraction and Core
+parent/child policy acceptance. Missing, wrong and double-applied label tweaks are rejected.
+The source-only scenario records 54 assertions and 12 replayable checkpoints:
+
+```sh
+node dist/cli.js run --scenario bip352-labels-spdk
+```
+
+Labels distinguish payments within one wallet; they do not create separate private identities.
+This bounded fixture does not cover mixed labels in one transaction, label recovery or chain scanning.
+
 `bip352-multi-receiver-spdk` pays two distinct receiver identities in one funded transaction:
 two payments to Alice (scan-2/spend-1), one to Bob (scan-3/spend-2), and ordinary change.
 
@@ -303,7 +315,7 @@ preservation. It executes the configured command directly with `shell: false`; t
 manifest must therefore be treated as trusted local code. See [the adapter guide](docs/adapters.md)
 and the bundled [manifest schema](src/conformance/adapter-manifest.schema.json).
 
-The source checkout matrix keeps all 58 bundled scenarios and appends native-parse and semantic-roundtrip cells for
+The source checkout matrix keeps all 59 bundled scenarios and appends native-parse and semantic-roundtrip cells for
 each external adapter across P2WPKH, nested P2SH-P2WPKH, P2WSH, Taproot key-path, and Taproot
 script-path fixtures. It also appends signing handoffs when the adapter declares the matching
 signer capabilities and the `fixture-commitment-sha256` safety feature.
@@ -400,7 +412,7 @@ fixtures. Custom signing is capability-gated and runs only when an adapter expli
 
 ## Current Coverage
 
-The source checkout currently runs 58 scenarios (the published v0.10.1 package has 52):
+The source checkout currently runs 59 scenarios (the published v0.10.1 package has 52):
 
 - Core-created P2PKH, P2WPKH, P2WSH, nested P2SH-P2WSH, and Taproot key-path signing handoffs
   through rust-bitcoin, btcsuite, bitcoinjs-lib, and current BDK Wallet

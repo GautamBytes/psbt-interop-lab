@@ -51,12 +51,31 @@ function inputPublicKey(map: PsbtDocumentMap): Buffer {
   return pubkey;
 }
 
+export function receiverLabelTweak(scan: bigint, label: number): bigint {
+  if (scan <= 0n || scan >= secp256k1.Point.Fn.ORDER) throw new Error("Invalid receiver scan key");
+  if (!Number.isInteger(label) || label < 0 || label > 0xffffffff)
+    throw new Error("Invalid receiver label");
+  const index = Buffer.alloc(4);
+  index.writeUInt32BE(label);
+  const secret = Buffer.from(scan.toString(16).padStart(64, "0"), "hex");
+  return scalar(tagged("BIP0352/Label", Buffer.concat([secret, index])));
+}
+
+export function labeledSpendKey(scan: bigint, spend: string, label: number): string {
+  return Buffer.from(
+    secp256k1.Point.fromHex(spend)
+      .add(secp256k1.Point.BASE.multiply(receiverLabelTweak(scan, label)))
+      .toBytes(true),
+  ).toString("hex");
+}
+
 // Deliberately ignores all sender SP shares, proofs and recipient metadata.
 // Bounded to two P2WPKH inputs, at most four outputs with distinct counter-derived outputs.
 export function discoverReceiverOutputs(
   parent: string,
   scan = 2n,
   spend: string = RECEIVER_SPEND_KEY,
+  label?: number,
 ): DiscoveredOutput[] {
   if (scan <= 0n || scan >= secp256k1.Point.Fn.ORDER) throw new Error("Invalid receiver scan key");
   const doc = parsePsbtDocument(parent);
@@ -77,6 +96,7 @@ export function discoverReceiverOutputs(
     tagged("BIP0352/Inputs", Buffer.concat([lowest, Buffer.from(aggregate.toBytes(true))])),
   );
   const shared = aggregate.multiply(scan).multiply(inputHash);
+  const labelTweak = label === undefined ? 0n : receiverLabelTweak(scan, label);
   const found: DiscoveredOutput[] = [];
   for (let k = 0; k < doc.outputCount - 1; k++) {
     const counter = Buffer.alloc(4);
@@ -85,9 +105,9 @@ export function discoverReceiverOutputs(
       "BIP0352/SharedSecret",
       Buffer.concat([Buffer.from(shared.toBytes(true)), counter]),
     );
-    const expected = secp256k1.Point.fromHex(spend).add(
-      secp256k1.Point.BASE.multiply(scalar(tweak)),
-    );
+    const combined = (scalar(tweak) + labelTweak) % secp256k1.Point.Fn.ORDER;
+    if (combined === 0n) throw new Error("Invalid combined label tweak");
+    const expected = secp256k1.Point.fromHex(spend).add(secp256k1.Point.BASE.multiply(combined));
     const script = Buffer.concat([
       Buffer.from([0x51, 0x20]),
       Buffer.from(expected.toBytes(true)).subarray(1),
@@ -103,7 +123,7 @@ export function discoverReceiverOutputs(
       index: match.location.index,
       amountSats: field(match, 3).readBigUInt64LE(),
       scriptHex: script.toString("hex"),
-      tweakHex: tweak.toString("hex"),
+      tweakHex: combined.toString(16).padStart(64, "0"),
     });
   }
   return found;

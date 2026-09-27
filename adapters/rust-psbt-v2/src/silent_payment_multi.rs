@@ -6,7 +6,7 @@ pub(super) fn send(request: &Request, digest: &str, commitments: &FixtureCommitm
     let fixture_id = payload_string(&request.payload, "fixtureId").unwrap_or("");
     let recipients = match fixture_id {
         "bip352-multi-receiver" => 3,
-        "bip352-multi-output" => 2,
+        "bip352-multi-output" | "bip352-labels" => 2,
         _ => 1,
     };
     let fields: &[&str] = if recipients > 1 {
@@ -77,6 +77,7 @@ pub(super) fn send(request: &Request, digest: &str, commitments: &FixtureCommitm
         reverse,
         recipients,
         request.payload.get("shuffleOutputs") == Some(&json!(true)),
+        fixture_id == "bip352-labels",
     ) {
         Ok((signed, finalized, transaction)) => {
             let scripts = signed
@@ -208,6 +209,7 @@ fn complete(
     reverse: bool,
     recipients: usize,
     shuffle: bool,
+    labeled: bool,
 ) -> Result<(Psbt, Psbt, Transaction), &'static str> {
     let mut keys = keys()?;
     validate(&psbt, &keys, recipients)?;
@@ -226,11 +228,22 @@ fn complete(
             })
             .map_err(|_| "Invalid scan key")?,
         );
-        let spend = if bob {
+        let mut spend = if bob {
             PublicKey::from_str(SCALAR_TWO_PUBLIC_KEY).map_err(|_| "Invalid spend key")?
         } else {
             fixture_key()?.1
         };
+        if labeled {
+            let mut scan_secret = [0; 32];
+            scan_secret[31] = 2;
+            spend.inner = spend
+                .inner
+                .add_exp_tweak(
+                    &Secp256k1::new(),
+                    &silent_payment_receiver::label_tweak(scan_secret, 1)?,
+                )
+                .map_err(|_| "Invalid labeled spend key")?;
+        }
         output.sp_v0_info =
             Some([scan.to_bytes().as_slice(), spend.to_bytes().as_slice()].concat());
         scans.insert(scan, ());

@@ -372,6 +372,7 @@ function createFixtureRpc(options: FakeRpcOptions = {}): {
   };
   const unspents = {
     [FIXTURE_DESCRIPTORS["p2wpkh-scalar2"]]: [
+      { txid: "b5".repeat(32), vout: 0, amount: "50.00000000", height: 23 },
       { txid: "b3".repeat(32), vout: 0, amount: "50.00000000", height: 21 },
       { txid: "b1".repeat(32), vout: 0, amount: "50.00000000", height: 19 },
       { txid: "af".repeat(32), vout: 0, amount: "50.00000000", height: 17 },
@@ -380,6 +381,7 @@ function createFixtureRpc(options: FakeRpcOptions = {}): {
       { txid: TXIDS.legacy, vout: 0, amount: "50.00000000", height: 13 },
     ],
     [FIXTURE_DESCRIPTORS.p2wpkh]: [
+      { txid: "b6".repeat(32), vout: 0, amount: "50.00000000", height: 24 },
       { txid: "b4".repeat(32), vout: 0, amount: "50.00000000", height: 22 },
       { txid: "b2".repeat(32), vout: 0, amount: "50.00000000", height: 20 },
       { txid: "b0".repeat(32), vout: 0, amount: "50.00000000", height: 18 },
@@ -938,9 +940,9 @@ describe("prepareFixtures", () => {
         const request = paramObject(call.params);
         return { version: request["version"], psbtVersion: request["psbt_version"] };
       });
-    expect(versions).toHaveLength(19);
+    expect(versions).toHaveLength(20);
     expect(versions).toEqual(
-      Array.from({ length: 19 }, () => ({ version: 2, psbtVersion: undefined })),
+      Array.from({ length: 20 }, () => ({ version: 2, psbtVersion: undefined })),
     );
   });
 
@@ -1211,6 +1213,7 @@ describe("prepareFixtures", () => {
       [FIXTURE_DESCRIPTORS.p2wpkh, FIXTURE_DESCRIPTORS["p2wpkh-scalar2"]],
       [FIXTURE_DESCRIPTORS.p2wpkh, FIXTURE_DESCRIPTORS["p2wpkh-scalar2"]],
       [FIXTURE_DESCRIPTORS.p2wpkh, FIXTURE_DESCRIPTORS["p2wpkh-scalar2"]],
+      [FIXTURE_DESCRIPTORS.p2wpkh, FIXTURE_DESCRIPTORS["p2wpkh-scalar2"]],
     ]);
     expect(calls.some((call) => call.method === "generatetoaddress")).toBe(false);
     expect(calls.some((call) => /broadcast|sendrawtransaction/i.test(call.method))).toBe(false);
@@ -1225,8 +1228,8 @@ describe("prepareFixtures", () => {
       calls
         .filter((call) => call.method === "generatetoaddress")
         .map((call) => paramObject(call.params)["nblocks"]),
-    ).toEqual([1, 8, 3, 1, 1, 4, 1, 4, 1, 1, 1, 100]);
-    expect(fixtures.core.blocks).toBe(626);
+    ).toEqual([1, 9, 4, 1, 1, 4, 1, 4, 1, 1, 1, 100]);
+    expect(fixtures.core.blocks).toBe(628);
     for (const fixture of [
       fixtures.happy,
       fixtures.regression,

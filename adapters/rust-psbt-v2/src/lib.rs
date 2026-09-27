@@ -38,7 +38,7 @@ const MAX_MAP_COUNT: usize = 4096;
 const MAX_MAP_ENTRIES: usize = 16_384;
 const MAX_COMMITMENTS_BYTES: usize = 4 * 1024;
 const SOURCE_REVISION: &str = "rust-psbt/psbt-v2-0.3.0@8ca657c333b6b391f2501e8b31627ccbb6a67f66";
-const ALLOWED_FIXTURES: [&str; 7] = [
+const ALLOWED_FIXTURES: [&str; 8] = [
     "p2wpkh",
     "intent-rich-p2wpkh",
     "p2wsh-2-of-3",
@@ -46,6 +46,7 @@ const ALLOWED_FIXTURES: [&str; 7] = [
     "bip375-multi",
     "bip352-multi-output",
     "bip352-multi-receiver",
+    "bip352-labels",
 ];
 const SCALAR_ONE_WIF: &str = "cMahea7zqjxrtgAbB7LSGbcQUr1uX1ojuat9jZodMN87JcbXMTcA";
 const SCALAR_TWO_PUBLIC_KEY: &str =
@@ -2520,7 +2521,7 @@ pub fn handle_value_with_commitments(
                     "bip375-advanced-sender-workflows",
                     "bip376-spend-workflow",
                     "bip352-receiver-discovery",
-                    "bip352-multi-output-lifecycle", "bip352-spdk-wallet-interop", "bip352-multi-receiver"
+                    "bip352-multi-output-lifecycle", "bip352-spdk-wallet-interop", "bip352-multi-receiver", "bip352-labels"
                 ]
             }),
         ),
@@ -2542,7 +2543,12 @@ pub fn handle_value_with_commitments(
         "silent-payment-send"
             if matches!(
                 payload_string(&request.payload, "fixtureId"),
-                Some("bip375-multi" | "bip352-multi-output" | "bip352-multi-receiver")
+                Some(
+                    "bip375-multi"
+                        | "bip352-multi-output"
+                        | "bip352-multi-receiver"
+                        | "bip352-labels"
+                )
             ) =>
         {
             silent_payment_multi::send(&request, digest, commitments)
@@ -2557,7 +2563,12 @@ pub fn handle_value_with_commitments(
         "silent-payment-spend"
             if matches!(
                 payload_string(&request.payload, "fixtureId"),
-                Some("bip375-multi" | "bip352-multi-output" | "bip352-multi-receiver")
+                Some(
+                    "bip375-multi"
+                        | "bip352-multi-output"
+                        | "bip352-multi-receiver"
+                        | "bip352-labels"
+                )
             ) =>
         {
             silent_payment_receiver::spend(&request, digest, commitments)

@@ -1,3 +1,4 @@
+import { secp256k1 } from "@noble/curves/secp256k1.js";
 import { FIXTURE_PUBLIC_KEYS } from "../core/fixture-profiles.js";
 import type { PsbtFixture } from "../core/fixtures.js";
 import { diffPsbtDocuments } from "../psbt/diff.js";
@@ -6,7 +7,11 @@ import { applyPsbtMutations, type PsbtMutationRecipe } from "../psbt/mutation.js
 import { MULTI_KEYS, verifyMultiSender, verifyMultiWitnesses } from "./bip375-multi-verify.js";
 import type { ScenarioExecutionContext } from "./context.js";
 import type { ScenarioAssertionEvidence, ScenarioDefinition } from "./definition.js";
-import { createReceiverPsbt, discoverReceiverOutputs } from "./silent-payment-receiver.js";
+import {
+  createReceiverPsbt,
+  discoverReceiverOutputs,
+  receiverLabelTweak,
+} from "./silent-payment-receiver.js";
 
 const SINGLE_ID = "bip352-sender-receiver-lifecycle-rust-psbt-v2";
 const RUST = "rust-psbt-v2",
@@ -15,20 +20,23 @@ export function createSilentPaymentLifecycleScenario(
   fixture: PsbtFixture,
   receiver: "native" | "spdk" = "native",
 ): ScenarioDefinition<ScenarioExecutionContext> {
+  const labeled = fixture.id === "bip352-labels";
   const multiReceiver = fixture.id === "bip352-multi-receiver";
-  const multiOutput = multiReceiver || fixture.id === "bip352-multi-output";
+  const multiOutput = labeled || multiReceiver || fixture.id === "bip352-multi-output";
   const count = multiOutput ? 2 : 1;
   const spdk = receiver === "spdk";
-  const ID = multiReceiver
-    ? "bip352-multi-receiver-spdk"
-    : spdk
-      ? "bip352-spdk-wallet-interop"
-      : multiOutput
-        ? "bip352-multi-output-lifecycle-rust-psbt-v2"
-        : SINGLE_ID;
+  const ID = labeled
+    ? "bip352-labels-spdk"
+    : multiReceiver
+      ? "bip352-multi-receiver-spdk"
+      : spdk
+        ? "bip352-spdk-wallet-interop"
+        : multiOutput
+          ? "bip352-multi-output-lifecycle-rust-psbt-v2"
+          : SINGLE_ID;
   if (
     (spdk && !multiOutput) ||
-    (multiReceiver && !spdk) ||
+    ((multiReceiver || labeled) && !spdk) ||
     (!multiOutput && fixture.id !== "bip375-multi") ||
     fixture.psbtVersion !== 0 ||
     fixture.inputCount !== 2 ||
@@ -37,13 +45,15 @@ export function createSilentPaymentLifecycleScenario(
     throw new TypeError("Lifecycle requires the two-key funded fixture");
   return {
     id: ID,
-    title: multiReceiver
-      ? "Independent Silent Payment receiver ownership and spending"
-      : spdk
-        ? "Independent SPDK wallet discovery and combined spend"
-        : multiOutput
-          ? "Two-output Silent Payment discovery and combined receiver spend"
-          : "Funded Silent Payment discovery and receiver spend",
+    title: labeled
+      ? "Labeled Silent Payment discovery and SPDK spend"
+      : multiReceiver
+        ? "Independent Silent Payment receiver ownership and spending"
+        : spdk
+          ? "Independent SPDK wallet discovery and combined spend"
+          : multiOutput
+            ? "Two-output Silent Payment discovery and combined receiver spend"
+            : "Funded Silent Payment discovery and receiver spend",
     category: "silent-payment-interop",
     summary:
       "Discover recipient outputs from public sender inputs, spend the exact outputs, and require Core acceptance of each parent/child package without broadcasting.",
@@ -77,6 +87,7 @@ export function createSilentPaymentLifecycleScenario(
           "fixture-commitment-sha256",
           ...(spdk ? ["bip352-spdk-wallet-interop"] : []),
           ...(multiReceiver ? ["bip352-multi-receiver"] : []),
+          ...(labeled ? ["bip352-labels"] : []),
         ],
       },
     ],
@@ -129,7 +140,7 @@ export function createSilentPaymentLifecycleScenario(
         const parentId = context.outputString(sender, "transactionId", "silent-payment-send");
         record(
           "sender-derivation",
-          verifyMultiSender(template, parentSigned, "per-input", false, shuffleOutputs),
+          verifyMultiSender(template, parentSigned, "per-input", false, shuffleOutputs, labeled),
           "Verify sender proofs, input aggregation, recipient derivation, amounts and change independently",
         );
         record(
@@ -161,7 +172,7 @@ export function createSilentPaymentLifecycleScenario(
           "Core must accept the funded parent and confirm its transaction ID",
         );
         if (assertions.some((a) => !a.passed)) return failed();
-        const discovered = discoverReceiverOutputs(parent, scan, spendKey);
+        const discovered = discoverReceiverOutputs(parent, scan, spendKey, labeled ? 1 : undefined);
         record(
           "receiver-discovery",
           discovered.length === count && (multiOutput || discovered[0]?.index === 0),
@@ -169,14 +180,23 @@ export function createSilentPaymentLifecycleScenario(
         );
         record(
           "wrong-receiver",
-          discoverReceiverOutputs(parent, 4n, spendKey).length === 0 &&
+          discoverReceiverOutputs(parent, 4n, spendKey, labeled ? 1 : undefined).length === 0 &&
             discoverReceiverOutputs(
               parent,
               scan,
               receiverIndex === 0 ? MULTI_KEYS[1] : MULTI_KEYS[0],
+              labeled ? 1 : undefined,
             ).length === 0,
           "Wrong receiver scan or spend keys must not discover an output",
         );
+        if (labeled)
+          record(
+            "wrong-label-discovery",
+            [undefined, 0, 2].every(
+              (label) => discoverReceiverOutputs(parent, scan, spendKey, label).length === 0,
+            ),
+            "Missing, change and incorrect labels must not discover label 1 payments",
+          );
         if (discovered.length !== count || assertions.some((a) => !a.passed)) return failed();
         const child = createReceiverPsbt(
           parentId,
@@ -379,6 +399,30 @@ export function createSilentPaymentLifecycleScenario(
             ],
           ]);
         }
+        if (labeled) {
+          const first = discovered[0];
+          if (!first) return failed();
+          const order = secp256k1.Point.Fn.ORDER;
+          const base =
+            (BigInt(`0x${first.tweakHex}`) - receiverLabelTweak(scan, 1) + order) % order;
+          for (const [name, extra] of [
+            ["missing-label", 0n],
+            ["wrong-label", receiverLabelTweak(scan, 2)],
+            ["double-label", 2n * receiverLabelTweak(scan, 1)],
+          ] as const) {
+            canaries.push([
+              name,
+              [
+                {
+                  kind: "replace-value",
+                  location: { kind: "input", index: 0 },
+                  keyType: 0x20,
+                  valueHex: ((base + extra) % order).toString(16).padStart(64, "0"),
+                },
+              ],
+            ]);
+          }
+        }
         for (const [name, recipes] of canaries) {
           const response = await context.request(RUST, "silent-payment-spend", {
             ...payload,
@@ -387,7 +431,8 @@ export function createSilentPaymentLifecycleScenario(
           record(
             name,
             response.status === "rejected" &&
-              response.error.class === "silent_payment.receiver_link_invalid",
+              response.error.class === "silent_payment.receiver_link_invalid" &&
+              !("output" in response),
             "Reject a receiver spend that no longer matches the independently discovered payment",
           );
         }

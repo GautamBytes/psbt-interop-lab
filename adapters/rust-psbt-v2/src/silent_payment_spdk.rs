@@ -21,6 +21,7 @@ fn discover(
     parent: &Psbt,
     scan_scalar: u8,
     spend_scalar: u8,
+    label_index: Option<u32>,
 ) -> Result<Vec<(OutPoint, DiscoveredOutput)>, &'static str> {
     let tx = Extractor::new(native_extractable_psbt(parent.clone()))
         .map_err(|_| "Parent is not finalized")?
@@ -55,7 +56,7 @@ fn discover(
         .map_err(|_| "SPDK input aggregation failed")?;
     let scan = key(scan_scalar)?;
     let spend = key(spend_scalar)?.public_key(&Secp256k1::new());
-    let receiver = Receiver::new(
+    let mut receiver = Receiver::new(
         SpVersion::ZERO,
         scan.public_key(&Secp256k1::new()),
         spend,
@@ -63,6 +64,12 @@ fn discover(
         spdk_wallet::silentpayments::Network::Regtest,
     )
     .map_err(|_| "Cannot create SPDK receiver")?;
+    let expected_label = label_index.map(|index| Label::new(scan, index));
+    if let Some(label) = &expected_label {
+        receiver
+            .add_label(label.clone())
+            .map_err(|_| "Invalid SPDK label")?;
+    }
     let outputs = tx
         .output
         .iter()
@@ -76,8 +83,8 @@ fn discover(
     let txid = tx.compute_txid();
     let mut discovered = Vec::new();
     for (label, matches) in matches {
-        if label.is_some() {
-            return Err("Labeled outputs are outside this fixture");
+        if label != expected_label {
+            return Err("Discovered label differs from the fixed fixture");
         }
         for (output_key, tweak) in matches {
             let script = ScriptBuf::new_p2tr_tweaked(output_key.dangerous_assume_tweaked());
@@ -97,7 +104,7 @@ fn discover(
                     tweak,
                     value: output.value,
                     script_pubkey: script,
-                    label: None,
+                    label: label.clone(),
                 },
             ));
         }
@@ -111,9 +118,10 @@ pub(super) fn spend(
     mut child: Psbt,
     scan_scalar: u8,
     spend_scalar: u8,
+    label_index: Option<u32>,
 ) -> Result<(Psbt, Psbt, Transaction, Vec<String>), SilentPaymentSpendError> {
     let fail = |message| SilentPaymentSpendError::new("silent_payment.spdk_invalid", message);
-    let found = discover(parent, scan_scalar, spend_scalar).map_err(fail)?;
+    let found = discover(parent, scan_scalar, spend_scalar, label_index).map_err(fail)?;
     if found.len() != child.inputs.len() || found.is_empty() {
         return Err(fail(
             "SPDK must discover exactly the selected receiver outputs",
@@ -201,13 +209,33 @@ mod tests {
             let parent = parse_psbt(variant["output"]["finalizedPsbt"].as_str().unwrap())
                 .unwrap()
                 .psbt;
-            let found = discover(&parent, 2, 1).unwrap();
+            let found = discover(&parent, 2, 1, None).unwrap();
             assert_eq!(found.len(), 2);
-            assert!(discover(&parent, 3, 1).unwrap().is_empty());
+            assert!(discover(&parent, 3, 1, None).unwrap().is_empty());
             assert_eq!(
                 found.iter().map(|(_, o)| o.value.to_sat()).sum::<u64>(),
                 128_000
             );
+        }
+    }
+    #[test]
+    fn only_the_registered_label_discovers_both_payments() {
+        let f: Value = serde_json::from_str(include_str!("../tests/fixtures/labels.json")).unwrap();
+        for v in f["variants"].as_array().unwrap() {
+            let parent = parse_psbt(v["output"]["finalizedPsbt"].as_str().unwrap())
+                .unwrap()
+                .psbt;
+            for label in [None, Some(0), Some(2)] {
+                assert!(discover(&parent, 2, 1, label).unwrap().is_empty());
+            }
+            let found = discover(&parent, 2, 1, Some(1)).unwrap();
+            assert_eq!(found.len(), 2);
+            assert!(
+                found
+                    .iter()
+                    .all(|(_, output)| output.label == Some(Label::new(key(2).unwrap(), 1)))
+            );
+            assert!(discover(&parent, 3, 1, Some(1)).unwrap().is_empty());
         }
     }
 }

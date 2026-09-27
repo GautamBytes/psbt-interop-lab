@@ -16,6 +16,7 @@ COPY tests/silent_payment_multi.rs tests/silent_payment_multi.rs
 COPY tests/silent_payment_receiver.rs tests/silent_payment_receiver.rs
 COPY tests/silent_payment_multi_output.rs tests/silent_payment_multi_output.rs
 COPY tests/silent_payment_multi_receiver.rs tests/silent_payment_multi_receiver.rs
+COPY tests/silent_payment_labels.rs tests/silent_payment_labels.rs
 COPY tests/fixtures tests/fixtures
 RUN cargo fmt --check \
     && cargo clippy --locked --all-targets -- -D warnings \

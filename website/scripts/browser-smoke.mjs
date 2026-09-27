@@ -117,6 +117,9 @@ try {
   await page.getByRole("button", { name: /SPDK wallet/i }).click();
   await page.getByRole("heading", { name: "Independent Silent Payment wallet handoff" }).waitFor();
   await page.getByText("46 assertions and 12 replayable checkpoints", { exact: true }).waitFor();
+  await page.getByRole("button", { name: /Labels/i }).click();
+  await page.getByRole("heading", { name: "Labeled payments, verified spends" }).waitFor();
+  await page.getByText("54 assertions and 12 replayable checkpoints", { exact: true }).waitFor();
   await page.getByRole("button", { name: /Two receivers/i }).click();
   await page.getByRole("heading", { name: "Two receivers, separate spends" }).waitFor();
   await page
@@ -129,6 +132,9 @@ try {
   await page.getByRole("heading", { name: "Two payments, one receiver spend" }).waitFor();
   await page.getByRole("button", { name: /SPDK wallet/i }).click();
   await page.getByRole("heading", { name: "Independent Silent Payment wallet handoff" }).waitFor();
+  await page.getByRole("button", { name: /Labels/i }).click();
+  await page.getByRole("heading", { name: "Labeled payments, verified spends" }).waitFor();
+  await page.getByText("54 assertions and 12 replayable checkpoints", { exact: true }).waitFor();
   await page.getByRole("button", { name: /Two receivers/i }).click();
   await page.getByRole("heading", { name: "Two receivers, separate spends" }).waitFor();
   const overflow = await page.evaluate(
@@ -138,7 +144,7 @@ try {
 
   if (browserErrors.length > 0) throw new Error(browserErrors.join("\n"));
   console.log(
-    "Browser smoke passed: CSP, theme bootstrap, Mermaid, proof images, and funded sender, receiver lifecycle, SPDK wallet and separate receivers on desktop/mobile.",
+    "Browser smoke passed: CSP, theme bootstrap, Mermaid, proof images, and funded sender, receiver lifecycle, SPDK wallet, labels and separate receivers on desktop/mobile.",
   );
 } finally {
   await browser.close();

@@ -1,6 +1,7 @@
 use super::*;
 
 pub(super) fn spend(request: &Request, digest: &str, commitments: &FixtureCommitments) -> Value {
+    let labeled = payload_string(&request.payload, "fixtureId") == Some("bip352-labels");
     let multi_receiver =
         payload_string(&request.payload, "fixtureId") == Some("bip352-multi-receiver");
     let receiver = match (
@@ -21,7 +22,9 @@ pub(super) fn spend(request: &Request, digest: &str, commitments: &FixtureCommit
     };
     let count = if multi_receiver {
         2 - receiver
-    } else if payload_string(&request.payload, "fixtureId") == Some("bip352-multi-output") {
+    } else if payload_string(&request.payload, "fixtureId") == Some("bip352-multi-output")
+        || labeled
+    {
         2
     } else {
         1
@@ -50,7 +53,7 @@ pub(super) fn spend(request: &Request, digest: &str, commitments: &FixtureCommit
         &["psbt", "parentPsbt", "templatePsbt", "network", "fixtureId"]
     };
     if !exact_fields(&request.payload, fields)
-        || (multi_receiver && !spdk)
+        || ((multi_receiver || labeled) && !spdk)
         || (spdk && !multi_receiver && count != 2)
     {
         return failure(
@@ -87,7 +90,9 @@ pub(super) fn spend(request: &Request, digest: &str, commitments: &FixtureCommit
         request,
         digest,
         commitments,
-        if multi_receiver {
+        if labeled {
+            "bip352-labels"
+        } else if multi_receiver {
             "bip352-multi-receiver"
         } else if count == 2 {
             "bip352-multi-output"
@@ -105,6 +110,7 @@ pub(super) fn spend(request: &Request, digest: &str, commitments: &FixtureCommit
         count,
         multi_receiver,
         receiver,
+        labeled,
     ) {
         return failure(
             &request.id,
@@ -120,6 +126,7 @@ pub(super) fn spend(request: &Request, digest: &str, commitments: &FixtureCommit
             child.psbt,
             (receiver + 2) as u8,
             (receiver + 1) as u8,
+            labeled.then_some(1),
         )
     } else {
         complete_silent_payment_spend(child.psbt, count)
@@ -153,6 +160,7 @@ fn validate_link(
     count: usize,
     multi_receiver: bool,
     receiver: usize,
+    labeled: bool,
 ) -> Result<(), &'static str> {
     let recipients = if multi_receiver { 3 } else { count };
     if template.inputs.len() != 2
@@ -259,7 +267,7 @@ fn validate_link(
     if normalized != original {
         return Err("Parent differs from the authorized sender template");
     }
-    let discovered = discover_tweaks(&parent_tx, count, receiver)?;
+    let discovered = discover_tweaks(&parent_tx, count, receiver, labeled)?;
     let mut total_received = 0_u64;
     for (input, (index, tweak)) in child.inputs.iter().zip(&discovered) {
         total_received = total_received
@@ -335,6 +343,7 @@ fn discover_tweaks(
     parent: &Transaction,
     count: usize,
     receiver: usize,
+    labeled: bool,
 ) -> Result<Vec<(usize, [u8; 32])>, &'static str> {
     let mut keys = Vec::new();
     let mut outpoints = Vec::new();
@@ -371,8 +380,14 @@ fn discover_tweaks(
             "BIP0352/SharedSecret",
             &[shared.serialize().as_slice(), &(k as u32).to_be_bytes()].concat(),
         );
-        let tweak_secret =
+        let mut tweak_secret =
             SecretKey::from_slice(&tweak).map_err(|_| "Invalid receiver output tweak")?;
+        if labeled {
+            tweak_secret = tweak_secret
+                .add_tweak(&label_tweak(scan, 1)?)
+                .map_err(|_| "Invalid combined label tweak")?;
+        }
+        let tweak = tweak_secret.secret_bytes();
         let spend = SecpPublicKey::from_str(if receiver == 1 {
             SCALAR_TWO_PUBLIC_KEY
         } else {
@@ -397,4 +412,12 @@ fn discover_tweaks(
         found.push((matches[0], tweak));
     }
     Ok(found)
+}
+
+// Fixed regtest receiver labels; never supplied by the signing request.
+pub(super) fn label_tweak(scan: [u8; 32], index: u32) -> Result<Scalar, &'static str> {
+    scalar_from_hash(tagged_hash(
+        "BIP0352/Label",
+        &[scan.as_slice(), &index.to_be_bytes()].concat(),
+    ))
 }

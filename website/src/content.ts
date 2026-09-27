@@ -512,6 +512,37 @@ export const reportScenarios: ReportScenario[] = [
     commandLabel: "Run from source",
   },
   {
+    id: "silent-payment-labels",
+    shortLabel: "Labels",
+    title: "Labeled payments, verified spends",
+    status: "supported",
+    statusLabel: "Source checkout · unreleased",
+    handoff: "Funded sender -> label 1 discovery -> SPDK spend -> libwally -> Core",
+    summary:
+      "Two payments to one labeled address are independently discovered and spent in both output layouts. Missing, incorrect and double-applied label tweaks are rejected before signing.",
+    implementations: ["Bitcoin Core", "rust-psbt PSBTv2", "libwally"],
+    evidence: [
+      {
+        field: "Label discovery and spending",
+        expected: "label 1, two outputs, combined BIP376 tweaks and one authorized destination",
+        actual: "54 assertions and 12 replayable checkpoints",
+        implementation: "TypeScript / native Rust / pinned SPDK / libwally / Core 31.1",
+        nextStep:
+          "Both parent/child packages must pass Core policy without broadcasting. Missing, change and wrong labels must find no payments.",
+      },
+      {
+        field: "Evidence boundary",
+        expected: "one fixed regtest label with public test keys",
+        actual: "source-only coverage; published v0.10.1 is unchanged",
+        implementation: "PSBT Interop Lab",
+        nextStep:
+          "Labels distinguish payments within one wallet, not separate private identities. Mixed-label transactions, label recovery and chain scanning remain outside this fixture.",
+      },
+    ],
+    replay: "node dist/cli.js run --scenario bip352-labels-spdk",
+    commandLabel: "Run from source",
+  },
+  {
     id: "silent-payment-multi-receiver",
     shortLabel: "Two receivers",
     title: "Two receivers, separate spends",
