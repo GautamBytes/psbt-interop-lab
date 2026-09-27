@@ -1,3 +1,4 @@
+import { FIXTURE_PUBLIC_KEYS } from "../core/fixture-profiles.js";
 import type { PsbtFixture } from "../core/fixtures.js";
 import { diffPsbtDocuments } from "../psbt/diff.js";
 import { type PsbtDocument, parsePsbtDocument } from "../psbt/document.js";
@@ -14,29 +15,35 @@ export function createSilentPaymentLifecycleScenario(
   fixture: PsbtFixture,
   receiver: "native" | "spdk" = "native",
 ): ScenarioDefinition<ScenarioExecutionContext> {
-  const multiOutput = fixture.id === "bip352-multi-output";
+  const multiReceiver = fixture.id === "bip352-multi-receiver";
+  const multiOutput = multiReceiver || fixture.id === "bip352-multi-output";
   const count = multiOutput ? 2 : 1;
   const spdk = receiver === "spdk";
-  const ID = spdk
-    ? "bip352-spdk-wallet-interop"
-    : multiOutput
-      ? "bip352-multi-output-lifecycle-rust-psbt-v2"
-      : SINGLE_ID;
+  const ID = multiReceiver
+    ? "bip352-multi-receiver-spdk"
+    : spdk
+      ? "bip352-spdk-wallet-interop"
+      : multiOutput
+        ? "bip352-multi-output-lifecycle-rust-psbt-v2"
+        : SINGLE_ID;
   if (
     (spdk && !multiOutput) ||
+    (multiReceiver && !spdk) ||
     (!multiOutput && fixture.id !== "bip375-multi") ||
     fixture.psbtVersion !== 0 ||
     fixture.inputCount !== 2 ||
-    fixture.outputCount !== count + 1
+    fixture.outputCount !== (multiReceiver ? 4 : count + 1)
   )
     throw new TypeError("Lifecycle requires the two-key funded fixture");
   return {
     id: ID,
-    title: spdk
-      ? "Independent SPDK wallet discovery and combined spend"
-      : multiOutput
-        ? "Two-output Silent Payment discovery and combined receiver spend"
-        : "Funded Silent Payment discovery and receiver spend",
+    title: multiReceiver
+      ? "Independent Silent Payment receiver ownership and spending"
+      : spdk
+        ? "Independent SPDK wallet discovery and combined spend"
+        : multiOutput
+          ? "Two-output Silent Payment discovery and combined receiver spend"
+          : "Funded Silent Payment discovery and receiver spend",
     category: "silent-payment-interop",
     summary:
       "Discover recipient outputs from public sender inputs, spend the exact outputs, and require Core acceptance of each parent/child package without broadcasting.",
@@ -69,12 +76,19 @@ export function createSilentPaymentLifecycleScenario(
           "bip352-receiver-discovery",
           "fixture-commitment-sha256",
           ...(spdk ? ["bip352-spdk-wallet-interop"] : []),
+          ...(multiReceiver ? ["bip352-multi-receiver"] : []),
         ],
       },
     ],
     async run(context) {
-      const runVariant = async (shuffleOutputs: boolean) => {
-        const prefix = multiOutput ? (shuffleOutputs ? "shuffled-" : "ordered-") : "";
+      const runVariant = async (shuffleOutputs: boolean, receiverIndex: 0 | 1 = 0) => {
+        const count = multiReceiver ? 2 - receiverIndex : multiOutput ? 2 : 1;
+        const spendKey =
+          receiverIndex === 1 ? FIXTURE_PUBLIC_KEYS.scalar2 : FIXTURE_PUBLIC_KEYS.scalar1;
+        const scan = BigInt(2 + receiverIndex);
+        const prefix =
+          (multiOutput ? (shuffleOutputs ? "shuffled-" : "ordered-") : "") +
+          (multiReceiver ? `${receiverIndex === 0 ? "alice" : "bob"}-` : "");
         const checkpoint = (stage: string, psbt: string) =>
           context.checkpoint(ID, `${prefix}${stage}`, psbt);
         const assertions: ScenarioAssertionEvidence[] = [];
@@ -84,6 +98,8 @@ export function createSilentPaymentLifecycleScenario(
           summary: "The linked sender/receiver lifecycle failed a required check.",
           assertions,
           policyAccepted: false,
+          parentId: "",
+          ownedOutpoints: [] as number[],
         });
         const conversion = await context.request(WALLY, "convert", {
           psbt: fixture.initialPsbt,
@@ -145,7 +161,7 @@ export function createSilentPaymentLifecycleScenario(
           "Core must accept the funded parent and confirm its transaction ID",
         );
         if (assertions.some((a) => !a.passed)) return failed();
-        const discovered = discoverReceiverOutputs(parent);
+        const discovered = discoverReceiverOutputs(parent, scan, spendKey);
         record(
           "receiver-discovery",
           discovered.length === count && (multiOutput || discovered[0]?.index === 0),
@@ -153,12 +169,20 @@ export function createSilentPaymentLifecycleScenario(
         );
         record(
           "wrong-receiver",
-          discoverReceiverOutputs(parent, 3n).length === 0 &&
-            discoverReceiverOutputs(parent, 2n, MULTI_KEYS[1]).length === 0,
+          discoverReceiverOutputs(parent, 4n, spendKey).length === 0 &&
+            discoverReceiverOutputs(
+              parent,
+              scan,
+              receiverIndex === 0 ? MULTI_KEYS[1] : MULTI_KEYS[0],
+            ).length === 0,
           "Wrong receiver scan or spend keys must not discover an output",
         );
         if (discovered.length !== count || assertions.some((a) => !a.passed)) return failed();
-        const child = createReceiverPsbt(parentId, discovered);
+        const child = createReceiverPsbt(
+          parentId,
+          discovered,
+          multiReceiver ? receiverIndex : undefined,
+        );
         await checkpoint("receiver-discovered", child);
         const payload = {
           psbt: child,
@@ -167,6 +191,7 @@ export function createSilentPaymentLifecycleScenario(
           network: "regtest",
           fixtureId: fixture.id,
           ...(spdk ? { receiver: "spdk" } : {}),
+          ...(multiReceiver ? { receiverId: receiverIndex === 0 ? "alice" : "bob" } : {}),
         };
         const receiver = await context.request(RUST, "silent-payment-spend", payload);
         if (spdk)
@@ -273,7 +298,13 @@ export function createSilentPaymentLifecycleScenario(
                 kind: "replace-value",
                 location: { kind: "input", index: 0 },
                 keyType: 15,
-                valueHex: multiOutput ? (shuffleOutputs ? "00000000" : "02000000") : "01000000",
+                valueHex: multiOutput
+                  ? shuffleOutputs
+                    ? "00000000"
+                    : multiReceiver
+                      ? "03000000"
+                      : "02000000"
+                  : "01000000",
               },
             ],
           ],
@@ -300,7 +331,7 @@ export function createSilentPaymentLifecycleScenario(
             ],
           ],
         ];
-        if (multiOutput) {
+        if (count === 2) {
           const first = discovered[0],
             second = discovered[1];
           if (!first || !second) return failed();
@@ -360,6 +391,40 @@ export function createSilentPaymentLifecycleScenario(
             "Reject a receiver spend that no longer matches the independently discovered payment",
           );
         }
+        if (multiReceiver) {
+          const other = discoverReceiverOutputs(
+            parent,
+            receiverIndex === 0 ? 3n : 2n,
+            receiverIndex === 0 ? MULTI_KEYS[1] : MULTI_KEYS[0],
+          );
+          const foreign = other[0];
+          if (!foreign) return failed();
+          const mixed = createReceiverPsbt(
+            parentId,
+            [foreign, ...discovered.slice(1)],
+            receiverIndex,
+          );
+          const mixedOwner = await context.request(RUST, "silent-payment-spend", {
+            ...payload,
+            psbt: mixed,
+          });
+          record(
+            "foreign-input-rejected",
+            mixedOwner.status === "rejected" &&
+              mixedOwner.error.class === "silent_payment.receiver_link_invalid",
+            "Reject a foreign outpoint even when input count, recipient and total value are unchanged",
+          );
+          const wrongOwner = await context.request(RUST, "silent-payment-spend", {
+            ...payload,
+            receiverId: receiverIndex === 0 ? "bob" : "alice",
+          });
+          record(
+            "other-receiver-rejected",
+            wrongOwner.status === "rejected" &&
+              wrongOwner.error.class === "silent_payment.receiver_link_invalid",
+            "Another receiver must not authorize these outpoints or receive a signature",
+          );
+        }
         const mainnet = await context.request(RUST, "silent-payment-spend", {
           ...payload,
           network: "mainnet",
@@ -376,18 +441,41 @@ export function createSilentPaymentLifecycleScenario(
           assertions,
           policyAccepted: accepted,
           transactionId: childId,
+          parentId,
+          ownedOutpoints: discovered.map((o) => o.index),
         };
       };
       if (!multiOutput) return runVariant(false);
       const results = [];
-      for (const shuffled of [false, true]) results.push(await runVariant(shuffled));
+      for (const shuffled of [false, true]) {
+        results.push(await runVariant(shuffled));
+        if (multiReceiver) results.push(await runVariant(shuffled, 1));
+      }
       const assertions = results.flatMap((result) => result.assertions);
+      if (multiReceiver) {
+        for (const [index, [a, b]] of [
+          [results[0], results[1]],
+          [results[2], results[3]],
+        ].entries()) {
+          assertions.push({
+            name: `receiver-isolation-${index === 0 ? "ordered" : "shuffled"}`,
+            passed:
+              !!a &&
+              !!b &&
+              a.parentId === b.parentId &&
+              new Set([...a.ownedOutpoints, ...b.ownedOutpoints]).size === 3,
+            summary: "Alice and Bob spend disjoint outputs from the exact same parent",
+          });
+        }
+      }
       return {
         summary: assertions.every((a) => a.passed)
-          ? spdk
-            ? "SPDK independently discovers and signs both output layouts; libwally extraction and Core parent/child policy pass without broadcasting."
-            : "Both output layouts independently discover and spend two recipient outputs, preserve change and pass Core package policy without broadcasting."
-          : "A two-output lifecycle requirement failed.",
+          ? multiReceiver
+            ? "Two independent receivers discover and spend only their own outputs in both layouts; SPDK, libwally and Core policy agree."
+            : spdk
+              ? "SPDK independently discovers and signs both output layouts; libwally extraction and Core parent/child policy pass without broadcasting."
+              : "Both output layouts independently discover and spend two recipient outputs, preserve change and pass Core package policy without broadcasting."
+          : "A Silent Payment lifecycle requirement failed.",
         assertions,
         policyAccepted: results.every((result) => result.policyAccepted),
       };

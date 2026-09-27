@@ -512,6 +512,45 @@ export const reportScenarios: ReportScenario[] = [
     commandLabel: "Run from source",
   },
   {
+    id: "silent-payment-multi-receiver",
+    shortLabel: "Two receivers",
+    title: "Two receivers, separate spends",
+    status: "supported",
+    statusLabel: "Source checkout · unreleased",
+    handoff: "Funded sender -> Alice and Bob -> SPDK -> libwally -> Core package policy",
+    summary:
+      "One transaction pays Alice twice and Bob once, with ordinary change. Each receiver independently discovers and spends only their own outputs in both ordered and shuffled layouts.",
+    implementations: ["Bitcoin Core", "rust-psbt PSBTv2", "libwally"],
+    evidence: [
+      {
+        field: "Independent receiver ownership",
+        expected: "two payments to Alice, one to Bob, disjoint outpoints on the same parent",
+        actual: "TypeScript, native Rust and pinned SPDK independently discover each payment",
+        implementation: "PSBT Interop Lab / SPDK receiver / SpClient",
+        nextStep:
+          "Cross-receiver requests and foreign inputs with unchanged count and value must be rejected before signing.",
+      },
+      {
+        field: "Separate receiver spends",
+        expected: "each child preserves its receiver's value minus a 10,000-sat fee",
+        actual: "four parent/child packages and 24 replayable checkpoints",
+        implementation: "SPDK / libwally / Bitcoin Core 31.1",
+        nextStep:
+          "Alice spends two outputs together; Bob spends one. libwally extracts every transaction and Core must accept each linked package without broadcasting.",
+      },
+      {
+        field: "Evidence boundary",
+        expected: "two fixed regtest receiver identities and public test keys",
+        actual: "source-only coverage; published v0.10.1 is unchanged",
+        implementation: "PSBT Interop Lab",
+        nextStep:
+          "Build from source. Labels, chain synchronization and wallet-app integration remain outside this fixture's scope.",
+      },
+    ],
+    replay: "node dist/cli.js run --scenario bip352-multi-receiver-spdk",
+    commandLabel: "Run from source",
+  },
+  {
     id: "hwi",
     shortLabel: "HWI simulator",
     title: "Simulator-backed hardware signing handoff",

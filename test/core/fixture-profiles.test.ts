@@ -31,6 +31,7 @@ describe("fixture profile definitions", () => {
       "sighash-p2tr-keypath",
       "bip375-multi",
       "bip352-multi-output",
+      "bip352-multi-receiver",
     ]);
   });
 
@@ -124,6 +125,12 @@ describe("fixture profile definitions", () => {
         scriptTypes: ["p2wpkh"],
         inputDescriptorIds: ["p2wpkh", "p2wpkh-scalar2"],
         outputDescriptorIds: ["p2wpkh", "p2pkh", "p2wpkh-scalar2"],
+      },
+      {
+        id: "bip352-multi-receiver",
+        scriptTypes: ["p2wpkh"],
+        inputDescriptorIds: ["p2wpkh", "p2wpkh-scalar2"],
+        outputDescriptorIds: ["p2wpkh", "p2pkh", "p2tr-silent-payment", "p2wpkh-scalar2"],
       },
     ]);
 

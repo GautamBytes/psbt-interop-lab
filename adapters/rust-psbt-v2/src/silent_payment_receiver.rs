@@ -1,13 +1,43 @@
 use super::*;
 
 pub(super) fn spend(request: &Request, digest: &str, commitments: &FixtureCommitments) -> Value {
-    let count = if payload_string(&request.payload, "fixtureId") == Some("bip352-multi-output") {
+    let multi_receiver =
+        payload_string(&request.payload, "fixtureId") == Some("bip352-multi-receiver");
+    let receiver = match (
+        multi_receiver,
+        payload_string(&request.payload, "receiverId"),
+    ) {
+        (true, Some("alice")) | (false, None) => 0,
+        (true, Some("bob")) => 1,
+        _ => {
+            return failure(
+                &request.id,
+                digest,
+                "rejected",
+                "protocol.invalid_payload",
+                "Expected a fixed receiver identity",
+            );
+        }
+    };
+    let count = if multi_receiver {
+        2 - receiver
+    } else if payload_string(&request.payload, "fixtureId") == Some("bip352-multi-output") {
         2
     } else {
         1
     };
     let spdk = payload_string(&request.payload, "receiver") == Some("spdk");
-    let fields: &[&str] = if spdk {
+    let fields: &[&str] = if multi_receiver {
+        &[
+            "psbt",
+            "parentPsbt",
+            "templatePsbt",
+            "network",
+            "fixtureId",
+            "receiver",
+            "receiverId",
+        ]
+    } else if spdk {
         &[
             "psbt",
             "parentPsbt",
@@ -19,13 +49,16 @@ pub(super) fn spend(request: &Request, digest: &str, commitments: &FixtureCommit
     } else {
         &["psbt", "parentPsbt", "templatePsbt", "network", "fixtureId"]
     };
-    if !exact_fields(&request.payload, fields) || (spdk && count != 2) {
+    if !exact_fields(&request.payload, fields)
+        || (multi_receiver && !spdk)
+        || (spdk && !multi_receiver && count != 2)
+    {
         return failure(
             &request.id,
             digest,
             "rejected",
             "protocol.invalid_payload",
-            "Expected committed receiver payload; SPDK supports only the two-output fixture",
+            "Expected committed receiver payload and supported SPDK fixture",
         );
     }
     if payload_string(&request.payload, "network") != Some("regtest") {
@@ -54,7 +87,9 @@ pub(super) fn spend(request: &Request, digest: &str, commitments: &FixtureCommit
         request,
         digest,
         commitments,
-        if count == 2 {
+        if multi_receiver {
+            "bip352-multi-receiver"
+        } else if count == 2 {
             "bip352-multi-output"
         } else {
             "bip375-multi"
@@ -63,7 +98,14 @@ pub(super) fn spend(request: &Request, digest: &str, commitments: &FixtureCommit
     ) {
         return response;
     }
-    if let Err(message) = validate_link(&template.psbt, &parent.psbt, &child.psbt, count) {
+    if let Err(message) = validate_link(
+        &template.psbt,
+        &parent.psbt,
+        &child.psbt,
+        count,
+        multi_receiver,
+        receiver,
+    ) {
         return failure(
             &request.id,
             digest,
@@ -73,7 +115,12 @@ pub(super) fn spend(request: &Request, digest: &str, commitments: &FixtureCommit
         );
     }
     let result = if spdk {
-        silent_payment_spdk::spend(&parent.psbt, child.psbt)
+        silent_payment_spdk::spend(
+            &parent.psbt,
+            child.psbt,
+            (receiver + 2) as u8,
+            (receiver + 1) as u8,
+        )
     } else {
         complete_silent_payment_spend(child.psbt, count)
     };
@@ -104,11 +151,14 @@ fn validate_link(
     parent: &Psbt,
     child: &Psbt,
     count: usize,
+    multi_receiver: bool,
+    receiver: usize,
 ) -> Result<(), &'static str> {
+    let recipients = if multi_receiver { 3 } else { count };
     if template.inputs.len() != 2
-        || template.outputs.len() != count + 1
+        || template.outputs.len() != recipients + 1
         || parent.inputs.len() != 2
-        || parent.outputs.len() != count + 1
+        || parent.outputs.len() != recipients + 1
         || child.inputs.len() != count
         || child.outputs.len() != 1
     {
@@ -149,9 +199,17 @@ fn validate_link(
             .ok_or("Funding overflow")?;
     }
     for (index, output) in template.outputs.iter().enumerate() {
-        let key = &public_keys[usize::from(index == count)];
-        let script = if count == 2 && index == 1 {
+        let key = &public_keys[usize::from(index == recipients)];
+        let script = if recipients > 1 && index == 1 {
             ScriptBuf::new_p2pkh(&key.pubkey_hash())
+        } else if multi_receiver && index == 2 {
+            ScriptBuf::new_p2tr_tweaked(
+                SecpPublicKey::from_str(SCALAR_THREE_PUBLIC_KEY)
+                    .map_err(|_| "Invalid template key")?
+                    .x_only_public_key()
+                    .0
+                    .dangerous_assume_tweaked(),
+            )
         } else {
             ScriptBuf::new_p2wpkh(&key.wpubkey_hash().map_err(|_| "Invalid fixture key")?)
         };
@@ -188,8 +246,8 @@ fn validate_link(
         input.script_sig = ScriptBuf::new();
     }
     // The only permitted sender permutation is the committed layout or its reverse.
-    let change_script = original.output[count].script_pubkey.clone();
-    let shuffled = count == 2 && parent_tx.output[0].script_pubkey == change_script;
+    let change_script = original.output[recipients].script_pubkey.clone();
+    let shuffled = recipients > 1 && parent_tx.output[0].script_pubkey == change_script;
     if shuffled {
         original.output.reverse();
     }
@@ -201,7 +259,7 @@ fn validate_link(
     if normalized != original {
         return Err("Parent differs from the authorized sender template");
     }
-    let discovered = discover_tweaks(&parent_tx, count)?;
+    let discovered = discover_tweaks(&parent_tx, count, receiver)?;
     let mut total_received = 0_u64;
     for (input, (index, tweak)) in child.inputs.iter().zip(&discovered) {
         total_received = total_received
@@ -209,7 +267,7 @@ fn validate_link(
             .ok_or("Receiver value overflow")?;
         let spend_key = raw::Key {
             type_value: BIP376_SPEND_KEY_TYPE,
-            key: public_keys[0].to_bytes(),
+            key: public_keys[receiver].to_bytes(),
         };
         let tweak_key = raw::Key {
             type_value: BIP376_TWEAK_TYPE,
@@ -256,7 +314,12 @@ fn validate_link(
             .iter()
             .any(|i| i.sequence != Sequence::ENABLE_RBF_NO_LOCKTIME)
         || child.global.tx_modifiable_flags != 0
-        || child.outputs[0].script_pubkey != template.outputs[0].script_pubkey
+        || child.outputs[0].script_pubkey
+            != ScriptBuf::new_p2wpkh(
+                &public_keys[receiver]
+                    .wpubkey_hash()
+                    .map_err(|_| "Invalid destination key")?,
+            )
         || child.outputs[0].amount.to_sat() != amount
         || child.outputs[0].sp_v0_info.is_some()
         || child.outputs[0].sp_v0_label.is_some()
@@ -271,6 +334,7 @@ fn validate_link(
 fn discover_tweaks(
     parent: &Transaction,
     count: usize,
+    receiver: usize,
 ) -> Result<Vec<(usize, [u8; 32])>, &'static str> {
     let mut keys = Vec::new();
     let mut outpoints = Vec::new();
@@ -294,7 +358,7 @@ fn discover_tweaks(
         &[outpoints[0].as_slice(), &aggregate.serialize()].concat(),
     ))?;
     let mut scan = [0_u8; 32];
-    scan[31] = 2;
+    scan[31] = (receiver + 2) as u8;
     let scan_scalar = Scalar::from_be_bytes(scan).map_err(|_| "Invalid receiver scan key")?;
     let secp = Secp256k1::new();
     let shared = aggregate
@@ -309,9 +373,11 @@ fn discover_tweaks(
         );
         let tweak_secret =
             SecretKey::from_slice(&tweak).map_err(|_| "Invalid receiver output tweak")?;
-        let spend = SecpPublicKey::from_str(
-            "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
-        )
+        let spend = SecpPublicKey::from_str(if receiver == 1 {
+            SCALAR_TWO_PUBLIC_KEY
+        } else {
+            "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
+        })
         .map_err(|_| "Invalid spend public key")?;
         let output = spend
             .combine(&SecpPublicKey::from_secret_key(&secp, &tweak_secret))

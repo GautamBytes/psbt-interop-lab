@@ -1,10 +1,10 @@
 import { createHash } from "node:crypto";
 import { secp256k1 } from "@noble/curves/secp256k1.js";
+import { FIXTURE_PUBLIC_KEYS } from "../core/fixture-profiles.js";
 import { readCompactSize } from "../psbt/compact-size.js";
 import { type PsbtDocumentMap, parsePsbtDocument } from "../psbt/document.js";
 
-const RECEIVER_SPEND_KEY = "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
-const RECEIVER_DESTINATION = "0014751e76e8199196d454941c45d1b3a323f1433bd6";
+const RECEIVER_SPEND_KEY = FIXTURE_PUBLIC_KEYS.scalar1;
 const RECEIVER_FEE = 10_000n;
 export interface DiscoveredOutput {
   index: number;
@@ -52,16 +52,16 @@ function inputPublicKey(map: PsbtDocumentMap): Buffer {
 }
 
 // Deliberately ignores all sender SP shares, proofs and recipient metadata.
-// Bounded to two P2WPKH inputs, one receiver and at most two recipient outputs.
+// Bounded to two P2WPKH inputs, at most four outputs with distinct counter-derived outputs.
 export function discoverReceiverOutputs(
   parent: string,
   scan = 2n,
-  spend = RECEIVER_SPEND_KEY,
+  spend: string = RECEIVER_SPEND_KEY,
 ): DiscoveredOutput[] {
   if (scan <= 0n || scan >= secp256k1.Point.Fn.ORDER) throw new Error("Invalid receiver scan key");
   const doc = parsePsbtDocument(parent);
-  if (doc.psbtVersion !== 2 || doc.inputCount !== 2 || ![2, 3].includes(doc.outputCount))
-    throw new Error("Discovery requires two inputs and two or three outputs");
+  if (doc.psbtVersion !== 2 || doc.inputCount !== 2 || ![2, 3, 4].includes(doc.outputCount))
+    throw new Error("Discovery requires two inputs and two to four outputs");
   const inputs = doc.maps.filter((m) => m.location.kind === "input");
   const points = inputs.map((m) => secp256k1.Point.fromBytes(inputPublicKey(m)));
   const aggregate = points.reduce((a, b) => a.add(b));
@@ -112,7 +112,7 @@ export function discoverReceiverOutputs(
 export function discoverReceiverOutput(
   parent: string,
   scan = 2n,
-  spend = RECEIVER_SPEND_KEY,
+  spend: string = RECEIVER_SPEND_KEY,
 ): DiscoveredOutput | undefined {
   const found = discoverReceiverOutputs(parent, scan, spend);
   if (found.length > 1) throw new Error("Expected a single receiver output");
@@ -142,9 +142,11 @@ function pair(type: number, value: Buffer, keyData = Buffer.alloc(0)): Buffer {
 export function createReceiverPsbt(
   txid: string,
   output: DiscoveredOutput | readonly DiscoveredOutput[],
+  receiver?: 0 | 1,
 ): string {
   const outputs = "index" in output ? [output] : output;
   if (
+    ![undefined, 0, 1].includes(receiver) ||
     !/^[0-9a-f]{64}$/.test(txid) ||
     ![1, 2].includes(outputs.length) ||
     new Set(outputs.map((o) => o.index)).size !== outputs.length ||
@@ -153,7 +155,7 @@ export function createReceiverPsbt(
       (o) =>
         !Number.isInteger(o.index) ||
         o.index < 0 ||
-        o.index > (outputs.length === 1 ? 0 : 2) ||
+        o.index > (receiver === undefined ? (outputs.length === 1 ? 0 : 2) : 3) ||
         !/^5120[0-9a-f]{64}$/.test(o.scriptHex) ||
         !/^[0-9a-f]{64}$/.test(o.tweakHex) ||
         o.amountSats <= 330n ||
@@ -164,6 +166,13 @@ export function createReceiverPsbt(
   const amount = outputs.reduce((sum, o) => sum + o.amountSats, 0n);
   if (amount <= RECEIVER_FEE + 330n || amount > 2_100_000_000_000_000n)
     throw new Error("Invalid receiver total value");
+  const spendKey = receiver === 1 ? FIXTURE_PUBLIC_KEYS.scalar2 : RECEIVER_SPEND_KEY;
+  const destination = Buffer.concat([
+    Buffer.from([0, 20]),
+    createHash("ripemd160")
+      .update(sha(Buffer.from(spendKey, "hex")))
+      .digest(),
+  ]);
   const inputs = outputs.flatMap((o) => {
     scalar(Buffer.from(o.tweakHex, "hex"));
     const script = Buffer.from(o.scriptHex, "hex");
@@ -172,7 +181,7 @@ export function createReceiverPsbt(
       pair(15, u32(o.index)),
       pair(16, u32(0xfffffffd)),
       pair(1, Buffer.concat([u64(o.amountSats), Buffer.from([script.length]), script])),
-      pair(0x1f, Buffer.alloc(4), Buffer.from(RECEIVER_SPEND_KEY, "hex")),
+      pair(0x1f, Buffer.alloc(4), Buffer.from(spendKey, "hex")),
       pair(0x20, Buffer.from(o.tweakHex, "hex")),
       Buffer.from([0]),
     ];
@@ -188,7 +197,7 @@ export function createReceiverPsbt(
     Buffer.from([0]),
     ...inputs,
     pair(3, u64(amount - RECEIVER_FEE)),
-    pair(4, Buffer.from(RECEIVER_DESTINATION, "hex")),
+    pair(4, destination),
     Buffer.from([0]),
   ]);
   const encoded = bytes.toString("base64");

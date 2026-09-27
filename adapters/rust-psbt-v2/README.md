@@ -220,7 +220,8 @@ acceptance for both layouts, without broadcasting.
 
 Feature `bip352-spdk-wallet-interop` selects the pinned SPDK wallet implementation through
 `silent-payment-spend`. Its payload has exactly the five receiver fields above plus
-`receiver: "spdk"`; only `fixtureId: "bip352-multi-output"` is accepted. Unknown selectors,
+`receiver: "spdk"` for `fixtureId: "bip352-multi-output"`. The multi-receiver extension below
+adds an explicit identity. Unknown selectors,
 other fixtures and non-regtest requests are rejected. The same template commitment, parent
 signature, child destination, amount, fee, outpoint and tweak checks run before SPDK signing.
 
@@ -232,3 +233,23 @@ The response additionally contains `receiverImplementation` equal to
 for both layouts. SPDK's default features and network backends are disabled. Fixed keys and
 zero signing auxiliary randomness are solely for these public deterministic regtest fixtures.
 This path does not expose arbitrary wallet signing, chain scanning or a wallet application.
+
+## Multiple receiver identities
+
+Feature `bip352-multi-receiver` adds the committed four-output fixture of the same name.
+Sender payloads use the existing multi-output fields. The placeholders are scalar-1 P2WPKH,
+scalar-1 P2PKH, raw scalar-3 Taproot and scalar-2 P2WPKH. They become Alice (scan-2/spend-1),
+Bob (scan-3/spend-2), Alice again, and unchanged ordinary change. Shares and DLEQ proofs cover
+both scan keys; output reversal happens before derivation and signing.
+
+Receiver payloads require exactly the SPDK receiver fields above plus `receiverId: "alice"`
+or `"bob"`, with `fixtureId: "bip352-multi-receiver"`. Native Rust and SPDK independently derive
+that identity's outputs from public parent data. Alice's child has two inputs; Bob's has one.
+Each must spend only its own exact outpoints and values, to its matching scalar-1/scalar-2
+P2WPKH destination, with a 10,000-sat fee and SIGHASH_DEFAULT. Unknown identities, foreign
+outpoints, incorrect tweaks and altered destination/value are rejected before signing.
+
+The source scenario `bip352-multi-receiver-spdk` checks both identities in both layouts,
+including foreign-input substitutions with unchanged count and value. It requires disjoint
+receiver outpoints on the same parent, independent libwally extraction and all four Core
+parent/child policy checks. It retains 24 checkpoints and broadcasts nothing.

@@ -3,8 +3,13 @@ use super::*;
 // A bounded test operation: authorize the original transaction before deriving
 // its fixed recipient or applying the explicitly requested input permutation.
 pub(super) fn send(request: &Request, digest: &str, commitments: &FixtureCommitments) -> Value {
-    let two_outputs = payload_string(&request.payload, "fixtureId") == Some("bip352-multi-output");
-    let fields: &[&str] = if two_outputs {
+    let fixture_id = payload_string(&request.payload, "fixtureId").unwrap_or("");
+    let recipients = match fixture_id {
+        "bip352-multi-receiver" => 3,
+        "bip352-multi-output" => 2,
+        _ => 1,
+    };
+    let fields: &[&str] = if recipients > 1 {
         &[
             "psbt",
             "network",
@@ -16,7 +21,7 @@ pub(super) fn send(request: &Request, digest: &str, commitments: &FixtureCommitm
     } else {
         &["psbt", "network", "fixtureId", "shareMode", "reverseInputs"]
     };
-    if (two_outputs
+    if (recipients > 1
         && request
             .payload
             .get("shuffleOutputs")
@@ -59,17 +64,9 @@ pub(super) fn send(request: &Request, digest: &str, commitments: &FixtureCommitm
             "Invalid funded PSBTv2 template",
         );
     };
-    if let Some(response) = commitment_failure(
-        request,
-        digest,
-        commitments,
-        if two_outputs {
-            "bip352-multi-output"
-        } else {
-            "bip375-multi"
-        },
-        &parsed.psbt,
-    ) {
+    if let Some(response) =
+        commitment_failure(request, digest, commitments, fixture_id, &parsed.psbt)
+    {
         return response;
     }
     let global = payload_string(&request.payload, "shareMode") == Some("global");
@@ -78,7 +75,7 @@ pub(super) fn send(request: &Request, digest: &str, commitments: &FixtureCommitm
         parsed.psbt,
         global,
         reverse,
-        two_outputs,
+        recipients,
         request.payload.get("shuffleOutputs") == Some(&json!(true)),
     ) {
         Ok((signed, finalized, transaction)) => {
@@ -94,7 +91,7 @@ pub(super) fn send(request: &Request, digest: &str, commitments: &FixtureCommitm
                 "transaction": consensus::serialize(&transaction).to_lower_hex_string(),
                 "transactionId": transaction.compute_txid().to_string()
             });
-            if two_outputs {
+            if recipients > 1 {
                 output["outputScripts"] = json!(scripts);
             } else {
                 output["outputScript"] = json!(scripts[0]);
@@ -127,10 +124,10 @@ fn keys() -> Result<Vec<(PrivateKey, PublicKey)>, &'static str> {
 fn validate(
     psbt: &Psbt,
     keys: &[(PrivateKey, PublicKey)],
-    two_outputs: bool,
+    recipients: usize,
 ) -> Result<(), &'static str> {
     if psbt.inputs.len() != 2
-        || psbt.outputs.len() != if two_outputs { 3 } else { 2 }
+        || psbt.outputs.len() != recipients + 1
         || psbt.global.tx_modifiable_flags & !3 != 0
     {
         return Err("Expected two inputs, recipient and change, and no reserved modifiable flags");
@@ -169,8 +166,16 @@ fn validate(
     let mut outputs = 0_u64;
     for (index, output) in psbt.outputs.iter().enumerate() {
         let key = &keys[usize::from(index == psbt.outputs.len() - 1)].1;
-        let expected_script = if two_outputs && index == 1 {
+        let expected_script = if recipients > 1 && index == 1 {
             ScriptBuf::new_p2pkh(&key.pubkey_hash())
+        } else if recipients == 3 && index == 2 {
+            ScriptBuf::new_p2tr_tweaked(
+                SecpPublicKey::from_str(SCALAR_THREE_PUBLIC_KEY)
+                    .map_err(|_| "Invalid template key")?
+                    .x_only_public_key()
+                    .0
+                    .dangerous_assume_tweaked(),
+            )
         } else {
             ScriptBuf::new_p2wpkh(
                 &key.wpubkey_hash()
@@ -201,26 +206,34 @@ fn complete(
     mut psbt: Psbt,
     global: bool,
     reverse: bool,
-    two_outputs: bool,
+    recipients: usize,
     shuffle: bool,
 ) -> Result<(Psbt, Psbt, Transaction), &'static str> {
     let mut keys = keys()?;
-    validate(&psbt, &keys, two_outputs)?;
+    validate(&psbt, &keys, recipients)?;
     if reverse {
         psbt.inputs.reverse();
         keys.reverse();
     }
-    let scan = CompressedPublicKey(
-        SecpPublicKey::from_str(SCALAR_TWO_PUBLIC_KEY).map_err(|_| "Invalid scan key")?,
-    );
-    let (_, spend) = fixture_key()?;
-    for output in psbt
-        .outputs
-        .iter_mut()
-        .take(if two_outputs { 2 } else { 1 })
-    {
+    let mut scans = BTreeMap::new();
+    for (index, output) in psbt.outputs.iter_mut().take(recipients).enumerate() {
+        let bob = recipients == 3 && index == 1;
+        let scan = CompressedPublicKey(
+            SecpPublicKey::from_str(if bob {
+                SCALAR_THREE_PUBLIC_KEY
+            } else {
+                SCALAR_TWO_PUBLIC_KEY
+            })
+            .map_err(|_| "Invalid scan key")?,
+        );
+        let spend = if bob {
+            PublicKey::from_str(SCALAR_TWO_PUBLIC_KEY).map_err(|_| "Invalid spend key")?
+        } else {
+            fixture_key()?.1
+        };
         output.sp_v0_info =
             Some([scan.to_bytes().as_slice(), spend.to_bytes().as_slice()].concat());
+        scans.insert(scan, ());
     }
     // BIP375 assigns k by output order: permute before deriving scripts or signing.
     if shuffle {
@@ -232,35 +245,35 @@ fn complete(
         .collect::<Vec<_>>();
     let aggregate = aggregate_secret(&secrets)?;
     let aggregate_public = SecpPublicKey::from_secret_key(&Secp256k1::new(), &aggregate);
-    let (aggregate_share, aggregate_proof) = bip375_dleq_proof(aggregate, scan.0)?;
-    if global {
-        psbt.global
-            .sp_ecdh_shares
-            .insert(scan, CompressedPublicKey(aggregate_share));
-        psbt.global.sp_dleq_proofs.insert(scan, aggregate_proof);
-    } else {
-        let mut shares = Vec::new();
-        for (input, (private, _)) in psbt.inputs.iter_mut().zip(&keys) {
-            let (share, proof) = bip375_dleq_proof(private.inner, scan.0)?;
-            input
+    let mut aggregate_shares = BTreeMap::new();
+    for scan in scans.keys() {
+        let (aggregate_share, aggregate_proof) = bip375_dleq_proof(aggregate, scan.0)?;
+        aggregate_shares.insert(*scan, CompressedPublicKey(aggregate_share));
+        if global {
+            psbt.global
                 .sp_ecdh_shares
-                .insert(scan, CompressedPublicKey(share));
-            input.sp_dleq_proofs.insert(scan, proof);
-            shares.push(share);
-        }
-        if shares[0]
-            .combine(&shares[1])
-            .map_err(|_| "Invalid aggregate share")?
-            != aggregate_share
-        {
-            return Err("Per-input shares do not match the aggregate");
+                .insert(*scan, CompressedPublicKey(aggregate_share));
+            psbt.global.sp_dleq_proofs.insert(*scan, aggregate_proof);
+        } else {
+            let mut shares = Vec::new();
+            for (input, (private, _)) in psbt.inputs.iter_mut().zip(&keys) {
+                let (share, proof) = bip375_dleq_proof(private.inner, scan.0)?;
+                input
+                    .sp_ecdh_shares
+                    .insert(*scan, CompressedPublicKey(share));
+                input.sp_dleq_proofs.insert(*scan, proof);
+                shares.push(share);
+            }
+            if shares[0]
+                .combine(&shares[1])
+                .map_err(|_| "Invalid aggregate share")?
+                != aggregate_share
+            {
+                return Err("Per-input shares do not match the aggregate");
+            }
         }
     }
-    advanced_bip375_output_scripts(
-        &mut psbt,
-        aggregate_public,
-        &BTreeMap::from([(scan, CompressedPublicKey(aggregate_share))]),
-    )?;
+    advanced_bip375_output_scripts(&mut psbt, aggregate_public, &aggregate_shares)?;
     psbt.global.tx_modifiable_flags = 0;
     for (input, (_, key)) in psbt.inputs.iter_mut().zip(&keys) {
         input

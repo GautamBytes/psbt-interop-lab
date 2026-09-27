@@ -176,6 +176,7 @@ export const PSBTV2_ADAPTER_CONTRACT = {
     "bip352-receiver-discovery",
     "bip352-multi-output-lifecycle",
     "bip352-spdk-wallet-interop",
+    "bip352-multi-receiver",
     "bip375-advanced-sender-workflows",
     "bip376-spend-workflow",
   ],
