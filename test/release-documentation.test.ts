@@ -52,7 +52,7 @@ describe("release documentation", () => {
     const packageVersion = JSON.parse(read("package.json")).version as string;
     const publicFiles = ["README.md", "src/version.ts", "website/AGENTS.md"];
 
-    expect(packageVersion).toBe("0.10.1");
+    expect(packageVersion).toBe("0.11.0");
     for (const path of publicFiles) {
       expect(read(path), path).toContain(packageVersion);
     }
@@ -193,7 +193,7 @@ describe("release documentation", () => {
     const normalizedReadme = readme.replace(/\s+/g, " ");
 
     expect(normalizedReadme).toContain("bounded first-run proof");
-    expect(normalizedReadme).toContain("complete 52-scenario matrix");
+    expect(normalizedReadme).toContain("complete 59-scenario matrix");
     expect(normalizedReadme).toContain("five semantic detector canaries");
     expect(normalizedReadme).toContain("stops the local regtest node automatically");
     expect(readme).not.toContain("focused v0.5.1 run");

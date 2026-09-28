@@ -247,5 +247,5 @@ It does not reorder an already signed transaction or claim that its signatures w
   committed adapter `Cargo.lock` also pins upstream's `bip321`/`bark-bitcoin-ext` git dependency
   to [Bark revision `83ab79264159869503b16fa475e0ed61ffa33174`](https://gitlab.com/Sosthene00/bark/-/tree/83ab79264159869503b16fa475e0ed61ffa33174).
   Builds fetch source dependencies; scenario execution remains isolated and offline.
-- The source-only scenario checks the exact wallet revision in both output layouts. This is
+- The scenario checks the exact wallet revision in both output layouts. This is
   reproducible integration evidence, not a claim that SPDK maintainers use or endorse the lab.

@@ -91,6 +91,8 @@ try {
   const proofImages = page.locator(".proof-media img");
   if ((await proofImages.count()) !== 2) throw new Error("Expected two walkthrough proof images");
   for (let index = 0; index < 2; index += 1) {
+    await proofImages.nth(index).scrollIntoViewIfNeeded();
+    await proofImages.nth(index).evaluate((image) => image.decode());
     const loaded = await proofImages
       .nth(index)
       .evaluate((image) => image.complete && image.naturalWidth > 0);
@@ -99,9 +101,9 @@ try {
 
   await page.getByRole("button", { name: /Core-funded sender/i }).click();
   await page.getByRole("heading", { name: "Core-funded Silent Payment sender" }).waitFor();
-  await page.getByText("Source checkout · unreleased", { exact: true }).waitFor();
+  await page.getByText("Included in v0.11.0", { exact: true }).waitFor();
   await page
-    .getByText(/v0.10.1 and the historical screenshots do not include this scenario/)
+    .getByText(/Included in v0.11.0; the historical v0.10.0 screenshots predate this scenario/)
     .waitFor();
   await page.getByRole("button", { name: /Multi-input sender/i }).click();
   await page.getByRole("heading", { name: "Funded multi-input Silent Payment sender" }).waitFor();

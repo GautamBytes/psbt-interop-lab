@@ -78,7 +78,7 @@ describe("createParserIssueBundle", () => {
 
     expect(manifest).toMatchObject({
       schema: "psbt-lab.issue-bundle/0.2",
-      generator: { name: "psbt-interop-lab", version: "0.10.1" },
+      generator: { name: "psbt-interop-lab", version: "0.11.0" },
       runtime: "local+external",
       fixture: {
         id: "bip174-minimal-v0",
@@ -115,7 +115,7 @@ describe("createParserIssueBundle", () => {
     });
     expect(issue).toContain("Differential parser behavior requiring investigation");
     expect(issue).toContain("has not assigned fault");
-    expect(issue).toContain("psbt-interop-lab@0.10.1");
+    expect(issue).toContain("psbt-interop-lab@0.11.0");
     expect(issue).toContain("--adapter-manifest adapter-manifest.json");
     expect(issue).toContain(IMPLEMENTATION.artifactDigest);
     expect(issue).toContain("## Lab semantic assessment");

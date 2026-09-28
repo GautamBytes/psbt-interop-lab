@@ -41,7 +41,7 @@ describe("PSBT Interop Lab website", () => {
       "/docs#quick-start",
     );
     expect(screen.getByText(/quickstart proves one real handoff/i)).toBeInTheDocument();
-    expect(screen.getByText(/matrix runs all 52 bundled scenarios/i)).toBeInTheDocument();
+    expect(screen.getByText(/matrix runs all 59 bundled scenarios/i)).toBeInTheDocument();
     expect(
       screen.getByText(/BIP373 MuSig2 nonce exchange, partial verification, and aggregation/i),
     ).toBeInTheDocument();
@@ -49,17 +49,17 @@ describe("PSBT Interop Lab website", () => {
       screen.getByText(/HWI-compatible simulator confirmation and key-origin policy/i),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/BIP375 sender workflows and BIP376 receiver-spend workflow/i),
+      screen.getByText(/Core-funded BIP375 senders and BIP376 receiver spends/i),
     ).toBeInTheDocument();
-    expect(screen.getByText("PSBT Interop Lab 0.10.1")).toBeInTheDocument();
-    expect(screen.getByText(/available now as version 0\.10\.1/i)).toBeInTheDocument();
+    expect(screen.getByText("PSBT Interop Lab 0.11.0")).toBeInTheDocument();
+    expect(screen.getByText(/available now as version 0\.11\.0/i)).toBeInTheDocument();
     expect(screen.getByText(/v0\.10\.0 capture/i)).toBeInTheDocument();
   });
 
   it("replaces footer resources with the maintainer reach-out links", () => {
     render(<App />);
 
-    const footer = screen.getByText("PSBT Interop Lab 0.10.1").closest("footer");
+    const footer = screen.getByText("PSBT Interop Lab 0.11.0").closest("footer");
     if (!footer) throw new Error("Expected the site footer");
     const profiles = within(footer).getByRole("navigation", {
       name: "Gautam Manchandani profiles",
@@ -218,7 +218,7 @@ describe("PSBT Interop Lab website", () => {
     await user.click(screen.getByRole("button", { name: "Copy install command" }));
 
     expect(screen.getByText(installCommand)).toBeInTheDocument();
-    expect(installCommand).toContain("psbt-interop-lab@0.10.1");
+    expect(installCommand).toContain("psbt-interop-lab@0.11.0");
     expect(screen.getByText("Install command copied")).toBeInTheDocument();
   });
 
@@ -256,23 +256,25 @@ describe("PSBT Interop Lab website", () => {
     expect(screen.getByText(/Core policy acceptance on regtest/i)).toBeInTheDocument();
   });
 
-  it("distinguishes the unreleased funded sender from published and historical evidence", async () => {
+  it("distinguishes released funded sender coverage from historical evidence", async () => {
     const user = userEvent.setup();
     render(<App />);
     await user.click(screen.getByRole("button", { name: /Core-funded sender/i }));
     expect(
       screen.getByRole("heading", { name: "Core-funded Silent Payment sender" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("Source checkout · unreleased")).toBeInTheDocument();
-    expect(screen.getByText("Run from source")).toBeInTheDocument();
-    expect(screen.getByText(/52 released scenarios · 59 in source/)).toBeInTheDocument();
-    expect(screen.getByText(/source checkout adds a 53rd scenario/i)).toBeInTheDocument();
+    expect(screen.getByText("Included in v0.11.0")).toBeInTheDocument();
+    expect(screen.getByText("Run scenario")).toBeInTheDocument();
+    expect(screen.getByText(/59 released scenarios · 59 in source/)).toBeInTheDocument();
+    expect(screen.getByText(/A funded P2WPKH input/i)).toBeInTheDocument();
     expect(
-      screen.getByText(/v0.10.1 and the historical screenshots do not include this scenario/i),
+      screen.getByText(
+        /Included in v0.11.0; the historical v0.10.0 screenshots predate this scenario/i,
+      ),
     ).toBeInTheDocument();
     expect(screen.getByText(/missing parents fail/i)).toBeInTheDocument();
     expect(
-      screen.getByText("node dist/cli.js run --scenario bip375-core-funded-sender-rust-psbt-v2"),
+      screen.getByText("psbt-lab run --scenario bip375-core-funded-sender-rust-psbt-v2"),
     ).toBeInTheDocument();
   });
 
@@ -283,14 +285,12 @@ describe("PSBT Interop Lab website", () => {
     expect(
       screen.getByRole("heading", { name: "Funded multi-input Silent Payment sender" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("Source checkout · unreleased")).toBeInTheDocument();
+    expect(screen.getByText("Included in v0.11.0")).toBeInTheDocument();
     expect(
       screen.getByText(/two different keys, one recipient, and ordinary change/i),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(
-        "node dist/cli.js run --scenario bip375-core-funded-multi-input-rust-psbt-v2",
-      ),
+      screen.getByText("psbt-lab run --scenario bip375-core-funded-multi-input-rust-psbt-v2"),
     ).toBeInTheDocument();
   });
 
@@ -301,34 +301,30 @@ describe("PSBT Interop Lab website", () => {
     expect(
       screen.getByRole("heading", { name: "Silent Payment sender to receiver spend" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("Source checkout · unreleased")).toBeInTheDocument();
+    expect(screen.getByText("Included in v0.11.0")).toBeInTheDocument();
     expect(
       screen.getByText("child fails alone; both transactions must pass together"),
     ).toBeInTheDocument();
     expect(screen.getByText(/not a general wallet scanner/)).toBeInTheDocument();
     expect(
-      screen.getByText(
-        "node dist/cli.js run --scenario bip352-sender-receiver-lifecycle-rust-psbt-v2",
-      ),
+      screen.getByText("psbt-lab run --scenario bip352-sender-receiver-lifecycle-rust-psbt-v2"),
     ).toBeInTheDocument();
   });
 
-  it("shows the bounded two-output lifecycle as unreleased source coverage", async () => {
+  it("shows the bounded two-output lifecycle as released coverage", async () => {
     const user = userEvent.setup();
     render(<App />);
     await user.click(screen.getByRole("button", { name: /Two-output receiver/i }));
     expect(
       screen.getByRole("heading", { name: "Two payments, one receiver spend" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("Source checkout · unreleased")).toBeInTheDocument();
+    expect(screen.getByText("Included in v0.11.0")).toBeInTheDocument();
     expect(
       screen.getByText("two BIP376 inputs, one destination, 10,000-sat fee"),
     ).toBeInTheDocument();
     expect(screen.getByText(/12 replayable checkpoints/)).toBeInTheDocument();
     expect(
-      screen.getByText(
-        "node dist/cli.js run --scenario bip352-multi-output-lifecycle-rust-psbt-v2",
-      ),
+      screen.getByText("psbt-lab run --scenario bip352-multi-output-lifecycle-rust-psbt-v2"),
     ).toBeInTheDocument();
   });
 
@@ -339,7 +335,7 @@ describe("PSBT Interop Lab website", () => {
     expect(
       screen.getByRole("heading", { name: "Independent Silent Payment wallet handoff" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("Source checkout · unreleased")).toBeInTheDocument();
+    expect(screen.getByText("Included in v0.11.0")).toBeInTheDocument();
     expect(
       screen.getByText("spdk-wallet 0.7.1 at a00f9807609b3be16892b7dd671a56db52db88a7"),
     ).toBeInTheDocument();
@@ -348,39 +344,37 @@ describe("PSBT Interop Lab website", () => {
       screen.getByText(/external maintainer adoption remains future work/),
     ).toBeInTheDocument();
     expect(
-      screen.getByText("node dist/cli.js run --scenario bip352-spdk-wallet-interop"),
+      screen.getByText("psbt-lab run --scenario bip352-spdk-wallet-interop"),
     ).toBeInTheDocument();
   });
 
-  it("shows labeled payments as bounded unreleased coverage", async () => {
+  it("shows labeled payments as bounded released coverage", async () => {
     const user = userEvent.setup();
     render(<App />);
     await user.click(screen.getByRole("button", { name: /Labels/i }));
     expect(
       screen.getByRole("heading", { name: "Labeled payments, verified spends" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("Source checkout · unreleased")).toBeInTheDocument();
+    expect(screen.getByText("Included in v0.11.0")).toBeInTheDocument();
     expect(screen.getByText("54 assertions and 12 replayable checkpoints")).toBeInTheDocument();
     expect(screen.getByText(/not separate private identities/)).toBeInTheDocument();
-    expect(
-      screen.getByText("node dist/cli.js run --scenario bip352-labels-spdk"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("psbt-lab run --scenario bip352-labels-spdk")).toBeInTheDocument();
   });
 
-  it("shows separate receiver ownership as unreleased coverage", async () => {
+  it("shows separate receiver ownership as released coverage", async () => {
     const user = userEvent.setup();
     render(<App />);
     await user.click(screen.getByRole("button", { name: /Two receivers/i }));
     expect(
       screen.getByRole("heading", { name: "Two receivers, separate spends" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("Source checkout · unreleased")).toBeInTheDocument();
+    expect(screen.getByText("Included in v0.11.0")).toBeInTheDocument();
     expect(
       screen.getByText("four parent/child packages and 24 replayable checkpoints"),
     ).toBeInTheDocument();
     expect(screen.getByText(/foreign inputs with unchanged count and value/)).toBeInTheDocument();
     expect(
-      screen.getByText("node dist/cli.js run --scenario bip352-multi-receiver-spdk"),
+      screen.getByText("psbt-lab run --scenario bip352-multi-receiver-spdk"),
     ).toBeInTheDocument();
   });
 

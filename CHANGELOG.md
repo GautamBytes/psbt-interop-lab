@@ -2,37 +2,36 @@
 
 All notable changes to PSBT Interop Lab are recorded here.
 
-## [Unreleased]
+## [0.11.0] - 2026-09-28
 
 ### Added
 
 - Add `bip352-labels-spdk`: two payments to label 1, independent labeled-output discovery,
   SPDK spending, and missing/wrong/double-label tweak rejection in both output layouts.
   Require libwally extraction and Core package acceptance; include 54 assertions, 12 replayable
-  checkpoints, CI coverage and an unreleased website example. The source catalog has 59 scenarios.
+  checkpoints, CI coverage and a versioned CLI example. The release includes 59 scenarios.
 
 - Add `bip352-multi-receiver-spdk`: two receiver identities, three payments and ordinary change
   in ordered/reversed layouts. Independently discover and sign each receiver's outputs, reject
   foreign inputs, and require libwally extraction plus Core parent/child policy acceptance.
-  Include 24 replayable checkpoints, CI coverage and an unreleased website example. The source
-  catalog gained this scenario.
+  Include 24 replayable checkpoints, CI coverage and a versioned CLI example.
 
 - Add independent SPDK wallet discovery and signing for both two-output Silent Payment layouts.
   Pin the upstream revision, disable network backends, and retain strict fixture authorization,
   tamper rejection, libwally extraction and Core package checks. Include 46 assertions, twelve
-  replayable checkpoints, provenance docs and a source-only website example.
+  replayable checkpoints, provenance docs and a versioned CLI example.
 - Add a two-output Silent Payment lifecycle with ordered and shuffled unsigned layouts,
   independent discovery, a combined BIP376 spend, exact value/outpoint binding, tamper
   rejection and mandatory Core package-policy acceptance. Include twelve replayable
-  checkpoints and an unreleased website example.
+  checkpoints and a versioned CLI example.
 - Link the funded Silent Payment sender to independent receiver discovery and a BIP376 spend
   of the exact output. Require independent extraction, child-alone rejection and linked Core
   package acceptance without broadcasting. Include six replayable checkpoints, adversarial
-  tests and a source-only website example.
+  tests and a versioned CLI example.
 
 - Add a Core-funded two-key Silent Payment sender with global/per-input shares, input-order
   invariance, preserved ordinary change, independent extraction, and mandatory Core policy
-  acceptance for all four variants. Include tamper tests and a source-only website example.
+  acceptance for all four variants. Include tamper tests and a versioned CLI example.
 
 - Add a Core-funded BIP375 sender proof with a fixed Silent Payment recipient, independent
   derivation and extraction checks, mandatory regtest policy acceptance, and tamper canaries.
