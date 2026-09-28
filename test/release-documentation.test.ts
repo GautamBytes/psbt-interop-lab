@@ -234,6 +234,6 @@ describe("release documentation", () => {
     });
 
     expect(revisions.length).toBeGreaterThanOrEqual(4);
-    expect(new Set(revisions)).toEqual(new Set(["be10bae35542aa1adae605dbe1d19c662f8f540d"]));
+    expect(new Set(revisions)).toEqual(new Set(["fdb015ca58a5e758f23968f8cbc805d624af9e9f"]));
   });
 });

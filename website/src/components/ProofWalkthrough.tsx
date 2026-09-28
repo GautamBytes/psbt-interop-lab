@@ -67,16 +67,17 @@ export function ProofWalkthrough() {
             <ZoomableImage
               triggerClassName="proof-media__trigger"
               src={silentPaymentsProof}
-              alt="Silent Payment conformance report evidence"
+              alt="Silent Payment lifecycle report evidence"
               loading="lazy"
               decoding="async"
             />
             <figcaption>
               <span>02</span>
-              <strong>Inspect BIP375 conformance</strong>
+              <strong>Inspect independent receiver spending</strong>
               <small>
-                All 41 official vectors and the native-library divergences stay visible in the same
-                report.
+                Two receiver identities independently discover and spend only their own outputs,
+                with SPDK, libwally and Core policy checks. Red adapter cells show intentional
+                rejection tests.
               </small>
             </figcaption>
           </figure>

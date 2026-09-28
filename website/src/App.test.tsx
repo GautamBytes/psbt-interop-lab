@@ -53,7 +53,7 @@ describe("PSBT Interop Lab website", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("PSBT Interop Lab 0.11.0")).toBeInTheDocument();
     expect(screen.getByText(/available now as version 0\.11\.0/i)).toBeInTheDocument();
-    expect(screen.getByText(/v0\.10\.0 capture/i)).toBeInTheDocument();
+    expect(screen.getByText(/v0\.11\.0 capture/i)).toBeInTheDocument();
   });
 
   it("replaces footer resources with the maintainer reach-out links", () => {
@@ -126,19 +126,19 @@ describe("PSBT Interop Lab website", () => {
     expect(
       screen.getByRole("heading", { name: /the complete matrix, one replayable artifact/i }),
     ).toBeInTheDocument();
-    expect(screen.getByText(/evidence from the complete 52-scenario matrix/i)).toBeInTheDocument();
+    expect(screen.getByText(/evidence from the complete 59-scenario matrix/i)).toBeInTheDocument();
     expect(
       screen.getByRole("img", { name: /complete matrix generated report/i }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("img", { name: /silent payment conformance report evidence/i }),
+      screen.getByRole("img", { name: /silent payment lifecycle report evidence/i }),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/52 bundled scenarios across 9 integration stacks/i),
+      screen.getByText(/59 bundled scenarios across 9 integration stacks/i),
     ).toBeInTheDocument();
     expect(screen.getByText(/3 compatibility findings remained visible/i)).toBeInTheDocument();
     expect(
-      screen.getByText(/101 checkpoints verified from the same artifact/i),
+      screen.getByText(/179 checkpoints verified from the same artifact/i),
     ).toBeInTheDocument();
     expect(screen.queryByText(/2 \/ 2 protocol scenarios passed/i)).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: /open the complete walkthrough/i })).toHaveAttribute(
@@ -256,7 +256,7 @@ describe("PSBT Interop Lab website", () => {
     expect(screen.getByText(/Core policy acceptance on regtest/i)).toBeInTheDocument();
   });
 
-  it("distinguishes released funded sender coverage from historical evidence", async () => {
+  it("distinguishes released funded sender coverage in current release evidence", async () => {
     const user = userEvent.setup();
     render(<App />);
     await user.click(screen.getByRole("button", { name: /Core-funded sender/i }));
@@ -268,9 +268,7 @@ describe("PSBT Interop Lab website", () => {
     expect(screen.getByText(/59 released scenarios · 59 in source/)).toBeInTheDocument();
     expect(screen.getByText(/A funded P2WPKH input/i)).toBeInTheDocument();
     expect(
-      screen.getByText(
-        /Included in v0.11.0; the historical v0.10.0 screenshots predate this scenario/i,
-      ),
+      screen.getByText(/Verified in the complete v0.11.0 matrix and replay artifact/i),
     ).toBeInTheDocument();
     expect(screen.getByText(/missing parents fail/i)).toBeInTheDocument();
     expect(

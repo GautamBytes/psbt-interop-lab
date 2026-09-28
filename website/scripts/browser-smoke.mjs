@@ -102,9 +102,7 @@ try {
   await page.getByRole("button", { name: /Core-funded sender/i }).click();
   await page.getByRole("heading", { name: "Core-funded Silent Payment sender" }).waitFor();
   await page.getByText("Included in v0.11.0", { exact: true }).waitFor();
-  await page
-    .getByText(/Included in v0.11.0; the historical v0.10.0 screenshots predate this scenario/)
-    .waitFor();
+  await page.getByText(/Verified in the complete v0.11.0 matrix and replay artifact/).waitFor();
   await page.getByRole("button", { name: /Multi-input sender/i }).click();
   await page.getByRole("heading", { name: "Funded multi-input Silent Payment sender" }).waitFor();
   await page.getByText(/Two different keys, one recipient, and ordinary change/).waitFor();
