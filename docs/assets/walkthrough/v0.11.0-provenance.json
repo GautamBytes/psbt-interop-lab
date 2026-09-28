@@ -1,0 +1,24 @@
+{
+  "release": "0.11.0",
+  "releaseCommit": "ea8d0a85d1e93f6a340fa44c992fb85877fd6793",
+  "sourceRun": "https://github.com/GautamBytes/psbt-interop-lab/actions/runs/36410170620",
+  "runId": "20260928103430-c590d050",
+  "startedAt": "2026-09-28T10:34:30.772Z",
+  "scenarioCount": 59,
+  "replayCheckpointCount": 179,
+  "reportSha256": "6f5a252e61c167d84a2eb21d8016e9e657cddf670664f07b63e21c37c01127eb",
+  "screenshots": {
+    "compatibility-report.png": {
+      "sha256": "23a3ad95ae6c05984374d700799ca29ea31604f3c19157f4a17725773b0ac45f",
+      "capture": "Unmodified generated HTML report, 1440x1000 viewport"
+    },
+    "silent-payments-report.png": {
+      "sha256": "a0390d1907a629316ebb9ff447e1cf504a6fd1cef06b4d99b8f80738fc934efa",
+      "capture": "Unmodified generated HTML report, 1440x1000 viewport"
+    },
+    "musig2-report.png": {
+      "sha256": "2dbefc00d1ba44d6b1a8c4334490b3b87a86aa77fa388b6df6d0315010b1fe53",
+      "capture": "Unmodified generated HTML report, 1440x1000 viewport"
+    }
+  }
+}
