@@ -314,8 +314,10 @@ describe("website documentation routes", () => {
       expect.stringMatching(/silent-payments-report/),
     );
     expect(silentPaymentsProof.getAttribute("src")).not.toMatch(/^https?:/);
-    expect(screen.getByText(/fresh v0\.10\.0 run/i)).toBeInTheDocument();
-    expect(screen.getByText(/external parent is not present/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/same 59-scenario outcome from the v0\.11\.0 release run/i),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/each receiver independently/i)).toBeInTheDocument();
   });
 
   it("opens documentation screenshots in the shared image viewer", async () => {
@@ -338,7 +340,7 @@ describe("website documentation routes", () => {
 
   it("maps the public npm walkthrough image URL to the bundled website asset", () => {
     const publicSource =
-      "https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/be10bae35542aa1adae605dbe1d19c662f8f540d/docs/assets/walkthrough/compatibility-report.png";
+      "https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/fdb015ca58a5e758f23968f8cbc805d624af9e9f/docs/assets/walkthrough/compatibility-report.png";
 
     const resolved = resolveDocumentImageSrc(publicSource, "");
 

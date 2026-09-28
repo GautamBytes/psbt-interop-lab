@@ -168,7 +168,7 @@ both transactions; Core must reject the child alone and accept the parent/child 
 each layout. Nothing is broadcast. Twelve replayable checkpoints retain both lifecycles.
 
 This is a bounded two-output, one-receiver regtest proof, not multi-recipient wallet or chain
-scanning support. The historical v0.10.0 screenshots predate this scenario.
+scanning support.
 
 ## Sender → receiver discovery → spend
 
@@ -190,8 +190,7 @@ signing/finalization. Neither transaction is broadcast.
 This is a bounded regtest lifecycle with two P2WPKH inputs, one scan-2/spend-1 recipient,
 ordinary change, and a fixed 10,000-sat receiver fee. Wrong receiver keys discover nothing;
 altered outpoints, tweaks and destinations must be rejected before signing. It is not a
-chain scanner, reorg/recovery engine, or general wallet implementation. The historical
-v0.10.0 screenshots predate this scenario.
+chain scanner, reorg/recovery engine, or general wallet implementation.
 
 ## Funded multi-input Silent Payment sender
 
@@ -210,7 +209,7 @@ psbt-lab stop
 
 The run retains nine checkpoints (one template and four signed/finalized pairs). It also rejects
 changed inputs, recipient amounts, change scripts, supplied recipient/share/proof data, and
-mainnet requests. The historical v0.10.0 walkthrough screenshots predate this scenario.
+mainnet requests.
 It is bounded test infrastructure, not a general wallet or collaborative
 multi-party signer.
 
@@ -236,18 +235,17 @@ it does not establish multi-input sender policy acceptance or receiver discovery
 
 The v0.11.0 release check passed all 59 scenarios and replay-verified 179 checkpoints. Three
 known native-library compatibility findings remain explicitly classified. The screenshots below
-show the earlier v0.10.0 run, which covered 52 scenarios and 101 checkpoints.
+come from the verified v0.11.0 release run.
 
-This real v0.10.0 run executes every bundled workflow against the pinned integration stacks and an
+This real v0.11.0 run executes every bundled workflow against the pinned integration stacks and an
 isolated Bitcoin Core regtest node:
 
 ```bash
 psbt-lab matrix
 ```
 
-The verified run completed all 52 bundled scenarios and replay-verified 101 checkpoints. The
-terminal proof keeps every scenario ID visible and records the real run ID, Core height, outcome,
-artifact path, and findings. Three known native-library compatibility findings remain visible while
+The verified run completed all 59 bundled scenarios and replay-verified 179 checkpoints. The
+report records every scenario ID, the real run ID, Core height, outcome, checkpoints, and findings. Three known native-library compatibility findings remain visible while
 their containing scenarios pass only when the lab detects and classifies the expected behavior.
 
 Open `artifacts/<run-id>/report.html` for the complete result, or verify later that the recorded
@@ -257,22 +255,22 @@ evidence still matches its manifest:
 psbt-lab replay artifacts/<run-id>
 ```
 
-![Complete matrix generated report](https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/be10bae35542aa1adae605dbe1d19c662f8f540d/docs/assets/walkthrough/compatibility-report.png)
+![Complete matrix generated report](https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/fdb015ca58a5e758f23968f8cbc805d624af9e9f/docs/assets/walkthrough/compatibility-report.png)
 
 The report screenshot comes directly from that run's generated, self-contained HTML artifact. The
-capture shows the same 52-scenario outcome from the fresh v0.10.0 run. The report includes
+capture shows the same 59-scenario outcome from the v0.11.0 release run. The report includes
 per-request adapter cells, stable conformance rule IDs,
 normative levels, authoritative sources, expected-versus-observed behavior, severity,
 repairability, confidence, exact evidence, adapter failure cells, and replay-verified artifact
 comparison.
 
-![Silent Payment workflow report evidence](https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/be10bae35542aa1adae605dbe1d19c662f8f540d/docs/assets/walkthrough/silent-payments-report.png)
+![Silent Payment workflow report evidence](https://raw.githubusercontent.com/GautamBytes/psbt-interop-lab/fdb015ca58a5e758f23968f8cbc805d624af9e9f/docs/assets/walkthrough/silent-payments-report.png)
 
-The Silent Payment capture shows all 41 official BIP375 vectors and the two explicit native-library
-compatibility findings. The same run also finalizes the bounded BIP375 sender and confirms its
-transaction identity with Core, but its external parent is not present in the isolated regtest
-chain, so the lab makes no policy-acceptance claim for that fixture. The Core-funded BIP376 receiver
-spend does pass regtest policy.
+The Silent Payment capture shows the v0.11.0 two-receiver lifecycle: each receiver independently
+discovers and spends only its own output in both layouts. SPDK, libwally and Core package-policy
+checks agree without broadcasting. This bounded regtest fixture does not establish general wallet
+scanning or production readiness. The same complete report retains all 41 official BIP375 vectors
+and the explicit native-library compatibility findings.
 
 ## External Adapters
 

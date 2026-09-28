@@ -350,7 +350,7 @@ export const reportScenarios: ReportScenario[] = [
         expected: "mature Core-funded input; missing parents fail",
         actual: "one P2WPKH input, one Silent Payment output, regtest only",
         implementation: "Bitcoin Core 31.1",
-        nextStep: "Included in v0.11.0; the historical v0.10.0 screenshots predate this scenario.",
+        nextStep: "Verified in the complete v0.11.0 matrix and replay artifact.",
       },
     ],
     replay: "psbt-lab run --scenario bip375-core-funded-sender-rust-psbt-v2",
@@ -464,7 +464,7 @@ export const reportScenarios: ReportScenario[] = [
         actual: "12 replayable checkpoints; both parent/child packages must pass",
         implementation: "PSBT Interop Lab",
         nextStep:
-          "Regtest only. Included in v0.11.0; the historical v0.10.0 screenshots predate this scenario. No chain scanning or multiple receiver identities.",
+          "Regtest only. Verified in the complete v0.11.0 matrix and replay artifact. No chain scanning or multiple receiver identities.",
       },
     ],
     replay: "psbt-lab run --scenario bip352-multi-output-lifecycle-rust-psbt-v2",
