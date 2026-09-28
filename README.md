@@ -7,8 +7,9 @@ writes replayable compatibility reports.
 
 The current suite integrates Bitcoin Core 31.1, rust-bitcoin 0.32.102, btcsuite PSBT 1.2.0,
 bitcoinjs-lib 7.0.1, BDK Wallet 3.1.0, rust-psbt's PSBTv2 0.3.0 implementation, and libwally
-1.5.4. Version 0.10.1 corrects Core policy-availability reporting and transaction-ID labels for the
-Silent Payment workflows introduced in 0.10.0. It retains complete BIP375 field and official-vector
+1.5.4. Version 0.11.0 adds Core-funded Silent Payment senders, receiver discovery and spending,
+independent SPDK wallet interoperability, multiple receivers and labeled payments. Its 59-scenario
+suite retains complete BIP375 field and official-vector
 conformance, bounded basic and advanced Silent Payment sender workflows, a BIP376 receiver-spend
 workflow, the generated TypeScript adapter project, reproducible upstream issue bundles,
 replay-verified compatibility history, a MuSig2 proof crossing independent Rust `musig2` 0.4.1 and
@@ -31,7 +32,7 @@ Requirements:
 - Node.js 22 or 24
 
 ```bash
-npx --yes psbt-interop-lab@0.10.1 quickstart
+npx --yes psbt-interop-lab@0.11.0 quickstart
 ```
 
 `quickstart` is the bounded first-run proof. It checks Node.js, Docker, and Compose, runs five
@@ -39,10 +40,10 @@ semantic detector canaries, then completes one real Bitcoin Core -> rust-bitcoin
 signing and finalization handoff. It writes the same replayable reports as the full suite and stops
 the local regtest node automatically.
 
-For exhaustive compatibility testing, install the CLI once and run the complete 52-scenario matrix:
+For exhaustive compatibility testing, install the CLI once and run the complete 59-scenario matrix:
 
 ```bash
-npm install --global psbt-interop-lab@0.10.1
+npm install --global psbt-interop-lab@0.11.0
 psbt-lab matrix
 ```
 
@@ -98,15 +99,15 @@ To work from a source checkout instead, install pnpm 10.30.2, run
 `pnpm install --frozen-lockfile`, and replace `psbt-lab` above with `node dist/cli.js` after
 `pnpm build`.
 
-## Multiple Silent Payment receivers (unreleased)
+## Labeled payments and multiple Silent Payment receivers
 
 `bip352-labels-spdk` pays a fixed receiver's label 1 twice, then independently discovers and
 spends both outputs through SPDK. Both output layouts require libwally extraction and Core
 parent/child policy acceptance. Missing, wrong and double-applied label tweaks are rejected.
-The source-only scenario records 54 assertions and 12 replayable checkpoints:
+The scenario records 54 assertions and 12 replayable checkpoints:
 
 ```sh
-node dist/cli.js run --scenario bip352-labels-spdk
+psbt-lab run --scenario bip352-labels-spdk
 ```
 
 Labels distinguish payments within one wallet; they do not create separate private identities.
@@ -116,9 +117,7 @@ This bounded fixture does not cover mixed labels in one transaction, label recov
 two payments to Alice (scan-2/spend-1), one to Bob (scan-3/spend-2), and ordinary change.
 
 ```sh
-pnpm install --frozen-lockfile
-pnpm build
-node dist/cli.js run --scenario bip352-multi-receiver-spdk
+psbt-lab run --scenario bip352-multi-receiver-spdk
 ```
 
 The sender tests the original and reversed unsigned output layouts. TypeScript, native Rust
@@ -129,16 +128,14 @@ rejected before signing. libwally extracts every transaction, and Core must acce
 parent/child packages without broadcasting. The report retains 24 replayable checkpoints.
 
 This is a fixed regtest fixture with public test keys. Labels, chain synchronization and wallet-app
-integration remain outside its scope. Build from source; published v0.10.1 is unchanged.
+integration remain outside its scope. Both scenarios are included in v0.11.0.
 
-## Independent SPDK wallet interoperability (unreleased)
+## Independent SPDK wallet interoperability
 
 Run the same two-output lifecycle through SPDK's receiver and wallet signer:
 
 ```sh
-pnpm install --frozen-lockfile
-pnpm build
-node dist/cli.js run --scenario bip352-spdk-wallet-interop
+psbt-lab run --scenario bip352-spdk-wallet-interop
 ```
 
 The adapter pins [SPDK's wallet implementation](https://github.com/cygnet3/spdk/tree/a00f9807609b3be16892b7dd671a56db52db88a7)
@@ -149,20 +146,18 @@ The report requires the exact SPDK revision, independent libwally extraction, an
 of both ordered and shuffled parent/child packages: 46 assertions and 12 replayable checkpoints.
 
 This proves offline interoperability with SPDK's wallet library for this fixed regtest fixture.
-External maintainer adoption, wallet-app integration, chain synchronization and labels remain
-future work. Distinct receiver identities are covered by the separate scenario above. The scenario is source-only; published v0.10.1 is unchanged.
+External maintainer adoption, wallet-app integration and chain synchronization remain future
+work. Labels and distinct receiver identities are covered by the separate scenarios above.
 
-## Two-output Silent Payment lifecycle (unreleased)
+## Two-output Silent Payment lifecycle
 
-The source scenario `bip352-multi-output-lifecycle-rust-psbt-v2` pays the same scan-2/spend-1
+The scenario `bip352-multi-output-lifecycle-rust-psbt-v2` pays the same scan-2/spend-1
 receiver twice (`k=0` and `k=1`) from two funded P2WPKH inputs, with ordinary change. It runs
 both `[recipient, recipient, change]` and `[change, recipient, recipient]` layouts. The sender
 permutes the unsigned template before derivation and signing, respecting BIP375 counter order.
 
 ```sh
-pnpm install --frozen-lockfile
-pnpm build
-node dist/cli.js run --scenario bip352-multi-output-lifecycle-rust-psbt-v2
+psbt-lab run --scenario bip352-multi-output-lifecycle-rust-psbt-v2
 ```
 
 TypeScript and Rust independently discover both scripts from public sender inputs, without
@@ -173,17 +168,15 @@ both transactions; Core must reject the child alone and accept the parent/child 
 each layout. Nothing is broadcast. Twelve replayable checkpoints retain both lifecycles.
 
 This is a bounded two-output, one-receiver regtest proof, not multi-recipient wallet or chain
-scanning support. It is not included in published v0.10.1 or the historical screenshots.
+scanning support. The historical v0.10.0 screenshots predate this scenario.
 
-## Sender → receiver discovery → spend (unreleased)
+## Sender → receiver discovery → spend
 
-Run `bip352-sender-receiver-lifecycle-rust-psbt-v2` from source to follow the actual funded
+Run `bip352-sender-receiver-lifecycle-rust-psbt-v2` to follow the actual funded
 multi-input sender output into a receiver spend:
 
 ```sh
-pnpm install --frozen-lockfile
-pnpm build
-node dist/cli.js run --scenario bip352-sender-receiver-lifecycle-rust-psbt-v2
+psbt-lab run --scenario bip352-sender-receiver-lifecycle-rust-psbt-v2
 ```
 
 The receiver independently derives the BIP352 output from public input witnesses/outpoints
@@ -197,12 +190,12 @@ signing/finalization. Neither transaction is broadcast.
 This is a bounded regtest lifecycle with two P2WPKH inputs, one scan-2/spend-1 recipient,
 ordinary change, and a fixed 10,000-sat receiver fee. Wrong receiver keys discover nothing;
 altered outpoints, tweaks and destinations must be rejected before signing. It is not a
-chain scanner, reorg/recovery engine, or general wallet implementation. The published
-v0.10.1 package and historical screenshots do not include this scenario.
+chain scanner, reorg/recovery engine, or general wallet implementation. The historical
+v0.10.0 screenshots predate this scenario.
 
-## Funded multi-input Silent Payment sender (unreleased)
+## Funded multi-input Silent Payment sender
 
-The source checkout includes `bip375-core-funded-multi-input-rust-psbt-v2`: two mature
+The suite includes `bip375-core-funded-multi-input-rust-psbt-v2`: two mature
 P2WPKH inputs controlled by different public fixture keys, one fixed Silent Payment recipient,
 and ordinary change. It runs global and per-input ECDH shares in both input orders. All four
 variants must derive the same recipient script, preserve amounts and change, verify both
@@ -210,32 +203,28 @@ signatures against their finalized witnesses, match independent libwally extract
 Bitcoin Core `testmempoolaccept`. Missing parents fail; nothing is broadcast.
 
 ```sh
-pnpm install --frozen-lockfile
-pnpm build
-node dist/cli.js run --scenario bip375-core-funded-multi-input-rust-psbt-v2
-node dist/cli.js replay artifacts/<run-id>
-node dist/cli.js stop
+psbt-lab run --scenario bip375-core-funded-multi-input-rust-psbt-v2
+psbt-lab replay artifacts/<run-id>
+psbt-lab stop
 ```
 
 The run retains nine checkpoints (one template and four signed/finalized pairs). It also rejects
 changed inputs, recipient amounts, change scripts, supplied recipient/share/proof data, and
-mainnet requests. This scenario is not included in the published v0.10.1 package or historical
-walkthrough screenshots. It is bounded test infrastructure, not a general wallet or collaborative
+mainnet requests. The historical v0.10.0 walkthrough screenshots predate this scenario.
+It is bounded test infrastructure, not a general wallet or collaborative
 multi-party signer.
 
-## Core-funded Silent Payment sender (unreleased)
+## Core-funded Silent Payment sender
 
-The source checkout additionally includes a Core-funded BIP375 sender proof. This unreleased
+The suite includes a Core-funded BIP375 sender proof. This
 scenario derives a fixed Silent Payment recipient, signs and finalizes a mature regtest input,
 compares independent extraction, and requires Bitcoin Core policy acceptance without broadcasting.
-Run it from source:
+Run it with the installed CLI:
 
 ```bash
-pnpm install --frozen-lockfile
-pnpm build
-node dist/cli.js run --scenario bip375-core-funded-sender-rust-psbt-v2
-node dist/cli.js replay artifacts/<run-id>
-node dist/cli.js stop
+psbt-lab run --scenario bip375-core-funded-sender-rust-psbt-v2
+psbt-lab replay artifacts/<run-id>
+psbt-lab stop
 ```
 
 This requires Docker and the same Node.js versions as the published CLI. The fixed test recipient
@@ -244,6 +233,10 @@ it does not establish multi-input sender policy acceptance or receiver discovery
 
 
 ## Walkthrough: Verify the Complete Matrix
+
+The v0.11.0 release check passed all 59 scenarios and replay-verified 179 checkpoints. Three
+known native-library compatibility findings remain explicitly classified. The screenshots below
+show the earlier v0.10.0 run, which covered 52 scenarios and 101 checkpoints.
 
 This real v0.10.0 run executes every bundled workflow against the pinned integration stacks and an
 isolated Bitcoin Core regtest node:
@@ -315,7 +308,7 @@ preservation. It executes the configured command directly with `shell: false`; t
 manifest must therefore be treated as trusted local code. See [the adapter guide](docs/adapters.md)
 and the bundled [manifest schema](src/conformance/adapter-manifest.schema.json).
 
-The source checkout matrix keeps all 59 bundled scenarios and appends native-parse and semantic-roundtrip cells for
+The matrix keeps all 59 bundled scenarios and appends native-parse and semantic-roundtrip cells for
 each external adapter across P2WPKH, nested P2SH-P2WPKH, P2WSH, Taproot key-path, and Taproot
 script-path fixtures. It also appends signing handoffs when the adapter declares the matching
 signer capabilities and the `fixture-commitment-sha256` safety feature.
@@ -326,7 +319,7 @@ independently installed [bitcoinjs-lib consumer example](examples/wallet-ci-adap
 GitHub Action:
 
 ```yaml
-- uses: GautamBytes/psbt-interop-lab@v0.10.1
+- uses: GautamBytes/psbt-interop-lab@v0.11.0
   with:
     adapter-manifest: ./adapters.json
 ```
@@ -412,7 +405,7 @@ fixtures. Custom signing is capability-gated and runs only when an adapter expli
 
 ## Current Coverage
 
-The source checkout currently runs 59 scenarios (the published v0.10.1 package has 52):
+Version 0.11.0 includes 59 scenarios:
 
 - Core-created P2PKH, P2WPKH, P2WSH, nested P2SH-P2WSH, and Taproot key-path signing handoffs
   through rust-bitcoin, btcsuite, bitcoinjs-lib, and current BDK Wallet
